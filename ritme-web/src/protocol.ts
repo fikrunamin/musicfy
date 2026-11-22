@@ -105,6 +105,8 @@ export type ClientMessage =
   | { type: 'Join'; protocolVersion: number; code: string; name: string; resumeToken: string | null }
   | { type: 'Leave' }
   | { type: 'Ping'; clientTime: number }
+  /** Flow control: the state.version of the Welcome/State just applied; the server sends the next snapshot only after it. */
+  | { type: 'Ack'; version: number }
   | { type: 'Command'; reqId: string; cmd: Command }
   | { type: 'TrackEnded'; entryId: string };
 
@@ -186,6 +188,8 @@ function orderClientMessage(msg: ClientMessage): ClientMessage {
       return { type: 'Leave' };
     case 'Ping':
       return { type: 'Ping', clientTime: msg.clientTime };
+    case 'Ack':
+      return { type: 'Ack', version: msg.version };
     case 'Command':
       return { type: 'Command', reqId: msg.reqId, cmd: encodeCommand(msg.cmd) };
     case 'TrackEnded':

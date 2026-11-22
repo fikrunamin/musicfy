@@ -175,10 +175,15 @@ export class RitmeConnection {
         writeResume(this.opts.storage, { code: message.state.code, token: message.resumeToken });
         this.emit({ type: 'welcome', welcome: message, receivedAt: this.opts.now() });
         this.emit({ type: 'status', status: 'online' });
+        this.ack(message.state.version);
         return;
       }
       case 'State':
-        if (this.joined) this.emit({ type: 'state', state: message.state });
+        if (this.joined) {
+          this.emit({ type: 'state', state: message.state });
+          // Acked even when the reducer drops it as stale: the server gates on the exact version it sent.
+          this.ack(message.state.version);
+        }
         return;
       case 'Pong':
         this.emit({
@@ -256,6 +261,12 @@ export class RitmeConnection {
     } catch {
       // Already closed.
     }
+  }
+
+  /** Snapshot flow control; send() already drops it unless the current socket is open. */
+  private ack(version: number): void {
+    if (this.ended) return;
+    this.send({ type: 'Ack', version });
   }
 
   private ping(): void {

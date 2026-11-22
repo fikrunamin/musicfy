@@ -64,6 +64,7 @@ const clientSamples: Record<string, ClientMessage> = {
   },
   'client-join': { type: 'Join', protocolVersion: PROTOCOL_VERSION, code: 'K7M2QX', name: 'Sari', resumeToken: 'tok' },
   'client-leave': { type: 'Leave' },
+  'client-ack': { type: 'Ack', version: 3 },
   'client-ping': { type: 'Ping', clientTime: 123 },
   'client-track-ended': { type: 'TrackEnded', entryId: 'e1' },
   'cmd-play': send({ type: 'Play' }),

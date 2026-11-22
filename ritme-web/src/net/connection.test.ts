@@ -362,6 +362,97 @@ describe('RitmeConnection: deadlines and edge cases', () => {
   });
 });
 
+describe('RitmeConnection: snapshot acks', () => {
+  const acks = (s: FakeSocket) => s.sent.filter((m) => m.type === 'Ack');
+  const welcomeAt = (version: number) => ({ ...welcome(), state: room({ version }) });
+
+  it('acks a Welcome with its own version, exactly once', () => {
+    const t = setup();
+    t.conn.start({ kind: 'join', code: 'K7M2QX', name: 'Sari' });
+    t.last().open();
+    t.last().receive(welcomeAt(7));
+    expect(acks(t.last())).toEqual([{ type: 'Ack', version: 7 }]);
+  });
+
+  it('acks every State, including a stale one the reducer will ignore', () => {
+    const t = setup();
+    joinIn(t);
+    t.last().receive({ type: 'State', state: room({ version: 5 }) });
+    t.last().receive({ type: 'State', state: room({ version: 3 }) });
+    expect(acks(t.last()).map((a) => a.version)).toEqual([1, 5, 3]);
+  });
+
+  it('does not ack Pong, Error or a State before the Welcome', () => {
+    const t = setup();
+    t.conn.start({ kind: 'join', code: 'K7M2QX', name: 'Sari' });
+    t.last().open();
+    t.last().receive({ type: 'State', state: room({ version: 2 }) });
+    expect(acks(t.last())).toEqual([]);
+    t.last().receive(welcome());
+    t.last().receive({ type: 'Pong', clientTime: 1, serverTime: 2 });
+    t.last().receive({ type: 'Error', reqId: 'r1', code: 'FORBIDDEN' });
+    expect(acks(t.last())).toHaveLength(1);
+  });
+
+  it('sends the Ack after the event is dispatched', () => {
+    const t = setup();
+    const order: string[] = [];
+    t.conn.start({ kind: 'join', code: 'K7M2QX', name: 'Sari' });
+    t.last().open();
+    const sock = t.last();
+    const send = sock.send.bind(sock);
+    sock.send = (d: string) => {
+      order.push(`send:${JSON.parse(d).type}`);
+      send(d);
+    };
+    const events = t.events;
+    events.push = (...e: ConnectionEvent[]) => {
+      order.push(...e.map((x) => `event:${x.type}`));
+      return Array.prototype.push.apply(events, e);
+    };
+    sock.receive({ type: 'State', state: room({ version: 2 }) });
+    sock.receive(welcome());
+    expect(order.indexOf('event:welcome')).toBeLessThan(order.indexOf('send:Ack', order.indexOf('event:welcome')));
+  });
+
+  it('sends no Ack after leave, and none on a replaced socket', () => {
+    const t = setup();
+    joinIn(t);
+    const old = t.last();
+    old.serverClose();
+    vi.advanceTimersByTime(1_000);
+    const fresh = t.last();
+    fresh.open();
+    old.receive({ type: 'State', state: room({ version: 9 }) });
+    expect(acks(old)).toHaveLength(1);
+    t.conn.leave();
+    fresh.receive({ type: 'State', state: room({ version: 9 }) });
+    expect(acks(fresh)).toEqual([]);
+  });
+
+  it('acks the new Welcome on the new socket after a reconnect', () => {
+    const t = setup();
+    joinIn(t);
+    const old = t.last();
+    old.serverClose();
+    vi.advanceTimersByTime(1_000);
+    const fresh = t.last();
+    fresh.open();
+    fresh.receive(welcomeAt(12));
+    expect(acks(fresh)).toEqual([{ type: 'Ack', version: 12 }]);
+    expect(acks(old)).toHaveLength(1);
+  });
+
+  it('no Ack after the room was closed or the member kicked', () => {
+    const t = setup();
+    joinIn(t);
+    const s = t.last();
+    s.receive({ type: 'Kicked' });
+    s.receive({ type: 'State', state: room({ version: 4 }) });
+    expect(acks(s)).toHaveLength(1);
+  });
+});
+
 describe('ritmeSocketUrl', () => {
   it('uses wss on https and the same host', () => {
     expect(ritmeSocketUrl({ protocol: 'https:', host: 'ritme.example' })).toBe('wss://ritme.example/ritme');
