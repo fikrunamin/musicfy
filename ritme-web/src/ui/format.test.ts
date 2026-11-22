@@ -26,5 +26,6 @@ describe('format helpers', () => {
     expect(codeFromPath('/r/K7M2QX/')).toBe('K7M2QX');
     expect(codeFromPath('/')).toBeNull();
     expect(codeFromPath('/r/<script>')).toBeNull();
+    expect(codeFromPath('/r/%E0%A4%A')).toBeNull();
   });
 });

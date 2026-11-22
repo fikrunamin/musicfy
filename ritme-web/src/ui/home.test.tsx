@@ -53,4 +53,15 @@ describe('HomeScreen', () => {
     );
     expect(screen.getByRole('alert').textContent).toBe('Room tidak ditemukan');
   });
+
+  it('accepts a pasted code with spaces', () => {
+    const session = fakeSession();
+    render(<HomeScreen session={session} state={initialSession} routeCode={null} prefs={memoryStore()} />);
+    fireEvent.input(screen.getByLabelText('Nama tampilan'), { target: { value: 'Sari' } });
+    const input = screen.getByLabelText('Kode room') as HTMLInputElement;
+    fireEvent.input(input, { target: { value: 'k7m 2qx ' } });
+    expect(input.value).toBe('K7M2QX');
+    fireEvent.click(screen.getByRole('button', { name: 'Gabung' }));
+    expect(session.join).toHaveBeenCalledWith('K7M2QX', 'Sari');
+  });
 });

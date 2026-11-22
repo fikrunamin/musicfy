@@ -3,7 +3,7 @@ import type { KeyValueStore } from '../net/storage';
 import { NAME_KEY } from '../net/storage';
 import type { SessionState } from '../session/reducer';
 import type { SessionApi } from '../session/session';
-import { normalizeCode, normalizeName } from './format';
+import { normalizeCode, normalizeName, sanitizeCodeInput } from './format';
 import { RELEASES_URL, endText, t } from './strings';
 
 interface Props {
@@ -94,12 +94,11 @@ export function HomeScreen({ session, state, routeCode, prefs }: Props) {
               name="code"
               class="code-input"
               value={code}
-              maxLength={7}
               autoCapitalize="characters"
               autoComplete="off"
               spellcheck={false}
               placeholder={t.codePlaceholder}
-              onInput={(e) => setCode(e.currentTarget.value.toUpperCase())}
+              onInput={(e) => setCode(sanitizeCodeInput(e.currentTarget.value))}
             />
           </label>
           <button type="submit" class={routeCode ? 'btn btn-primary' : 'btn'} disabled={busy}>

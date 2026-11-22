@@ -26,5 +26,15 @@ export function normalizeName(raw: string): string | null {
 /** The room code in /r/{code}, or null. */
 export function codeFromPath(pathname: string): string | null {
   const match = /^\/r\/([^/]+)\/?$/.exec(pathname);
-  return match ? normalizeCode(decodeURIComponent(match[1])) : null;
+  if (!match) return null;
+  try {
+    return normalizeCode(decodeURIComponent(match[1]));
+  } catch {
+    return null; // malformed percent-encoding
+  }
+}
+
+/** Live form of the code input: no spaces/dashes, uppercase, at most 6 characters (paste-friendly). */
+export function sanitizeCodeInput(raw: string): string {
+  return raw.replace(/[\s-]/g, '').toUpperCase().slice(0, 6);
 }
