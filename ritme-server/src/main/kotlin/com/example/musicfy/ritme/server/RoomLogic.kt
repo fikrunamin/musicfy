@@ -123,17 +123,33 @@ object RoomLogic {
         return if (raw >= current.durationMs + Limits.FALLBACK_SLACK_MS) bump(advance(state, now)) else null
     }
 
-    /**
-     * NFC-normalized, without control/format characters (newlines, bidi overrides, zero-width
-     * marks: everything in \p{C}) or line/paragraph separators, trimmed, 1..32 chars.
-     */
+    /** [cleanText], with at least one visible character and at most 32 chars. */
     fun cleanName(raw: String): String? =
-        cleanText(raw).takeIf { it.isNotEmpty() && it.length <= Limits.MAX_NAME_LENGTH }
+        cleanText(raw).takeIf { hasVisible(it) && it.length <= Limits.MAX_NAME_LENGTH }
 
-    /** NFC, without \p{C} / line and paragraph separators, trimmed. Used for names, titles, artists. */
+    /**
+     * NFC, trimmed, without the characters that break or spoof a line of text: C0/C1 controls
+     * (newlines, tabs), lone surrogates, bidi embeddings/overrides/isolates (U+202A-U+202E,
+     * U+2066-U+2069), zero-width space U+200B, BOM U+FEFF, and line/paragraph separators.
+     * Everything else stays, notably ZWJ/ZWNJ (emoji sequences, Persian and Indic text),
+     * variation selectors, tag characters (subdivision flags), private-use and unassigned code
+     * points (emoji newer than the JDK's Unicode tables). Used for names, titles and artists.
+     */
     fun cleanText(raw: String): String = Normalizer.normalize(raw, Normalizer.Form.NFC).replace(INVISIBLE, "").trim()
 
-    private val INVISIBLE = Regex("[\\p{C}\\p{Zl}\\p{Zp}]")
+    private val INVISIBLE = Regex("[\\p{Cc}\\p{Cs}\\u200B\\u202A-\\u202E\\u2066-\\u2069\\uFEFF\\u2028\\u2029]")
+
+    private val NOT_VISIBLE_TYPES = setOf(
+        Character.FORMAT.toInt(),
+        Character.NON_SPACING_MARK.toInt(),
+        Character.ENCLOSING_MARK.toInt(),
+        Character.SPACE_SEPARATOR.toInt(),
+        Character.CONTROL.toInt(),
+    )
+
+    /** True when [text] has something to see (not only joiners, selectors, marks or spaces). */
+    private fun hasVisible(text: String): Boolean =
+        text.codePoints().anyMatch { !Character.isWhitespace(it) && Character.getType(it) !in NOT_VISIBLE_TYPES }
 
     /** Bytes of the snapshot as sent (UTF-8 JSON). */
     fun stateBytes(state: RoomState): Int = jsonBytes(state)
@@ -306,7 +322,7 @@ object RoomLogic {
             MediaKind.UNKNOWN -> false
         }
         return source &&
-            title.length <= Limits.MAX_TEXT_LENGTH && cleanText(title).isNotEmpty() &&
+            title.length <= Limits.MAX_TEXT_LENGTH && hasVisible(cleanText(title)) &&
             artist.length <= Limits.MAX_TEXT_LENGTH &&
             isValidThumbnail(thumbnailUrl, youtube = kind == MediaKind.YOUTUBE_MUSIC || kind == MediaKind.YOUTUBE_VIDEO) &&
             durationMs in 0..Limits.MAX_DURATION_MS

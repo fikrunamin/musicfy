@@ -421,4 +421,32 @@ class RoomLogicTest {
         assertTrue(room.queue.size in 1..6)
         assertTrue(RoomLogic.stateBytes(room) <= 20_000)
     }
+
+    @Test
+    fun cleaningKeepsEmojiSequencesNewEmojiAndJoinersInText() {
+        fun cp(vararg codePoints: Int) = String(codePoints, 0, codePoints.size)
+        val family = cp(0x1F468, 0x200D, 0x1F469, 0x200D, 0x1F467) // ZWJ sequence
+        val scotland = cp(0x1F3F4, 0xE0067, 0xE0062, 0xE0073, 0xE0063, 0xE0074, 0xE007F) // tag sequence
+        val unicode16 = cp(0x1FAE9) // unassigned in Java 21's tables
+        val persian = "\u0645\u06CC\u200C\u062E\u0648\u0627\u0645" // ZWNJ
+        val heart = "\u2764\uFE0F" // VS16
+        listOf(family, scotland, unicode16, persian, heart, "$heart $family $scotland").forEach {
+            assertEquals(it, RoomLogic.cleanText(it))
+            assertEquals(it, RoomLogic.cleanName(it))
+        }
+        val song = newEntry().copy(title = "Lagu $family $unicode16", artist = persian)
+        val added = ok(apply(playingA, HOST, Command.Add(listOf(song)))).queue.last()
+        assertEquals("Lagu $family $unicode16", added.title)
+        assertEquals(persian, added.artist)
+    }
+
+    @Test
+    fun cleaningRemovesSpoofingAndLineBreakingCharacters() {
+        assertEquals("abcdefgh", RoomLogic.cleanText("a\u202Eb\u202Ac\u2066d\u2069e\u200Bf\uFEFFg\u2028h"))
+        assertEquals("Budi", RoomLogic.cleanText("\nBu\r\ndi\t\u0000\u009F\u2029"))
+        assertEquals("ab", RoomLogic.cleanText("a\uD800b")) // lone surrogate
+        // Only joiners / selectors left: nothing to show, so not a valid name or title.
+        assertNull(RoomLogic.cleanName("\u200D\u200C\uFE0F"))
+        assertEquals(ErrorCode.INVALID, rejected(apply(playingA, HOST, Command.Add(listOf(newEntry().copy(title = "\u200D\u200B"))))))
+    }
 }

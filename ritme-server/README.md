@@ -80,8 +80,10 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
   All rooms together are capped at 120 MB of snapshots: past that, `Add` gets `QUEUE_FULL` and
   `Create` is trimmed or refused with `ROOM_FULL`. `Welcome`/`State` carry the full room, so
   server frames stay below ~260 KB; clients must accept inbound frames of at least 1 MB.
-- Titles, artists and names are cleaned on the server (NFC; control, format and zero-width
-  characters removed).
+- Titles, artists and names are cleaned on the server: NFC; control characters, lone surrogates,
+  bidi embeddings/overrides/isolates, zero-width space, BOM and line/paragraph separators are
+  removed. ZWJ/ZWNJ, variation selectors, tag characters and code points newer than the server's
+  Unicode tables are kept, so new emoji, emoji sequences and subdivision flags survive.
 - Clients decode with `decodeServerMessageOrNull` (unknown message types: skip), and must handle
   `MediaKind.UNKNOWN` (skip the entry) and `ErrorCode.UNKNOWN` (generic failure).
 - The server accepts protocol versions `MIN_SUPPORTED_PROTOCOL_VERSION..PROTOCOL_VERSION`;
