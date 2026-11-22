@@ -9,7 +9,7 @@ import {
   encodeClientMessage,
   parseServerMessage,
 } from '../protocol';
-import { type KeyValueStore, RESUME_KEY, readResume, writeResume } from './storage';
+import { type KeyValueStore, type ResumeInfo, RESUME_KEY, readResume, writeResume } from './storage';
 
 /** The subset of the browser WebSocket this client uses, so tests can pass a fake. */
 export interface SocketLike {
@@ -59,6 +59,8 @@ export const BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 15_000];
 export const RECONNECT_GIVE_UP_MS = 30_000;
 /** A socket that has not opened by then counts as a failed attempt. */
 export const CONNECT_TIMEOUT_MS = 8_000;
+/** An opened socket that has not been welcomed by then counts as a failed attempt (server join deadline). */
+export const JOIN_TIMEOUT_MS = 10_000;
 export const PING_BURST = 5;
 export const PING_BURST_GAP_MS = 200;
 export const PING_INTERVAL_MS = 30_000;
@@ -78,6 +80,8 @@ export class RitmeConnection {
   private ended = false;
   private attempt = 0;
   private droppedAt: number | null = null;
+  /** Latest token in memory; sessionStorage is only the reload fallback (it can be blocked). */
+  private resume: ResumeInfo | null = null;
   private nextReqId = 1;
   private readonly socketTimers = new Set<ReturnType<typeof setTimeout>>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -101,6 +105,7 @@ export class RitmeConnection {
 
   leave(): void {
     if (this.ended) return;
+    // Leaving before the first Welcome just closes the socket; the server has no member to remove yet.
     if (this.joined) this.send({ type: 'Leave' });
     this.finish({ kind: 'left' });
   }
@@ -117,6 +122,9 @@ export class RitmeConnection {
       if (this.socket !== socket) return;
       opened = true;
       this.send(this.joinMessage());
+      this.later(JOIN_TIMEOUT_MS, () => {
+        if (!this.joined) this.drop(socket);
+      });
       for (let i = 0; i < PING_BURST; i++) this.later(i * PING_BURST_GAP_MS, () => this.ping());
       this.later(PING_INTERVAL_MS, () => this.pingLoop());
     };
@@ -143,7 +151,8 @@ export class RitmeConnection {
         startPositionMs: 0,
       };
     }
-    const resume = readResume(this.opts.storage);
+    // A reload resume that hits RATE_LIMITED before any Welcome ends as rejected (not retried): intentional.
+    const resume = this.resume ?? readResume(this.opts.storage);
     return {
       type: 'Join',
       protocolVersion: PROTOCOL_VERSION,
@@ -162,6 +171,7 @@ export class RitmeConnection {
         this.droppedAt = null;
         // Reconnects always Join the room this Welcome is for, with its token.
         this.intent = { kind: 'join', code: message.state.code, name: this.intent!.name };
+        this.resume = { code: message.state.code, token: message.resumeToken };
         writeResume(this.opts.storage, { code: message.state.code, token: message.resumeToken });
         this.emit({ type: 'welcome', welcome: message, receivedAt: this.opts.now() });
         this.emit({ type: 'status', status: 'online' });
@@ -208,12 +218,14 @@ export class RitmeConnection {
       this.droppedAt = this.opts.now();
       this.emit({ type: 'status', status: 'reconnecting' });
     }
-    const delay = BACKOFF_MS[Math.min(this.attempt, BACKOFF_MS.length - 1)];
-    this.attempt++;
-    if (this.opts.now() + delay - this.droppedAt >= RECONNECT_GIVE_UP_MS) {
+    // Give up 30 s after the first drop: delays are clamped so a final attempt lands at the 30 s mark.
+    const remaining = this.droppedAt + RECONNECT_GIVE_UP_MS - this.opts.now();
+    if (remaining <= 0) {
       this.finish({ kind: 'lost' });
       return;
     }
+    const delay = Math.min(BACKOFF_MS[Math.min(this.attempt, BACKOFF_MS.length - 1)], remaining);
+    this.attempt++;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       if (!this.ended) this.open();
@@ -223,7 +235,10 @@ export class RitmeConnection {
   private finish(reason: EndReason): void {
     if (this.ended) return;
     this.ended = true;
-    if (reason.kind !== 'unreachable') this.opts.storage.remove(RESUME_KEY);
+    if (reason.kind !== 'unreachable') {
+      this.resume = null;
+      this.opts.storage.remove(RESUME_KEY);
+    }
     if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
     if (this.socket) this.detach(this.socket);
     this.emit({ type: 'ended', reason });

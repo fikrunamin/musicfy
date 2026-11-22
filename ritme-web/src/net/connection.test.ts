@@ -211,15 +211,22 @@ describe('RitmeConnection: reconnecting', () => {
   it('gives up 30 s after the drop', () => {
     const t = setup();
     joinIn(t);
-    t.last().serverClose(); // t=0, retries at 1 s, 3 s, 7 s, 15 s
+    t.last().serverClose(); // t=0, retries at 1 s, 3 s, 7 s, 15 s, final at 30 s
     for (const wait of [1_000, 2_000, 4_000, 8_000]) {
       vi.advanceTimersByTime(wait);
       t.last().serverClose();
     }
     expect(t.sockets).toHaveLength(5);
+    expect(t.ended()).toEqual([]);
+    vi.advanceTimersByTime(14_999);
+    expect(t.sockets).toHaveLength(5);
+    vi.advanceTimersByTime(1);
+    expect(t.sockets).toHaveLength(6);
+    expect(t.ended()).toEqual([]);
+    t.last().serverClose(); // the final attempt at 30 s fails
     expect(t.ended()).toEqual([{ type: 'ended', reason: { kind: 'lost' } }]);
     vi.advanceTimersByTime(60_000);
-    expect(t.sockets).toHaveLength(5);
+    expect(t.sockets).toHaveLength(6);
   });
 
   it('keeps retrying when a reconnect is RATE_LIMITED, but a resume into a gone room ends as lost', () => {
@@ -235,6 +242,123 @@ describe('RitmeConnection: reconnecting', () => {
     t.last().open();
     t.last().receive({ type: 'Error', reqId: null, code: 'ROOM_NOT_FOUND' });
     expect(t.ended()).toEqual([{ type: 'ended', reason: { kind: 'lost' } }]);
+  });
+});
+
+describe('RitmeConnection: deadlines and edge cases', () => {
+  it('an opened socket with no Welcome within 10 s fails the attempt (initial connect)', () => {
+    const t = setup();
+    t.conn.start({ kind: 'create', name: 'Budi' });
+    t.last().open();
+    vi.advanceTimersByTime(9_999);
+    expect(t.ended()).toEqual([]);
+    vi.advanceTimersByTime(1);
+    expect(t.ended()).toEqual([{ type: 'ended', reason: { kind: 'unreachable' } }]);
+    expect(t.last().closed).toBe(true);
+  });
+
+  it('an opened socket with no Welcome feeds the reconnect backoff and give-up', () => {
+    const t = setup();
+    joinIn(t);
+    t.last().serverClose(); // t=0
+    vi.advanceTimersByTime(1_000);
+    t.last().open(); // stalls: no Welcome
+    expect(t.sockets).toHaveLength(2);
+    vi.advanceTimersByTime(10_000); // dropped at 11 s, retry in 2 s
+    expect(t.last().closed).toBe(true);
+    vi.advanceTimersByTime(1_999);
+    expect(t.sockets).toHaveLength(2);
+    vi.advanceTimersByTime(1);
+    expect(t.sockets).toHaveLength(3);
+    t.last().open(); // stalls again, dropped at 23 s, retry in 4 s clamped to 7 s left -> 4 s
+    vi.advanceTimersByTime(10_000 + 4_000);
+    expect(t.sockets).toHaveLength(4);
+    t.last().serverClose(); // t=27 s: next delay 8 s clamped to 3 s
+    vi.advanceTimersByTime(3_000);
+    expect(t.sockets).toHaveLength(5);
+    t.last().serverClose(); // t=30 s
+    expect(t.ended()).toEqual([{ type: 'ended', reason: { kind: 'lost' } }]);
+  });
+
+  it('keeps the resume token in memory when storage throws', () => {
+    const broken: KeyValueStore = {
+      get: () => {
+        throw new Error('blocked');
+      },
+      set: () => {
+        throw new Error('blocked');
+      },
+      remove: () => {
+        throw new Error('blocked');
+      },
+    };
+    const t = setup({
+      get: (k) => {
+        try {
+          return broken.get(k);
+        } catch {
+          return null;
+        }
+      },
+      set: () => {},
+      remove: () => {},
+    });
+    joinIn(t);
+    t.last().serverClose();
+    vi.advanceTimersByTime(1_000);
+    t.last().open();
+    expect(t.last().sent[0]).toMatchObject({ type: 'Join', resumeToken: 'tok-1' });
+  });
+
+  it('leave while a reconnect is pending opens no new socket', () => {
+    const t = setup();
+    joinIn(t);
+    t.last().serverClose();
+    t.conn.leave();
+    expect(t.ended()).toEqual([{ type: 'ended', reason: { kind: 'left' } }]);
+    vi.advanceTimersByTime(60_000);
+    expect(t.sockets).toHaveLength(1);
+  });
+
+  it('ignores close and messages from a stale socket', () => {
+    const t = setup();
+    joinIn(t);
+    const old = t.last();
+    old.serverClose();
+    vi.advanceTimersByTime(1_000);
+    const fresh = t.last();
+    fresh.open();
+    fresh.receive(welcome());
+    const before = t.events.length;
+    old.onclose?.({});
+    old.onmessage?.({ data: JSON.stringify({ type: 'Kicked' }) });
+    expect(t.events.length).toBe(before);
+    expect(t.ended()).toEqual([]);
+    expect(t.sockets).toHaveLength(2);
+  });
+
+  it('does not double the ping schedule across a reconnect', () => {
+    const t = setup();
+    joinIn(t);
+    t.last().serverClose();
+    vi.advanceTimersByTime(1_000);
+    t.last().open();
+    t.last().receive(welcome());
+    vi.advanceTimersByTime(1_000);
+    expect(t.last().types().filter((x) => x === 'Ping')).toHaveLength(5);
+    vi.advanceTimersByTime(29_000);
+    expect(t.last().types().filter((x) => x === 'Ping')).toHaveLength(6);
+    expect(t.sockets[0].types().filter((x) => x === 'Ping')).toHaveLength(0);
+  });
+
+  it('UPGRADE_REQUIRED before Welcome ends without retry', () => {
+    const t = setup();
+    t.conn.start({ kind: 'create', name: 'Budi' });
+    t.last().open();
+    t.last().receive({ type: 'Error', reqId: null, code: 'UPGRADE_REQUIRED' });
+    expect(t.ended()).toEqual([{ type: 'ended', reason: { kind: 'rejected', code: 'UPGRADE_REQUIRED' } }]);
+    vi.advanceTimersByTime(60_000);
+    expect(t.sockets).toHaveLength(1);
   });
 });
 
