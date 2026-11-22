@@ -20,7 +20,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
-import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 
 @Serializable
 data class SearchResult(
@@ -131,26 +132,55 @@ object InnerTubeSearchParser {
     private fun JsonElement?.asString(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
 }
 
+/** The global upstream budget is spent: the endpoint answers 503. */
+class SearchOverloadedException : RuntimeException("search upstream budget exhausted")
+
+/**
+ * Cached, single-flight search. Identical uncached queries running at the same time share one
+ * upstream call, and all upstream calls together stay under [globalPerMinute].
+ */
 class SearchService(
     private val backend: SearchBackend,
     private val clock: Clock,
     private val ttlMs: Long = 10 * 60_000L,
     private val maxEntries: Int = 1_000,
+    globalPerMinute: Int = Limits.SEARCH_GLOBAL_PER_MINUTE,
 ) {
     private class Cached(val at: Long, val results: List<SearchResult>)
 
+    private val lock = Any()
     private val cache = object : LinkedHashMap<String, Cached>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Cached>): Boolean = size > maxEntries
     }
+    private val inFlight = HashMap<String, CompletableDeferred<List<SearchResult>>>()
+    private val upstream = RateLimiter(globalPerMinute, globalPerMinute / 60.0, clock)
 
     suspend fun search(query: String): List<SearchResult> {
         val key = query.trim().lowercase()
-        synchronized(cache) {
+        val call = CompletableDeferred<List<SearchResult>>()
+        val shared = synchronized(lock) {
             cache[key]?.takeIf { clock.now() - it.at < ttlMs }?.let { return it.results }
+            inFlight[key] ?: run {
+                if (!upstream.tryAcquire()) throw SearchOverloadedException()
+                inFlight[key] = call
+                null
+            }
         }
-        val results = InnerTubeSearchParser.parse(backend.fetch(query.trim())).take(MAX_RESULTS)
-        synchronized(cache) { cache[key] = Cached(clock.now(), results) }
-        return results
+        if (shared != null) return shared.await()
+        try {
+            val results = InnerTubeSearchParser.parse(backend.fetch(query.trim())).take(MAX_RESULTS)
+            synchronized(lock) {
+                cache[key] = Cached(clock.now(), results)
+                inFlight.remove(key)
+            }
+            call.complete(results)
+            return results
+        } catch (e: Throwable) {
+            synchronized(lock) { inFlight.remove(key) }
+            // Waiters get a plain failure (502), never this caller's cancellation.
+            call.completeExceptionally(if (e is CancellationException) IllegalStateException("search cancelled") else e)
+            throw e
+        }
     }
 
     companion object {
@@ -158,16 +188,35 @@ class SearchService(
     }
 }
 
-class IpRateLimiter(private val clock: Clock, private val perMinute: Int = Limits.SEARCH_PER_MINUTE) {
-    private val buckets = ConcurrentHashMap<String, RateLimiter>()
+/**
+ * Token bucket per client: IPv4 address or IPv6 /64 (see [ipKey]). Buckets idle for longer than
+ * [idleMs] are dropped (by then they have refilled, so nothing is forgotten); beyond [maxTracked]
+ * the least recently used goes first, so active clients keep their state.
+ */
+class IpRateLimiter(
+    private val clock: Clock,
+    private val perMinute: Int = Limits.SEARCH_PER_MINUTE,
+    private val idleMs: Long = 2 * 60_000L,
+    private val maxTracked: Int = 10_000,
+) {
+    private class Bucket(val limiter: RateLimiter, var lastSeen: Long)
 
-    fun tryAcquire(ip: String): Boolean {
-        if (buckets.size > MAX_TRACKED_IPS) buckets.clear()
-        val limiter = buckets.computeIfAbsent(ipKey(ip)) { RateLimiter(perMinute, perMinute / 60.0, clock) }
-        return synchronized(limiter) { limiter.tryAcquire() }
-    }
+    private val buckets = LinkedHashMap<String, Bucket>(16, 0.75f, true) // access order: LRU first
 
-    private companion object {
-        const val MAX_TRACKED_IPS = 10_000
+    val tracked: Int get() = synchronized(buckets) { buckets.size }
+
+    fun tryAcquire(remoteHost: String): Boolean = synchronized(buckets) {
+        val now = clock.now()
+        val key = ipKey(remoteHost)
+        val idle = buckets.values.iterator()
+        while (idle.hasNext()) {
+            if (now - idle.next().lastSeen > idleMs) idle.remove() else break
+        }
+        val bucket = buckets[key] ?: run {
+            if (buckets.size >= maxTracked) buckets.values.iterator().apply { next(); remove() }
+            Bucket(RateLimiter(perMinute, perMinute / 60.0, clock), now).also { buckets[key] = it }
+        }
+        bucket.lastSeen = now
+        bucket.limiter.tryAcquire()
     }
 }

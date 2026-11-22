@@ -62,5 +62,8 @@ object Limits {
     const val METRICS_INTERVAL_MS = 10 * 60_000L
 
     const val SEARCH_PER_MINUTE = 30
+
+    /** All upstream (uncached) searches together; beyond this /api/search answers 503. */
+    const val SEARCH_GLOBAL_PER_MINUTE = 300
     const val SEARCH_MAX_QUERY_LENGTH = 200
 }

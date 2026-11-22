@@ -112,6 +112,9 @@ fun Application.ritmeModule(deps: ServerDeps) {
                 deps.search.search(query)
             } catch (e: CancellationException) {
                 throw e
+            } catch (_: SearchOverloadedException) {
+                call.respond(HttpStatusCode.ServiceUnavailable)
+                return@get
             } catch (e: Exception) {
                 // Never log the query: it is user content.
                 call.application.log.warn("search backend failed: ${e::class.simpleName}")
