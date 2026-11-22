@@ -277,12 +277,13 @@ input:not([type]) {
   overflow: hidden;
   background: #000;
   aspect-ratio: 16 / 9;
+  /* YouTube requires embeds of at least 200 x 200 px, for both sizes. */
+  min-height: 200px;
 }
 
-/* YouTube requires embeds of at least 200 x 200 px; the small player stays above that. */
+/* The small player is capped in width; the large one fills the card. */
 .player-small {
   max-width: 360px;
-  min-height: 200px;
   margin: 0 auto;
 }
 
