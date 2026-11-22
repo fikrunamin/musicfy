@@ -18,6 +18,7 @@ import java.time.LocalDateTime
 class PersistedModelsSerializationTest {
     private val uidGolden = File("src/test/resources/serialization/serial-version-uids.golden.txt")
     private val queueGolden = File("src/test/resources/serialization/persist-queue.golden.bin")
+    private val playerStateGolden = File("src/test/resources/serialization/persist-player-state.golden.bin")
     private val update = System.getProperty("updateGolden") == "true"
 
     private val serializedClasses = listOf(
@@ -34,6 +35,7 @@ class PersistedModelsSerializationTest {
         "com.example.musicfy.models.QueueData\$YouTubeData",
         "com.example.musicfy.models.QueueData\$YouTubeAlbumRadioData",
         "com.example.musicfy.models.QueueData\$LocalAlbumRadioData",
+        "com.example.musicfy.models.PersistPlayerState",
     )
 
     private fun sampleQueue() = PersistQueue(
@@ -69,6 +71,17 @@ class PersistedModelsSerializationTest {
         ),
     )
 
+    private fun samplePlayerState() = PersistPlayerState(
+        playWhenReady = true,
+        repeatMode = 2,
+        shuffleModeEnabled = true,
+        volume = 0.75f,
+        currentPosition = 123_456L,
+        currentMediaItemIndex = 3,
+        playbackState = 3,
+        timestamp = 1_763_800_000_000L,
+    )
+
     @Test
     fun serialVersionUidsMatchGolden() {
         val actual = serializedClasses.joinToString("\n") {
@@ -100,5 +113,26 @@ class PersistedModelsSerializationTest {
         assertEquals(expected.queueData, restored.queueData)
         // Plain Kotlin `object`s deserialize as fresh instances, so compare by type, not identity.
         assertTrue(restored.queueType is QueueType.YOUTUBE_ALBUM_RADIO)
+    }
+
+    @Test
+    fun goldenPlayerStateStillDeserializes() {
+        if (update) {
+            playerStateGolden.parentFile.mkdirs()
+            val bytes = ByteArrayOutputStream()
+            ObjectOutputStream(bytes).use { it.writeObject(samplePlayerState()) }
+            playerStateGolden.writeBytes(bytes.toByteArray())
+            return
+        }
+        val restored = ObjectInputStream(playerStateGolden.inputStream()).use { it.readObject() as PersistPlayerState }
+        val expected = samplePlayerState()
+        assertEquals(expected.playWhenReady, restored.playWhenReady)
+        assertEquals(expected.repeatMode, restored.repeatMode)
+        assertEquals(expected.shuffleModeEnabled, restored.shuffleModeEnabled)
+        assertEquals(expected.volume, restored.volume, 0f)
+        assertEquals(expected.currentPosition, restored.currentPosition)
+        assertEquals(expected.currentMediaItemIndex, restored.currentMediaItemIndex)
+        assertEquals(expected.playbackState, restored.playbackState)
+        assertEquals(expected.timestamp, restored.timestamp)
     }
 }

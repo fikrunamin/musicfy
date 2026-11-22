@@ -11,3 +11,4 @@ com.example.musicfy.models.QueueData=-8582473634277206487
 com.example.musicfy.models.QueueData$YouTubeData=4769908787355566342
 com.example.musicfy.models.QueueData$YouTubeAlbumRadioData=-5168524426105764017
 com.example.musicfy.models.QueueData$LocalAlbumRadioData=-1023867307323175778
+com.example.musicfy.models.PersistPlayerState=1216235762309407826
