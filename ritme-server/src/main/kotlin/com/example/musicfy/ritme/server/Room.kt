@@ -84,10 +84,15 @@ class Room(initial: RoomState, private val clock: Clock, private val ids: IdGen)
         emptySince = null
         val sent = welcome(memberId, token, peer, now)
         broadcast(ServerMessage.State(state), except = memberId)
-        if (sent) JoinResult.Joined(this, memberId) else JoinResult.Rejected(ErrorCode.INVALID)
+        if (sent) JoinResult.Joined(this, memberId, peer) else JoinResult.Rejected(ErrorCode.INVALID)
     }
 
-    suspend fun leave(memberId: String) = mutex.withLock {
+    /**
+     * leave, command and trackEnded are ignored unless [peer] is still this member's live
+     * connection: a connection replaced by a resume must not act for the member any more.
+     */
+    suspend fun leave(memberId: String, peer: Peer) = mutex.withLock {
+        if (peers[memberId] !== peer) return@withLock
         forget(memberId)
         if (state.members.any { it.id == memberId }) {
             state = RoomLogic.removeMembers(state, setOf(memberId))
@@ -105,8 +110,8 @@ class Room(initial: RoomState, private val clock: Clock, private val ids: IdGen)
         broadcast(ServerMessage.State(state))
     }
 
-    suspend fun command(memberId: String, reqId: String, cmd: Command) = mutex.withLock {
-        val sender = peers[memberId] ?: return@withLock
+    suspend fun command(memberId: String, peer: Peer, reqId: String, cmd: Command) = mutex.withLock {
+        val sender = peers[memberId]?.takeIf { it === peer } ?: return@withLock
         if (!limiter(memberId).tryAcquire()) {
             sender.send(ServerMessage.Error(reqId, ErrorCode.RATE_LIMITED))
             return@withLock
@@ -136,8 +141,8 @@ class Room(initial: RoomState, private val clock: Clock, private val ids: IdGen)
         }
     }
 
-    suspend fun trackEnded(memberId: String, entryId: String) = mutex.withLock {
-        if (memberId !in peers) return@withLock
+    suspend fun trackEnded(memberId: String, peer: Peer, entryId: String) = mutex.withLock {
+        if (peers[memberId] !== peer) return@withLock
         // Shares the command budget, so end reports cannot be used to spin the room.
         if (!limiter(memberId).tryAcquire()) return@withLock
         val next = RoomLogic.onTrackEnded(state, entryId, clock.now()) ?: return@withLock

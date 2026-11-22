@@ -138,11 +138,11 @@ suspend fun DefaultWebSocketServerSession.ritmeSession(
                 continue
             }
             when (message) {
-                is ClientMessage.Send -> joined.room.command(joined.memberId, message.reqId, message.cmd)
-                is ClientMessage.TrackEnded -> joined.room.trackEnded(joined.memberId, message.entryId)
+                is ClientMessage.Send -> joined.room.command(joined.memberId, peer, message.reqId, message.cmd)
+                is ClientMessage.TrackEnded -> joined.room.trackEnded(joined.memberId, peer, message.entryId)
                 ClientMessage.Leave -> {
                     session = null
-                    joined.room.leave(joined.memberId)
+                    joined.room.leave(joined.memberId, peer)
                     close(CloseReason(CloseReason.Codes.NORMAL, "left"))
                     return
                 }

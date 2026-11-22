@@ -7,7 +7,8 @@ import com.example.musicfy.ritme.protocol.PROTOCOL_VERSION
 import java.util.concurrent.ConcurrentHashMap
 
 sealed interface JoinResult {
-    data class Joined(val room: Room, val memberId: String) : JoinResult
+    /** [peer] is the connection that joined; room calls made for it must pass it back. */
+    data class Joined(val room: Room, val memberId: String, val peer: Peer) : JoinResult
 
     data class Rejected(val code: ErrorCode) : JoinResult
 }
@@ -33,7 +34,7 @@ class RoomRegistry(private val clock: Clock, private val ids: IdGen, private val
                     rooms.remove(code, room)
                     return JoinResult.Rejected(ErrorCode.INVALID)
                 }
-                return JoinResult.Joined(room, hostId)
+                return JoinResult.Joined(room, hostId, peer)
             }
         }
         // Practically unreachable (32^6 codes); treated like a full server.

@@ -337,4 +337,17 @@ class RoomLogicTest {
         assertEquals(ErrorCode.INVALID, rejected(apply(playingA, HOST, Command.Add(listOf(unknown)))))
         assertEquals(ErrorCode.INVALID, rejected(apply(playingA, HOST, Command.Add(listOf(unknown.copy(videoId = "", url = "https://x/v.mp4"))))))
     }
+
+    @Test
+    fun cleanNameNormalizesAndStripsControlAndFormatCharacters() {
+        assertEquals("Budi", RoomLogic.cleanName("  Budi \n"))
+        assertEquals("Budi", RoomLogic.cleanName("\u202EBu\u200Bdi\u2066"))
+        assertEquals("Sari Ayu", RoomLogic.cleanName("Sari\r\n Ayu"))
+        assertEquals("\u00e9", RoomLogic.cleanName("e\u0301")) // NFC: e + combining acute -> é
+        assertEquals("\uD83C\uDFB5 Ritme", RoomLogic.cleanName("\uD83C\uDFB5 Ritme")) // emoji kept
+        assertNull(RoomLogic.cleanName("\u200B\u200C\uFEFF\u0000\u2029"))
+        assertNull(RoomLogic.cleanName("a".repeat(Limits.MAX_NAME_LENGTH + 1)))
+        // Invisible padding does not count towards the length.
+        assertEquals("a".repeat(Limits.MAX_NAME_LENGTH), RoomLogic.cleanName("a".repeat(Limits.MAX_NAME_LENGTH) + "\u200B".repeat(10)))
+    }
 }

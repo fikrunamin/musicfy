@@ -13,6 +13,7 @@ import com.example.musicfy.ritme.protocol.currentEntry
 import com.example.musicfy.ritme.protocol.isLive
 import com.example.musicfy.ritme.protocol.positionAt
 import java.net.URI
+import java.text.Normalizer
 
 /** Side effects a command asks the stateful [Room] to carry out. */
 sealed interface Effect {
@@ -97,7 +98,17 @@ object RoomLogic {
         return if (raw >= current.durationMs + Limits.FALLBACK_SLACK_MS) bump(advance(state, now)) else null
     }
 
-    fun cleanName(raw: String): String? = raw.trim().takeIf { it.isNotEmpty() && it.length <= Limits.MAX_NAME_LENGTH }
+    /**
+     * NFC-normalized, without control/format characters (newlines, bidi overrides, zero-width
+     * marks: everything in \p{C}) or line/paragraph separators, trimmed, 1..32 chars.
+     */
+    fun cleanName(raw: String): String? =
+        Normalizer.normalize(raw, Normalizer.Form.NFC)
+            .replace(INVISIBLE, "")
+            .trim()
+            .takeIf { it.isNotEmpty() && it.length <= Limits.MAX_NAME_LENGTH }
+
+    private val INVISIBLE = Regex("[\\p{C}\\p{Zl}\\p{Zp}]")
 
     fun nextHost(state: RoomState, excluding: String): String? =
         state.members.filter { it.connected && it.id != excluding }.minByOrNull { it.joinedAt }?.id

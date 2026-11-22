@@ -111,7 +111,7 @@ class RoomRegistryTest {
     fun hostLeavingHandsOverImmediately() = runBlocking {
         val host = create()
         val guest = join(host.room.code) as JoinResult.Joined
-        host.room.leave(host.memberId)
+        host.room.leave(host.memberId, host.peer)
         assertEquals(guest.memberId, host.room.state.hostId)
     }
 
@@ -134,11 +134,11 @@ class RoomRegistryTest {
     fun commandsBeyondTheRateLimitAreRejected() = runBlocking {
         val hostPeer = FakePeer()
         val host = create(hostPeer, queue = listOf(newEntry()))
-        repeat(Limits.COMMANDS_PER_SECOND) { host.room.command(host.memberId, "r$it", Command.Pause) }
-        host.room.command(host.memberId, "over", Command.Pause)
+        repeat(Limits.COMMANDS_PER_SECOND) { host.room.command(host.memberId, host.peer, "r$it", Command.Pause) }
+        host.room.command(host.memberId, host.peer, "over", Command.Pause)
         assertEquals(ServerMessage.Error("over", ErrorCode.RATE_LIMITED), hostPeer.last<ServerMessage.Error>())
         clock.now += 1_000
-        host.room.command(host.memberId, "later", Command.Play)
+        host.room.command(host.memberId, host.peer, "later", Command.Play)
         assertFalse(hostPeer.received.contains(ServerMessage.Error("later", ErrorCode.RATE_LIMITED)))
     }
 
@@ -148,7 +148,7 @@ class RoomRegistryTest {
         val guestPeer = FakePeer()
         val guest = join(host.room.code, guestPeer) as JoinResult.Joined
         val token = guestPeer.last<ServerMessage.Welcome>().resumeToken
-        host.room.command(host.memberId, "k", Command.Kick(guest.memberId))
+        host.room.command(host.memberId, host.peer, "k", Command.Kick(guest.memberId))
         assertEquals(ServerMessage.Kicked, guestPeer.received.last())
         assertTrue(guestPeer.closed)
         val rejoined = join(host.room.code, FakePeer(), token) as JoinResult.Joined
@@ -161,7 +161,7 @@ class RoomRegistryTest {
         val host = create(hostPeer)
         val guestPeer = FakePeer()
         join(host.room.code, guestPeer)
-        host.room.command(host.memberId, "end", Command.EndRoom)
+        host.room.command(host.memberId, host.peer, "end", Command.EndRoom)
         assertEquals(ServerMessage.RoomClosed, guestPeer.received.last())
         assertTrue(hostPeer.closed && guestPeer.closed)
         assertEquals(JoinResult.Rejected(ErrorCode.ROOM_NOT_FOUND), join(host.room.code))
@@ -176,7 +176,7 @@ class RoomRegistryTest {
         val guest = join(host.room.code) as JoinResult.Joined
         val first = host.room.state.queue[0].entryId
         clock.now += Limits.START_DELAY_MS + 195_000
-        guest.room.trackEnded(guest.memberId, first)
+        guest.room.trackEnded(guest.memberId, guest.peer, first)
         assertEquals(host.room.state.queue[1].entryId, hostPeer.last<ServerMessage.State>().state.currentEntryId)
     }
 
@@ -241,7 +241,7 @@ class RoomRegistryTest {
         val host = create(hostPeer, queue = listOf(newEntry()))
         val guestPeer = FakePeer()
         join(host.room.code, guestPeer)
-        host.room.command(host.memberId, "p", Command.Pause)
+        host.room.command(host.memberId, host.peer, "p", Command.Pause)
         val toHost = hostPeer.outgoing.last()
         val toGuest = guestPeer.outgoing.last()
         assertTrue(toHost.message is ServerMessage.State)
@@ -256,11 +256,11 @@ class RoomRegistryTest {
         val first = host.room.state.queue[0].entryId
         clock.now += Limits.START_DELAY_MS + 195_000
         // Play while playing changes nothing but still spends the budget.
-        repeat(Limits.COMMANDS_PER_SECOND) { host.room.command(host.memberId, "r$it", Command.Play) }
-        host.room.trackEnded(host.memberId, first)
+        repeat(Limits.COMMANDS_PER_SECOND) { host.room.command(host.memberId, host.peer, "r$it", Command.Play) }
+        host.room.trackEnded(host.memberId, host.peer, first)
         assertEquals(first, host.room.state.currentEntryId)
         clock.now += 1_000
-        host.room.trackEnded(host.memberId, first)
+        host.room.trackEnded(host.memberId, host.peer, first)
         assertEquals(host.room.state.queue[1].entryId, host.room.state.currentEntryId)
     }
 
@@ -299,5 +299,41 @@ class RoomRegistryTest {
         val peer = FakePeer()
         create(peer)
         assertEquals(PROTOCOL_VERSION, peer.last<ServerMessage.Welcome>().protocolVersion)
+    }
+
+    @Test
+    fun aReplacedConnectionCanNoLongerActForTheMember() = runBlocking {
+        val hostPeer = FakePeer()
+        val host = create(hostPeer, queue = listOf(newEntry("a"), newEntry("b")))
+        val oldPeer = FakePeer()
+        val guest = join(host.room.code, oldPeer) as JoinResult.Joined
+        val token = oldPeer.last<ServerMessage.Welcome>().resumeToken
+        val resumed = join(host.room.code, FakePeer(), token) as JoinResult.Joined
+        assertEquals(guest.memberId, resumed.memberId)
+        val before = host.room.state
+
+        guest.room.command(guest.memberId, oldPeer, "p", Command.Pause)
+        clock.now += Limits.START_DELAY_MS + 195_000
+        guest.room.trackEnded(guest.memberId, oldPeer, before.queue[0].entryId)
+        guest.room.leave(guest.memberId, oldPeer)
+        assertEquals(before.version, host.room.state.version)
+        assertTrue(host.room.state.members.single { it.id == guest.memberId }.connected)
+        assertFalse(oldPeer.received.any { it is ServerMessage.Error })
+
+        resumed.room.command(resumed.memberId, resumed.peer, "p", Command.Pause)
+        assertFalse(host.room.state.playback.isPlaying)
+        resumed.room.leave(resumed.memberId, resumed.peer)
+        assertEquals(listOf(host.memberId), host.room.state.members.map { it.id })
+    }
+
+    @Test
+    fun namesAreCleanedOfInvisibleCharactersBeforeTheLengthCheck() = runBlocking {
+        val peer = FakePeer()
+        registry.create(ClientMessage.Create(PROTOCOL_VERSION, "\u202EBu\u200Bdi\n"), peer)
+        assertEquals("Budi", peer.last<ServerMessage.Welcome>().state.members.single().name)
+        assertEquals(
+            JoinResult.Rejected(ErrorCode.INVALID),
+            registry.create(ClientMessage.Create(PROTOCOL_VERSION, "\u200B\u200D\u2028\t"), FakePeer()),
+        )
     }
 }
