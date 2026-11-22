@@ -47,7 +47,6 @@ function PlayerHost({ session, room, unplayable, pageIsHttps }: Omit<Props, 'mod
       c.destroy();
       controller.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one controller per mount; snapshots go through update() below
   }, [session, pageIsHttps]);
 
   useEffect(() => {
