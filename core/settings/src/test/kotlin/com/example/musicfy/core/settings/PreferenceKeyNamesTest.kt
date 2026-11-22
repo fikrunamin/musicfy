@@ -1,6 +1,8 @@
 package com.example.musicfy.core.settings
 
 import androidx.datastore.preferences.core.Preferences
+import com.example.musicfy.constants.PlayerStyle
+import com.example.musicfy.constants.playerStyleRotatedKey
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.io.File
@@ -22,6 +24,7 @@ class PreferenceKeyNamesTest {
                     Preferences.Key::class.java.isAssignableFrom(it.returnType)
             }
             .map { "${it.name.removePrefix("get")}=${(it.invoke(null) as Preferences.Key<*>).name}" }
+            .plus(PlayerStyle.entries.map { "playerStyleRotatedKey(${it.name})=${playerStyleRotatedKey(it).name}" })
             .sorted()
             .joinToString("\n")
 
