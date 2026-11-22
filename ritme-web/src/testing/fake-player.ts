@@ -6,14 +6,14 @@ export class FakePlayer implements MediaPlayer {
   loaded: { source: PlayableSource; startMs: number | null } | null = null;
   position: number | null = 0;
   destroyed = false;
-  lastGen: number | undefined;
+  lastGen = -1;
 
   constructor(
     readonly kind: PlayerKind,
     readonly emit: (event: PlayerEvent) => void,
   ) {}
 
-  load(source: PlayableSource, startMs: number | null, gen?: number): void {
+  load(source: PlayableSource, startMs: number | null, gen: number): void {
     this.loaded = { source, startMs };
     this.lastGen = gen;
     this.position = null; // like a real player: unknown until the new source reports it

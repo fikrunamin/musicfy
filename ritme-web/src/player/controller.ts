@@ -182,13 +182,12 @@ export class PlaybackController {
 
   private onPlayerEvent(event: PlayerEvent): void {
     if (this.disposed) return;
-    if (event.gen !== undefined && event.gen !== this.loadGen) return;
+    if (event.gen !== this.loadGen) return;
     switch (event.type) {
       case 'playing':
         this.playerPlaying = true;
         this.clearTap();
-        this.tapShown = false;
-        this.opts.onNeedsTap(false);
+        this.hideTap();
         // Back from an ad or buffering: check right away instead of at the next tick. Not forced,
         // so a slow network cannot loop seek -> buffer -> playing -> seek faster than every 5 s.
         if (this.wantPlaying) this.correct(false);
@@ -196,6 +195,8 @@ export class PlaybackController {
         return;
       case 'paused':
         this.playerPlaying = false;
+        // Paused by the browser or the user while the room plays: recover via the stall path.
+        if (this.wantPlaying) this.armTap();
         return;
       case 'unplayable':
         if (this.loadedEntryId) this.opts.onUnplayable(this.loadedEntryId);

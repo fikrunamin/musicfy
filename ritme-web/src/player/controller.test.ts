@@ -95,7 +95,7 @@ describe('PlaybackController', () => {
     vi.advanceTimersByTime(1_000); // seek:1000 at 101_000
     serverNow = 121_000; // a 20 s ad; the content stayed at 1_000
     t.player().position = 1_000;
-    t.player().emit({ type: 'playing' });
+    t.player().emit({ type: 'playing', gen: t.player().lastGen });
     expect(t.player().calls.at(-1)).toBe('seek:21000');
   });
 
@@ -107,7 +107,7 @@ describe('PlaybackController', () => {
     vi.advanceTimersByTime(1_000); // seek:1000 at 101_000
     serverNow = 103_000;
     t.player().position = 1_000; // buffered for 2 s after the seek
-    t.player().emit({ type: 'playing' });
+    t.player().emit({ type: 'playing', gen: t.player().lastGen });
     expect(t.player().calls.filter((c) => c.startsWith('seek'))).toEqual(['seek:1000']);
   });
 
@@ -139,7 +139,7 @@ describe('PlaybackController', () => {
     const t = setup();
     const state = playing(0, 100_000);
     t.controller.update(state, {});
-    t.player().emit({ type: 'unplayable' });
+    t.player().emit({ type: 'unplayable', gen: t.player().lastGen });
     expect(t.unplayable).toEqual(['e1']);
     const calls = t.player().calls.length;
     t.controller.update(state, { e1: true });
@@ -177,14 +177,14 @@ describe('PlaybackController', () => {
     t.controller.update(playing(0, 100_000), {});
     vi.advanceTimersByTime(4_000);
     expect(t.needsTap).toEqual([true]);
-    t.player().emit({ type: 'playing' });
+    t.player().emit({ type: 'playing', gen: t.player().lastGen });
     expect(t.needsTap).toEqual([true, false]);
   });
 
   it('pauses a player that starts on its own while the room is paused', () => {
     const t = setup();
     t.controller.update(room({ ...playing(0, 0), playback: { isPlaying: false, positionMs: 0, anchorServerTimeMs: 0 } }), {});
-    t.player().emit({ type: 'playing' });
+    t.player().emit({ type: 'playing', gen: t.player().lastGen });
     expect(t.player().calls.at(-1)).toBe('pause');
   });
 
@@ -200,8 +200,8 @@ describe('PlaybackController', () => {
       const url = entry('u', { kind: 'URL', videoId: '', url: 'https://cdn.example/v.mp4' });
       t.controller.update(playing(0, 100_000, { version: 2, queue: [url], currentEntryId: 'u' }), {});
       const calls = t.player().calls.length;
-      yt.emit({ type: 'unplayable' });
-      yt.emit({ type: 'playing' });
+      yt.emit({ type: 'unplayable', gen: yt.lastGen });
+      yt.emit({ type: 'playing', gen: yt.lastGen });
       expect(t.unplayable).toEqual([]);
       expect(t.player().calls.length).toBe(calls);
     });
@@ -229,7 +229,7 @@ describe('PlaybackController', () => {
       expect(p.calls.some((c) => c.startsWith('seek'))).toBe(false);
       serverNow = 302_000;
       p.position = 200; // expected 2_200
-      p.emit({ type: 'playing' });
+      p.emit({ type: 'playing', gen: p.lastGen });
       expect(p.calls.at(-1)).toBe('seek:2200');
     });
 
@@ -274,6 +274,20 @@ describe('PlaybackController', () => {
       expect(t.needsTap).toEqual([true, false]);
     });
 
+    it('recovers from a mid-track pause: prompt and play() retry instead of seeks', () => {
+      const t = setup();
+      t.controller.update(playing(0, 100_000), {});
+      t.player().emit({ type: 'playing', gen: t.player().lastGen });
+      t.player().emit({ type: 'paused', gen: t.player().lastGen });
+      vi.advanceTimersByTime(4_000);
+      expect(t.needsTap).toEqual([true]);
+      serverNow = 110_000;
+      t.player().position = 1_000;
+      const before = t.player().calls.length;
+      vi.advanceTimersByTime(1_000);
+      expect(t.player().calls.slice(before)).toEqual(['play']);
+    });
+
     it('destroy() stops timers, destroys the player and ignores later input', () => {
       const t = setup();
       t.controller.update(playing(0, 100_000), {});
@@ -284,7 +298,7 @@ describe('PlaybackController', () => {
       vi.advanceTimersByTime(10_000);
       t.controller.update(playing(0, 100_000, { version: 2 }), {});
       t.controller.resync();
-      p.emit({ type: 'unplayable' });
+      p.emit({ type: 'unplayable', gen: p.lastGen });
       expect(p.calls.length).toBe(calls);
       expect(t.unplayable).toEqual([]);
       expect(t.needsTap).toEqual([]);
