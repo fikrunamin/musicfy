@@ -6,7 +6,7 @@
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
 # WEB_REMIX Streaming - WebView JavaScript interfaces
--keepclassmembers class com.example.musicfy.utils.sabr.EjsNTransformSolver$SolverWebView {
+-keepclassmembers class com.example.musicfy.utils.sabr.EjsSolverWebView {
     @android.webkit.JavascriptInterface public *;
 }
 -keepclassmembers class com.example.musicfy.utils.cipher.CipherWebView {

@@ -7,7 +7,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import timber.log.Timber
+import com.example.musicfy.core.resolver.ResolverLog
+import com.example.musicfy.core.resolver.ResolverRuntime
 import java.io.File
 
 object PlayerJsFetcher {
@@ -23,7 +24,7 @@ object PlayerJsFetcher {
 
     private val PLAYER_HASH_REGEX = Regex("""\\?/s\\?/player\\?/([a-zA-Z0-9_-]+)\\?/""")
 
-    private fun getCacheDir(): File = File(CipherDeobfuscator.appContext.filesDir, "cipher_cache")
+    private fun getCacheDir(): File = File(ResolverRuntime.platform.dataDir, "cipher_cache")
 
     private fun getCacheFile(hash: String): File = File(getCacheDir(), "player_$hash.js")
 
@@ -37,30 +38,30 @@ object PlayerJsFetcher {
             if (!forceRefresh) {
                 val cached = readFromCache()
                 if (cached != null) {
-                    Timber.tag(TAG).d("Using cached player JS (hash=${cached.second})")
+                    ResolverLog.tag(TAG).d("Using cached player JS (hash=${cached.second})")
                     return@withContext cached
                 }
             }
 
             val hash = fetchPlayerHash()
             if (hash == null) {
-                Timber.tag(TAG).e("Failed to extract player hash from iframe_api")
+                ResolverLog.tag(TAG).e("Failed to extract player hash from iframe_api")
                 return@withContext null
             }
-            Timber.tag(TAG).d("Extracted player hash: $hash")
+            ResolverLog.tag(TAG).d("Extracted player hash: $hash")
 
             val playerJs = downloadPlayerJs(hash)
             if (playerJs == null) {
-                Timber.tag(TAG).e("Failed to download player JS for hash=$hash")
+                ResolverLog.tag(TAG).e("Failed to download player JS for hash=$hash")
                 return@withContext null
             }
-            Timber.tag(TAG).d("Downloaded player JS: ${playerJs.length} chars")
+            ResolverLog.tag(TAG).d("Downloaded player JS: ${playerJs.length} chars")
 
             writeToCache(hash, playerJs)
 
             Pair(playerJs, hash)
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "getPlayerJs exception: ${e.message}")
+            ResolverLog.tag(TAG).e(e, "getPlayerJs exception: ${e.message}")
             null
         }
     }
@@ -99,7 +100,7 @@ object PlayerJsFetcher {
 
             CipherCacheStatus(hash, timestamp, size)
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Error reading cache status: ${e.message}")
+            ResolverLog.tag(TAG).e(e, "Error reading cache status: ${e.message}")
             CipherCacheStatus(null, null, 0L)
         }
     }
@@ -110,9 +111,9 @@ object PlayerJsFetcher {
             if (cacheDir.exists()) {
                 cacheDir.listFiles()?.forEach { it.delete() }
             }
-            Timber.tag(TAG).d("Cache invalidated")
+            ResolverLog.tag(TAG).d("Cache invalidated")
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Failed to invalidate cache: ${e.message}")
+            ResolverLog.tag(TAG).e(e, "Failed to invalidate cache: ${e.message}")
         }
     }
 
@@ -128,7 +129,7 @@ object PlayerJsFetcher {
             val timestamp = hashData[1].toLongOrNull() ?: return null
 
             if (System.currentTimeMillis() - timestamp > CACHE_TTL_MS) {
-                Timber.tag(TAG).d("Cache expired (hash=$hash)")
+                ResolverLog.tag(TAG).d("Cache expired (hash=$hash)")
                 return null
             }
 
@@ -140,7 +141,7 @@ object PlayerJsFetcher {
 
             return Pair(playerJs, hash)
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Error reading cache: ${e.message}")
+            ResolverLog.tag(TAG).e(e, "Error reading cache: ${e.message}")
             return null
         }
     }
@@ -154,7 +155,7 @@ object PlayerJsFetcher {
             getCacheFile(hash).writeText(playerJs)
             getHashFile().writeText("$hash\n${System.currentTimeMillis()}")
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Error writing cache: ${e.message}")
+            ResolverLog.tag(TAG).e(e, "Error writing cache: ${e.message}")
         }
     }
 
@@ -166,7 +167,7 @@ object PlayerJsFetcher {
 
         val response = httpClient.newCall(request).execute()
         if (!response.isSuccessful) {
-            Timber.tag(TAG).e("iframe_api HTTP ${response.code}")
+            ResolverLog.tag(TAG).e("iframe_api HTTP ${response.code}")
             return null
         }
 
@@ -184,7 +185,7 @@ object PlayerJsFetcher {
 
         val response = httpClient.newCall(request).execute()
         if (!response.isSuccessful) {
-            Timber.tag(TAG).e("player JS download HTTP ${response.code}")
+            ResolverLog.tag(TAG).e("player JS download HTTP ${response.code}")
             return null
         }
 

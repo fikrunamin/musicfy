@@ -2,16 +2,17 @@
 
 package com.example.musicfy.utils.potoken
 
-import android.webkit.CookieManager
-import com.example.musicfy.utils.cipher.CipherDeobfuscator
-import kotlinx.coroutines.Dispatchers
+import com.example.musicfy.core.resolver.BotGuardRuntime
+import com.example.musicfy.core.resolver.BotGuardSession
+import com.example.musicfy.core.resolver.ResolverLog
+import com.example.musicfy.core.resolver.ResolverRuntime
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
-import timber.log.Timber
 
-class PoTokenGenerator {
+class PoTokenGenerator(
+    private val runtime: () -> BotGuardRuntime = { ResolverRuntime.platform.botGuardRuntime },
+) {
     private val TAG = "PoTokenGenerator"
 
     /**
@@ -24,7 +25,7 @@ class PoTokenGenerator {
         const val MINT_COOLDOWN_MS = 5 * 60 * 1000L
     }
 
-    private val webViewSupported by lazy { runCatching { CookieManager.getInstance() }.isSuccess }
+    private val webViewSupported by lazy { runtime().isSupported }
     private var webViewBadImpl = false
 
     /**
@@ -37,7 +38,7 @@ class PoTokenGenerator {
     private val webPoTokenGenLock = Mutex()
     private var webPoTokenSessionId: String? = null
     private var webPoTokenStreamingPot: String? = null
-    private var webPoTokenGenerator: PoTokenWebView? = null
+    private var webPoTokenGenerator: BotGuardSession? = null
 
     /** True once a session token has been minted, so diagnostics can show the real state. */
     val hasSessionToken: Boolean
@@ -52,9 +53,9 @@ class PoTokenGenerator {
      */
     suspend fun preWarm(sessionId: String) {
         if (poTokenFor(PREWARM_VIDEO_ID, sessionId) != null) {
-            Timber.tag(TAG).d("PoToken pre-warm complete")
+            ResolverLog.tag(TAG).d("PoToken pre-warm complete")
         } else {
-            Timber.tag(TAG).w("PoToken pre-warm did not produce a token")
+            ResolverLog.tag(TAG).w("PoToken pre-warm did not produce a token")
         }
     }
 
@@ -65,17 +66,17 @@ class PoTokenGenerator {
     suspend fun poTokenFor(videoId: String, sessionId: String): PoTokenResult? {
         if (!webViewSupported || webViewBadImpl) return null
         if (System.currentTimeMillis() < mintCooldownUntilMs) {
-            Timber.tag(TAG).d("Skipping poToken mint - cooling down after a failure")
+            ResolverLog.tag(TAG).d("Skipping poToken mint - cooling down after a failure")
             return null
         }
         return try {
             getWebClientPoToken(videoId, sessionId, forceRecreate = false)
         } catch (e: BadWebViewException) {
-            Timber.tag(TAG).e(e, "Could not obtain poToken because WebView is broken")
+            ResolverLog.tag(TAG).e(e, "Could not obtain poToken because WebView is broken")
             webViewBadImpl = true
             null
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "poToken generation failed: ${e.javaClass.simpleName}: ${e.message}")
+            ResolverLog.tag(TAG).e(e, "poToken generation failed: ${e.javaClass.simpleName}: ${e.message}")
             startMintCooldown()
             null
         }
@@ -86,21 +87,21 @@ class PoTokenGenerator {
     }
 
     fun getWebClientPoToken(videoId: String, sessionId: String): PoTokenResult? {
-        Timber.tag(TAG).d("getWebClientPoToken called: videoId=$videoId, sessionId=$sessionId")
-        Timber.tag(TAG).d("WebView state: supported=$webViewSupported, badImpl=$webViewBadImpl")
+        ResolverLog.tag(TAG).d("getWebClientPoToken called: videoId=$videoId, sessionId=$sessionId")
+        ResolverLog.tag(TAG).d("WebView state: supported=$webViewSupported, badImpl=$webViewBadImpl")
         if (!webViewSupported || webViewBadImpl) {
-            Timber.tag(TAG).d("WebView not available: supported=$webViewSupported, badImpl=$webViewBadImpl")
+            ResolverLog.tag(TAG).d("WebView not available: supported=$webViewSupported, badImpl=$webViewBadImpl")
             return null
         }
 
         return try {
-            Timber.tag(TAG).d("Calling runBlocking to generate poToken...")
+            ResolverLog.tag(TAG).d("Calling runBlocking to generate poToken...")
             runBlocking { getWebClientPoToken(videoId, sessionId, forceRecreate = false) }
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "poToken generation exception: ${e.javaClass.simpleName}: ${e.message}")
+            ResolverLog.tag(TAG).e(e, "poToken generation exception: ${e.javaClass.simpleName}: ${e.message}")
             when (e) {
                 is BadWebViewException -> {
-                    Timber.tag(TAG).e(e, "Could not obtain poToken because WebView is broken")
+                    ResolverLog.tag(TAG).e(e, "Could not obtain poToken because WebView is broken")
                     webViewBadImpl = true
                     null
                 }
@@ -110,7 +111,7 @@ class PoTokenGenerator {
     }
 
     private suspend fun getWebClientPoToken(videoId: String, sessionId: String, forceRecreate: Boolean): PoTokenResult {
-        Timber.tag(TAG).d("Web poToken requested: videoId=$videoId, sessionId=$sessionId")
+        ResolverLog.tag(TAG).d("Web poToken requested: videoId=$videoId, sessionId=$sessionId")
 
         val (poTokenGenerator, streamingPot, hasBeenRecreated) =
             webPoTokenGenLock.withLock {
@@ -122,25 +123,23 @@ class PoTokenGenerator {
                         webPoTokenSessionId != sessionId
 
                 if (shouldRecreate) {
-                    Timber.tag(TAG).d("Creating new PoTokenWebView (forceRecreate=$forceRecreate)")
+                    ResolverLog.tag(TAG).d("Creating new PoTokenWebView (forceRecreate=$forceRecreate)")
                     webPoTokenSessionId = sessionId
 
-                    withContext(Dispatchers.Main) {
-                        webPoTokenGenerator?.close()
-                    }
+                    webPoTokenGenerator?.dispose()
 
                     webPoTokenGenerator = null
                     webPoTokenStreamingPot = null
 
-                    val generator = PoTokenWebView.getNewPoTokenGenerator(CipherDeobfuscator.appContext)
+                    val generator = runtime().newSession()
                     webPoTokenStreamingPot = try {
                         generator.generatePoToken(webPoTokenSessionId!!)
                     } catch (e: Exception) {
-                        withContext(Dispatchers.Main) { runCatching { generator.close() } }
+                        runCatching { generator.dispose() }
                         throw e
                     }
                     webPoTokenGenerator = generator
-                    Timber.tag(TAG).d("Streaming poToken generated for sessionId=${webPoTokenSessionId?.take(20)}...")
+                    ResolverLog.tag(TAG).d("Streaming poToken generated for sessionId=${webPoTokenSessionId?.take(20)}...")
                 }
 
                 Triple(webPoTokenGenerator!!, webPoTokenStreamingPot!!, shouldRecreate)
@@ -154,12 +153,12 @@ class PoTokenGenerator {
                 throw throwable
             } else {
 
-                Timber.tag(TAG).e(throwable, "Failed to obtain poToken, retrying")
+                ResolverLog.tag(TAG).e(throwable, "Failed to obtain poToken, retrying")
                 return getWebClientPoToken(videoId = videoId, sessionId = sessionId, forceRecreate = true)
             }
         }
 
-        Timber.tag(TAG).d("poToken generated: session=${streamingPot.take(20)}... video=${playerPot.take(20)}...")
+        ResolverLog.tag(TAG).d("poToken generated: session=${streamingPot.take(20)}... video=${playerPot.take(20)}...")
 
         // Session token in the player request, video token on the stream url - see PoTokenResult.
         return PoTokenResult(

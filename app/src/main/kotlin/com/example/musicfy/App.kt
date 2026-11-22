@@ -30,7 +30,8 @@ import com.example.musicfy.extensions.toEnum
 import com.example.musicfy.extensions.toInetSocketAddress
 import com.example.musicfy.utils.CrashHandler
 import com.example.musicfy.utils.PreferencesCache
-import com.example.musicfy.utils.cipher.CipherDeobfuscator
+import com.example.musicfy.core.resolver.ResolverRuntime
+import com.example.musicfy.platform.androidResolverPlatform
 import com.example.musicfy.utils.dataStore
 import com.example.musicfy.utils.reportException
 import dagger.hilt.android.HiltAndroidApp
@@ -68,7 +69,7 @@ class App : Application(), SingletonImageLoader.Factory {
 
         CrashHandler.install(this)
 
-        CipherDeobfuscator.initialize(this)
+        ResolverRuntime.install(androidResolverPlatform(this))
 
         if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())

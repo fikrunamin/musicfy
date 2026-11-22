@@ -2,7 +2,7 @@
 
 package com.example.musicfy.utils.cipher
 
-import timber.log.Timber
+import com.example.musicfy.core.resolver.ResolverLog
 
 object FunctionNameExtractor {
     private const val TAG = "musicfy_CipherFnExtract"
@@ -45,11 +45,11 @@ object FunctionNameExtractor {
             if (match != null) {
                 val name = match.groupValues[1]
                 val constArg = if (match.groupValues.size > 2) match.groupValues[2].toIntOrNull() else null
-                Timber.tag(TAG).d("Sig function found with pattern $index: $name (constantArg=$constArg)")
+                ResolverLog.tag(TAG).d("Sig function found with pattern $index: $name (constantArg=$constArg)")
                 return SigFunctionInfo(name, constArg)
             }
         }
-        Timber.tag(TAG).e("Could not find signature deobfuscation function name")
+        ResolverLog.tag(TAG).e("Could not find signature deobfuscation function name")
         return null
     }
 
@@ -62,25 +62,25 @@ object FunctionNameExtractor {
 
                         val name = match.groupValues[1]
                         val arrayIdx = match.groupValues[2].toIntOrNull()
-                        Timber.tag(TAG).d("N-function found with pattern $index: $name (arrayIndex=$arrayIdx)")
+                        ResolverLog.tag(TAG).d("N-function found with pattern $index: $name (arrayIndex=$arrayIdx)")
                         return NFunctionInfo(name, arrayIdx)
                     }
                     1 -> {
 
                         val name = match.groupValues[2]
                         val arrayIdx = match.groupValues[3].toIntOrNull()
-                        Timber.tag(TAG).d("N-function found with pattern $index: $name (arrayIndex=$arrayIdx)")
+                        ResolverLog.tag(TAG).d("N-function found with pattern $index: $name (arrayIndex=$arrayIdx)")
                         return NFunctionInfo(name, arrayIdx)
                     }
                     else -> {
                         val name = match.groupValues[1]
-                        Timber.tag(TAG).d("N-function found with pattern $index: $name")
+                        ResolverLog.tag(TAG).d("N-function found with pattern $index: $name")
                         return NFunctionInfo(name, null)
                     }
                 }
             }
         }
-        Timber.tag(TAG).e("Could not find n-transform function name")
+        ResolverLog.tag(TAG).e("Could not find n-transform function name")
         return null
     }
 }

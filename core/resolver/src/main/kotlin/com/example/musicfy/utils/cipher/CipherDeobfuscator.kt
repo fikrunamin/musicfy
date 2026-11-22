@@ -2,37 +2,29 @@
 
 package com.example.musicfy.utils.cipher
 
-import android.content.Context
-import android.net.Uri
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import timber.log.Timber
+import com.example.musicfy.core.resolver.CipherSession
+import com.example.musicfy.core.resolver.ResolverLog
+import com.example.musicfy.core.resolver.ResolverRuntime
+import com.example.musicfy.core.resolver.UriCodec
 
 object CipherDeobfuscator {
     private const val TAG = "musicfy_CipherDeobfusc"
 
-    lateinit var appContext: Context
-        private set
-
-    fun initialize(context: Context) {
-        appContext = context.applicationContext
-    }
-
-    private var cipherWebView: CipherWebView? = null
+    private var cipherWebView: CipherSession? = null
     private var currentPlayerHash: String? = null
 
     suspend fun deobfuscateStreamUrl(signatureCipher: String, videoId: String): String? {
         return try {
             deobfuscateInternal(signatureCipher, videoId, isRetry = false)
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Cipher deobfuscation failed, retrying with fresh JS: ${e.message}")
+            ResolverLog.tag(TAG).e(e, "Cipher deobfuscation failed, retrying with fresh JS: ${e.message}")
 
             try {
                 PlayerJsFetcher.invalidateCache()
                 closeWebView()
                 deobfuscateInternal(signatureCipher, videoId, isRetry = true)
             } catch (retryE: Exception) {
-                Timber.tag(TAG).e(retryE, "Cipher deobfuscation retry also failed: ${retryE.message}")
+                ResolverLog.tag(TAG).e(retryE, "Cipher deobfuscation retry also failed: ${retryE.message}")
                 null
             }
         }
@@ -46,11 +38,11 @@ object CipherDeobfuscator {
         val baseUrl = params["url"]
 
         if (obfuscatedSig == null || baseUrl == null) {
-            Timber.tag(TAG).e("Could not parse signatureCipher params: s=${obfuscatedSig != null}, url=${baseUrl != null}")
+            ResolverLog.tag(TAG).e("Could not parse signatureCipher params: s=${obfuscatedSig != null}, url=${baseUrl != null}")
             return null
         }
 
-        Timber.tag(TAG).d("Deobfuscating cipher for $videoId: sig=${obfuscatedSig.take(20)}..., sp=$sigParam")
+        ResolverLog.tag(TAG).d("Deobfuscating cipher for $videoId: sig=${obfuscatedSig.take(20)}..., sp=$sigParam")
 
         val webView = getOrCreateWebView(forceRefresh = isRetry)
             ?: return null
@@ -58,9 +50,9 @@ object CipherDeobfuscator {
         val deobfuscatedSig = webView.deobfuscateSignature(obfuscatedSig)
 
         val separator = if ("?" in baseUrl) "&" else "?"
-        val finalUrl = "$baseUrl${separator}${sigParam}=${Uri.encode(deobfuscatedSig)}"
+        val finalUrl = "$baseUrl${separator}${sigParam}=${UriCodec.encode(deobfuscatedSig)}"
 
-        Timber.tag(TAG).d("Custom cipher deobfuscation succeeded for $videoId")
+        ResolverLog.tag(TAG).d("Custom cipher deobfuscation succeeded for $videoId")
         return finalUrl
     }
 
@@ -68,7 +60,7 @@ object CipherDeobfuscator {
         return try {
             transformNInternal(url)
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "N-transform failed, returning original URL: ${e.message}")
+            ResolverLog.tag(TAG).e(e, "N-transform failed, returning original URL: ${e.message}")
             url
         }
     }
@@ -77,29 +69,29 @@ object CipherDeobfuscator {
 
         val nMatch = Regex("[?&]n=([^&]+)").find(url)
         if (nMatch == null) {
-            Timber.tag(TAG).d("No 'n' parameter found in URL, skipping transform")
+            ResolverLog.tag(TAG).d("No 'n' parameter found in URL, skipping transform")
             return url
         }
-        val nValue = Uri.decode(nMatch.groupValues[1])
-        Timber.tag(TAG).d("N-param found: $nValue")
+        val nValue = UriCodec.decode(nMatch.groupValues[1])
+        ResolverLog.tag(TAG).d("N-param found: $nValue")
 
         val webView = getOrCreateWebView(forceRefresh = false) ?: return url
 
         if (!webView.nFunctionAvailable) {
-            Timber.tag(TAG).e("N-transform function was not discovered at init time")
+            ResolverLog.tag(TAG).e("N-transform function was not discovered at init time")
             return url
         }
 
         val transformedN = webView.transformN(nValue)
-        Timber.tag(TAG).d("N-param transformed: $nValue -> $transformedN")
+        ResolverLog.tag(TAG).d("N-param transformed: $nValue -> $transformedN")
 
         return url.replaceFirst(
             Regex("([?&])n=[^&]+"),
-            "$1n=${Uri.encode(transformedN)}"
+            "$1n=${UriCodec.encode(transformedN)}"
         )
     }
 
-    private suspend fun getOrCreateWebView(forceRefresh: Boolean): CipherWebView? {
+    private suspend fun getOrCreateWebView(forceRefresh: Boolean): CipherSession? {
         if (!forceRefresh && cipherWebView != null) {
             return cipherWebView
         }
@@ -110,7 +102,7 @@ object CipherDeobfuscator {
 
         val result = PlayerJsFetcher.getPlayerJs(forceRefresh = forceRefresh)
         if (result == null) {
-            Timber.tag(TAG).e("Failed to get player JS")
+            ResolverLog.tag(TAG).e("Failed to get player JS")
             return null
         }
         val (playerJs, hash) = result
@@ -118,19 +110,18 @@ object CipherDeobfuscator {
         val sigInfo = FunctionNameExtractor.extractSigFunctionInfo(playerJs)
 
         if (sigInfo == null) {
-            Timber.tag(TAG).e("Could not extract signature function info from player JS")
+            ResolverLog.tag(TAG).e("Could not extract signature function info from player JS")
             return null
         }
 
         val nFuncInfo = FunctionNameExtractor.extractNFunctionInfo(playerJs)
         if (nFuncInfo == null) {
-            Timber.tag(TAG).e("Could not extract n-function info from player JS (will try brute-force)")
+            ResolverLog.tag(TAG).e("Could not extract n-function info from player JS (will try brute-force)")
         }
 
-        Timber.tag(TAG).d("Creating CipherWebView with sig=${sigInfo.name}, constantArg=${sigInfo.constantArg}, nFunc=${nFuncInfo?.name}[${nFuncInfo?.arrayIndex}]")
+        ResolverLog.tag(TAG).d("Creating CipherWebView with sig=${sigInfo.name}, constantArg=${sigInfo.constantArg}, nFunc=${nFuncInfo?.name}[${nFuncInfo?.arrayIndex}]")
 
-        val webView = CipherWebView.create(
-            context = appContext,
+        val webView = ResolverRuntime.platform.jsRuntime.loadCipher(
             playerJs = playerJs,
             sigInfo = sigInfo,
             nFuncInfo = nFuncInfo,
@@ -142,9 +133,7 @@ object CipherDeobfuscator {
     }
 
     private suspend fun closeWebView() {
-        withContext(Dispatchers.Main) {
-            cipherWebView?.close()
-        }
+        cipherWebView?.dispose()
         cipherWebView = null
         currentPlayerHash = null
     }
@@ -154,11 +143,17 @@ object CipherDeobfuscator {
         for (pair in query.split("&")) {
             val idx = pair.indexOf('=')
             if (idx > 0) {
-                val key = Uri.decode(pair.substring(0, idx))
-                val value = Uri.decode(pair.substring(idx + 1))
+                val key = UriCodec.decode(pair.substring(0, idx))
+                val value = UriCodec.decode(pair.substring(idx + 1))
                 result[key] = value
             }
         }
         return result
+    }
+
+    /** Forgets the loaded player so the next call reloads it. Tests only. */
+    internal fun resetForTests() {
+        cipherWebView = null
+        currentPlayerHash = null
     }
 }

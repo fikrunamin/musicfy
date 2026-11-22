@@ -2,10 +2,8 @@
 
 package com.example.musicfy.utils
 
-import androidx.datastore.preferences.core.edit
 import com.music.innertube.YouTube
-import com.example.musicfy.constants.VisitorDataKey
-import com.example.musicfy.utils.cipher.CipherDeobfuscator
+import com.example.musicfy.core.resolver.ResolverRuntime
 import com.example.musicfy.utils.PlaybackLogManager
 import com.example.musicfy.utils.PlaybackLogLevel
 import kotlinx.coroutines.Dispatchers
@@ -69,9 +67,7 @@ object BotDetectionMitigator {
             YouTube.refreshVisitorData().onSuccess { newData ->
                 Timber.tag(TAG).i("New visitorData obtained successfully for region ${currentLocale.gl}.")
 
-                CipherDeobfuscator.appContext?.dataStore?.edit { settings ->
-                    settings[VisitorDataKey] = newData
-                }
+                ResolverRuntime.platform.onVisitorDataRotated(newData)
             }.onFailure { e ->
                 Timber.tag(TAG).e(e, "Failed to refresh visitorData during rotation")
 
