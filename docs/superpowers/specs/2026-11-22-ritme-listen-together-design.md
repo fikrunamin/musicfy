@@ -1,4 +1,4 @@
-# Jam — Dengar Bareng (Android + Web Pendamping)
+# Ritme — Dengar Bareng (Android + Web Pendamping)
 
 - **Tanggal:** 2026-11-22
 - **Status:** Desain disetujui, menunggu review spec
@@ -17,7 +17,7 @@ di memori. Setiap perangkat memutar stream-nya sendiri. Server tidak pernah mene
 
 | # | Sub-proyek | Status |
 |---|---|---|
-| 1 | Fondasi room + Jam (Dengar Bareng), Android + web pendamping | **Spec ini** |
+| 1 | Fondasi room + Ritme (Dengar Bareng), Android + web pendamping | **Spec ini** |
 | 2 | Nonton YouTube bareng: memakai ulang room, dengan jenis media video | Spec terpisah, setelah #1 |
 | 3 | Browser in-app + deteksi video + nonton bareng (khusus Android, karena mustahil di web app) | Spec terpisah, setelah #2 |
 
@@ -30,7 +30,44 @@ di memori. Setiap perangkat memutar stream-nya sendiri. Server tidak pernah mene
 | Kontrol | Semua anggota boleh menambah lagu; host punya toggle "anggota boleh kontrol", bisa mengeluarkan anggota, dan bisa memindahkan host |
 | Identitas & gabung | Tanpa akun: kode 6 karakter / link / QR + nama tampilan. Room hanya di memori dan hilang saat kosong |
 | Sumber lagu | Hanya lagu yang punya videoId YouTube/InnerTube. File lokal dan download pribadi tidak bisa dibagikan |
-| Platform | Android tetap aplikasi utama. Web = klien pendamping untuk Jam (bukan port penuh aplikasi) |
+| Platform | Android tetap aplikasi utama. Web = klien pendamping untuk Ritme (bukan port penuh aplikasi) |
+
+## Revisi (2026-11-22, saat menyusun rencana server)
+
+Bagian ini menang kalau bertentangan dengan bagian lain.
+
+1. **Nama fitur: Ritme.** Nama teknisnya ikut berganti:
+   - modul `:modules:ritme-protocol`
+   - WebSocket `/ritme`
+   - link `https://<domain>/r/{code}`
+   - deep link `musicfy://ritme/{code}`
+2. **Server = build Gradle mandiri di `ritme-server/`**, bukan modul di build Android. Dengan begitu
+   image Docker bisa di-build tanpa Android SDK. Build ini memakai version catalog yang sama
+   (`../gradle/libs.versions.toml`) dan menyertakan `../modules/ritme-protocol` sebagai subproject.
+   Build Android juga menyertakan `:modules:ritme-protocol`, untuk integrasi app nanti.
+3. **Web pendamping = `ritme-web/`** (rencana terpisah, setelah server). Sebelum web ada, `/` dan
+   `/r/{code}` menyajikan halaman landing kecil bawaan server: tombol "Buka di aplikasi Musicfy"
+   dan link ke halaman Releases. Kalau `WEB_DIR/index.html` ada, file itu yang disajikan.
+4. **Entri baru dari klien memakai `NewEntry`**
+   (`videoId, title, artist, thumbnailUrl?, durationMs`), bukan `QueueEntry`. Server yang
+   memberi `entryId` dan `addedBy`. `Create` memakai `initialQueue: List<NewEntry>` dan
+   `startIndex` (bukan `startEntryId`).
+5. **Penjaga `TrackEnded`:** laporan diabaikan kalau `positionAt(now) < durationMs − 10000`.
+   Ini mencegah laporan basi dari klien yang tertinggal setelah seek mundur atau `Previous`.
+6. **Deploy:** Docker Compose di VPS. Isinya container `ritme` (port hanya terbuka di `127.0.0.1`)
+   dan **Caddy** sebagai reverse proxy dengan HTTPS otomatis. Server mempercayai `X-Forwarded-For`
+   (untuk rate limit search) karena hanya bisa diakses lewat Caddy.
+
+7. **Satu server untuk dengar musik dan nonton video bareng.** Entri antrean punya
+   `kind: MediaKind`:
+   - `YOUTUBE_MUSIC` (default): audio.
+   - `YOUTUBE_VIDEO`: video YouTube.
+   - `URL`: video atau stream yang ditemukan browser in-app, dengan field `url` http(s).
+
+   `durationMs = 0` berarti durasi tidak diketahui (siaran live). Untuk entri seperti itu tidak
+   ada lompat otomatis, posisinya tidak dibatasi, dan `TrackEnded` apa pun untuknya diterima.
+   Server memperlakukan semua jenis sama persis; aplikasi yang memutuskan cara menampilkannya.
+   Pencarian (`/api/search`) tetap khusus lagu untuk saat ini.
 
 ## Bukan bagian dari spec ini (non-goals)
 
@@ -50,18 +87,18 @@ di memori. Setiap perangkat memutar stream-nya sendiri. Server tidak pernah mene
 
 ```
 ┌──────────── HP Anggota (app Android) ────┐        ┌──────── server/ (Ktor) ─────────┐
-│ UI Jam (PopupSheet + pill)               │        │ WebSocket /jam                  │
+│ UI Ritme (PopupSheet + pill)               │        │ WebSocket /ritme                  │
 │      │                                   │        │  RoomRegistry (in-memory)       │
-│ JamViewModel                             │        │   └ Room: state, members,       │
+│ RitmeViewModel                             │        │   └ Room: state, members,       │
 │      │                                   │  WSS   │           permissions           │
-│ JamSession ──── JamClient (Ktor WS) ─────┼───────▶│  CommandHandler (cek izin →     │
+│ RitmeSession ──── RitmeClient (Ktor WS) ─────┼───────▶│  CommandHandler (cek izin →     │
 │      │              ClockSync            │◀───────┼──  ubah state → broadcast)      │
-│ JamPlaybackBridge + DriftCorrector       │        │  ClockService (Pong)            │
+│ RitmePlaybackBridge + DriftCorrector       │        │  ClockService (Pong)            │
 │      │                                   │        │  Reaper (hapus room kosong)     │
 │ PlayerConnection / MusicService (lama)   │        │ GET /api/search (metadata)      │
-└──────────────────────────────────────────┘        │ GET /, /j/{code} → web statis   │
+└──────────────────────────────────────────┘        │ GET /, /r/{code} → web statis   │
 ┌──────────── Browser (web/) ──────────────┐        │                                 │
-│ Preact UI · JamClient · ClockSync ·      │───────▶│                                 │
+│ Preact UI · RitmeClient · ClockSync ·      │───────▶│                                 │
 │ YouTube IFrame Player                    │◀───────│                                 │
 └──────────────────────────────────────────┘        └─────────────────────────────────┘
 ```
@@ -70,27 +107,27 @@ di memori. Setiap perangkat memutar stream-nya sendiri. Server tidak pernah mene
 
 | Unit | Tugas | Bergantung pada |
 |---|---|---|
-| `:modules:jam-protocol` | Tipe `RoomState`, `QueueEntry`, `Member`, `RoomSettings`, `Playback`, sealed `ClientMessage`/`ServerMessage`, `Command`, `ErrorCode`, konstanta `PROTOCOL_VERSION`, dan fungsi murni `RoomState.positionAt(serverNow)`. Modul Kotlin/JVM murni (tanpa Android), memakai kotlinx.serialization. Test-nya menghasilkan golden files JSON. | – |
-| `server/` | Aplikasi Ktor (JVM) + `Dockerfile`: `RoomRegistry`, `Room`, `CommandHandler`, `ClockService`, `Reaper`, `RateLimiter`, `SearchService` (klien search InnerTube kecil), dan penyaji file statis web. | jam-protocol |
+| `:modules:ritme-protocol` | Tipe `RoomState`, `QueueEntry`, `Member`, `RoomSettings`, `Playback`, sealed `ClientMessage`/`ServerMessage`, `Command`, `ErrorCode`, konstanta `PROTOCOL_VERSION`, dan fungsi murni `RoomState.positionAt(serverNow)`. Modul Kotlin/JVM murni (tanpa Android), memakai kotlinx.serialization. Test-nya menghasilkan golden files JSON. | – |
+| `server/` | Aplikasi Ktor (JVM) + `Dockerfile`: `RoomRegistry`, `Room`, `CommandHandler`, `ClockService`, `Reaper`, `RateLimiter`, `SearchService` (klien search InnerTube kecil), dan penyaji file statis web. | ritme-protocol |
 | `web/` | Web pendamping, TypeScript + Vite + Preact. Lihat Bagian 5. | (protokol ditulis ulang di TS dan dijaga oleh golden files) |
-| `app/.../jam/JamClient` | Buka/tutup WebSocket, reconnect dengan backoff, kirim/terima pesan. | Ktor client (sudah ada) |
-| `app/.../jam/ClockSync` | Ping berkala, menghitung `offset` dan RTT terhadap jam server. | JamClient |
-| `app/.../jam/JamSession` | Singleton Hilt. `StateFlow<JamUiState>` (state room, status koneksi, memberId) + aksi (`create`, `join`, `leave`, `addToQueue`, `play`, `pause`, `seek`, …). | JamClient, ClockSync |
-| `app/.../jam/JamPlaybackBridge` | Menerapkan `RoomState` ke ExoPlayer (ganti lagu, play/pause, koreksi drift). Menangkap aksi lokal (notifikasi media, headset, tombol UI) dan mengubahnya menjadi perintah ke room. | JamSession, PlayerConnection |
-| `app/.../jam/DriftCorrector` | Fungsi murni `(expectedMs, actualMs) → DriftAction(Ignore / SetSpeed(x) / Seek(ms))`. | – |
-| `app/.../playback/queues/JamQueue` | Implementasi `Queue` yang isinya mengikuti antrean room. | jam-protocol |
-| `app/.../ui/screens/jam/` | `JamEntrySheet` (buat/gabung), `JamRoomSheet` (room), `JamPill`, `JamViewModel`, bagian Pengaturan Jam. | JamSession |
+| `app/.../ritme/RitmeClient` | Buka/tutup WebSocket, reconnect dengan backoff, kirim/terima pesan. | Ktor client (sudah ada) |
+| `app/.../ritme/ClockSync` | Ping berkala, menghitung `offset` dan RTT terhadap jam server. | RitmeClient |
+| `app/.../ritme/RitmeSession` | Singleton Hilt. `StateFlow<RitmeUiState>` (state room, status koneksi, memberId) + aksi (`create`, `join`, `leave`, `addToQueue`, `play`, `pause`, `seek`, …). | RitmeClient, ClockSync |
+| `app/.../ritme/RitmePlaybackBridge` | Menerapkan `RoomState` ke ExoPlayer (ganti lagu, play/pause, koreksi drift). Menangkap aksi lokal (notifikasi media, headset, tombol UI) dan mengubahnya menjadi perintah ke room. | RitmeSession, PlayerConnection |
+| `app/.../ritme/DriftCorrector` | Fungsi murni `(expectedMs, actualMs) → DriftAction(Ignore / SetSpeed(x) / Seek(ms))`. | – |
+| `app/.../playback/queues/RitmeQueue` | Implementasi `Queue` yang isinya mengikuti antrean room. | ritme-protocol |
+| `app/.../ui/screens/ritme/` | `RitmeEntrySheet` (buat/gabung), `RitmeRoomSheet` (room), `RitmePill`, `RitmeViewModel`, bagian Pengaturan Ritme. | RitmeSession |
 
 ### 1.2 Integrasi dengan pemutar yang sudah ada (Android)
 
-- Saat bergabung, antrean lokal dan posisinya disimpan (snapshot di memori), lalu diganti `JamQueue`.
+- Saat bergabung, antrean lokal dan posisinya disimpan (snapshot di memori), lalu diganti `RitmeQueue`.
   Saat keluar, snapshot itu dikembalikan dalam keadaan pause.
 - Selama di room, fitur yang mengubah antrean atau kecepatan secara lokal **dimatikan**:
   Crossmix/automix, shuffle, repeat, radio tak terbatas, dan pengaturan kecepatan/pitch (dikunci 1,0×).
-- Deep link baru di `AndroidManifest.xml`: `musicfy://jam/{code}` dan `https://<host-server>/j/{code}`.
-  Host server dibaca dari konfigurasi build (`BuildConfig.JAM_SERVER_HOST`).
-- URL server disimpan di `PreferenceKeys` (`jamServerUrl`). Default-nya server resmi, dan bisa diganti
-  di Pengaturan untuk self-host. Nama tampilan disimpan di `jamDisplayName`.
+- Deep link baru di `AndroidManifest.xml`: `musicfy://ritme/{code}` dan `https://<host-server>/r/{code}`.
+  Host server dibaca dari konfigurasi build (`BuildConfig.RITME_SERVER_HOST`).
+- URL server disimpan di `PreferenceKeys` (`ritmeServerUrl`). Default-nya server resmi, dan bisa diganti
+  di Pengaturan untuk self-host. Nama tampilan disimpan di `ritmeDisplayName`.
 - Fitur ini tersedia di semua flavor (`gms`, `foss`, `fdroid`) karena hanya memakai server sendiri.
 
 ---
@@ -241,7 +278,7 @@ Target sinkron: Android < 100 ms antar-perangkat, web < 300 ms.
 
 ### 2.9 Konfigurasi server
 
-Endpoint WebSocket: `/jam`. Health check: `GET /healthz`.
+Endpoint WebSocket: `/ritme`. Health check: `GET /healthz`.
 Lewat environment variable: `PORT` (default 8080), `PUBLIC_URL` (dipakai untuk link bagikan),
 `WEB_DIR` (lokasi build web, default `/app/web`). Server tidak menulis apa pun ke disk.
 
@@ -254,29 +291,29 @@ Semua popup memakai `PopupSheet` sesuai `docs/popup-sheet.skill.md`. Tidak ada `
 
 ### 3.1 Titik masuk
 
-1. **Tombol Jam** (ikon grup) di baris aksi pemutar (`PlayerControls`/`BottomSheetPlayer`), dekat tombol antrean.
-2. **Menu lagu/playlist**, dengan item "Mulai Jam dengan ini" (room dibuat dengan item itu sebagai antrean awal).
-3. **Deep link** `musicfy://jam/{code}` atau `https://<server>/j/{code}`. Langsung membuka alur gabung
+1. **Tombol Ritme** (ikon grup) di baris aksi pemutar (`PlayerControls`/`BottomSheetPlayer`), dekat tombol antrean.
+2. **Menu lagu/playlist**, dengan item "Mulai Ritme dengan ini" (room dibuat dengan item itu sebagai antrean awal).
+3. **Deep link** `musicfy://ritme/{code}` atau `https://<server>/r/{code}`. Langsung membuka alur gabung
    dengan kode yang sudah terisi.
 
 ### 3.2 Alur buat & gabung
 
 ```
-[Tombol Jam] → JamEntrySheet
-   ├─ "Mulai Jam" → (nama tampilan, diisi sekali lalu diingat) → Create
+[Tombol Ritme] → RitmeEntrySheet
+   ├─ "Mulai Ritme" → (nama tampilan, diisi sekali lalu diingat) → Create
    │                 antrean + lagu aktif + posisi saat ini dibawa sebagai antrean awal
    │                 (hanya entri yang punya videoId; entri lokal dilewati, dengan toast jumlahnya)
    └─ "Gabung"    → kolom kode 6 karakter (otomatis huruf besar) → (nama) → Join
 ```
 
-Setelah `Welcome` diterima, `JamRoomSheet` terbuka. Kalau sebelumnya ada lagu yang diputar, muncul
-toast "Antrean kamu disimpan, dan akan kembali setelah keluar dari Jam".
+Setelah `Welcome` diterima, `RitmeRoomSheet` terbuka. Kalau sebelumnya ada lagu yang diputar, muncul
+toast "Antrean kamu disimpan, dan akan kembali setelah keluar dari Ritme".
 
-### 3.3 `JamRoomSheet`
+### 3.3 `RitmeRoomSheet`
 
 ```
 ┌──────────────────────────────────┐
-│  Jam · K7M2QX      [Bagikan] [QR] │
+│  Ritme · K7M2QX      [Bagikan] [QR] │
 │  ●●●○ 4 anggota  (avatar inisial) │
 ├──────────────────────────────────┤
 │  ▶ Sedang diputar                │
@@ -288,31 +325,31 @@ toast "Antrean kamu disimpan, dan akan kembali setelah keluar dari Jam".
 │  [+ Tambah lagu]                 │
 ├──────────────────────────────────┤
 │  (host) Anggota boleh kontrol [⏽]│
-│  [Keluar Jam] / (host) [Akhiri]  │
+│  [Keluar Ritme] / (host) [Akhiri]  │
 └──────────────────────────────────┘
 ```
 
-- **Bagikan** membuka share sheet Android dengan teks + `https://<server>/j/{code}`.
+- **Bagikan** membuka share sheet Android dengan teks + `https://<server>/r/{code}`.
 - **QR** menampilkan QR berisi link https yang sama (dependensi baru: `com.google.zxing:core`).
 - Ketuk anggota (khusus host) membuka menu *Jadikan host* / *Keluarkan*.
 - Tombol ≡ dan ✕ disembunyikan kalau tidak diizinkan (aturan di 2.3).
-- **+ Tambah lagu** membuka layar pencarian yang ada dalam mode "Tambah ke Jam".
+- **+ Tambah lagu** membuka layar pencarian yang ada dalam mode "Tambah ke Ritme".
 - Selama di room, aksi "Tambah ke antrean" / "Putar berikutnya" di menu lagu mana pun dikirim
   sebagai `Add` ke room.
-- "Keluar Jam" mengirim `Leave`. "Akhiri" (khusus host, dengan konfirmasi) mengirim `EndRoom`.
+- "Keluar Ritme" mengirim `Leave`. "Akhiri" (khusus host, dengan konfirmasi) mengirim `EndRoom`.
 
 ### 3.4 Indikator & kontrol yang dibatasi
 
-- Mini player dan pemutar penuh menampilkan **pill "Jam · N"**. Mengetuknya membuka `JamRoomSheet`.
+- Mini player dan pemutar penuh menampilkan **pill "Ritme · N"**. Mengetuknya membuka `RitmeRoomSheet`.
   Saat menyambung ulang, pill menampilkan "Menyambung ulang…".
-- `QueueScreen` diganti tampilan antrean Jam selama di room.
-- Shuffle, repeat, crossmix, dan kecepatan tampil redup. Kalau diketuk, muncul toast "Tidak tersedia saat Jam".
+- `QueueScreen` diganti tampilan antrean Ritme selama di room.
+- Shuffle, repeat, crossmix, dan kecepatan tampil redup. Kalau diketuk, muncul toast "Tidak tersedia saat Ritme".
 - Tanpa izin kontrol, play/pause/seek/next/prev tampil redup dan menampilkan toast "Host mengunci kontrol".
-  Aturan yang sama berlaku untuk notifikasi media dan tombol headset (dicegat di `JamPlaybackBridge`).
+  Aturan yang sama berlaku untuk notifikasi media dan tombol headset (dicegat di `RitmePlaybackBridge`).
 
 ### 3.5 Pengaturan
 
-Bagian baru "Jam" di Pengaturan: **URL server** (dengan tombol "Kembalikan default") dan **nama tampilan**.
+Bagian baru "Ritme" di Pengaturan: **URL server** (dengan tombol "Kembalikan default") dan **nama tampilan**.
 
 ---
 
@@ -322,11 +359,11 @@ Bagian baru "Jam" di Pengaturan: **URL server** (dengan tombol "Kembalikan defau
 
 | Situasi | Perilaku |
 |---|---|
-| Server tidak bisa dihubungi saat buat/gabung | Pesan di sheet "Tidak bisa terhubung ke server Jam" + *Coba lagi*. Antrean lokal tidak disentuh. |
+| Server tidak bisa dihubungi saat buat/gabung | Pesan di sheet "Tidak bisa terhubung ke server Ritme" + *Coba lagi*. Antrean lokal tidak disentuh. |
 | `ROOM_NOT_FOUND` / `ROOM_FULL` / `UPGRADE_REQUIRED` | "Room tidak ditemukan" / "Room penuh" / "Perbarui aplikasi untuk bergabung" |
 | Koneksi putus di tengah sesi | Musik tetap jalan dari state terakhir. Pill "Menyambung ulang…". Backoff 1→2→4→8→15 detik dengan `resumeToken`. Setelah tersambung, state terbaru diterapkan dan drift dikoreksi. |
-| Gagal reconnect dalam 30 detik | Keluar otomatis, antrean lama dikembalikan, toast "Terputus dari Jam". |
-| `Kicked` / `RoomClosed` | Keluar, antrean lama dikembalikan, toast "Kamu dikeluarkan dari Jam" / "Jam diakhiri host". |
+| Gagal reconnect dalam 30 detik | Keluar otomatis, antrean lama dikembalikan, toast "Terputus dari Ritme". |
+| `Kicked` / `RoomClosed` | Keluar, antrean lama dikembalikan, toast "Kamu dikeluarkan dari Ritme" / "Ritme diakhiri host". |
 | Lagu gagal diputar di satu perangkat | Perangkat itu menampilkan `StreamFailureUi` yang ada, tanpa auto-skip untuk room. Perangkat itu ikut pindah saat room pindah lagu. |
 | Lagu gagal di semua perangkat | Timer cadangan server (2.6) memastikan room tetap maju. |
 | Perintah ditolak (`FORBIDDEN`, `RATE_LIMITED`, `QUEUE_FULL`) | Toast singkat. Tidak ada yang perlu di-rollback. |
@@ -334,14 +371,14 @@ Bagian baru "Jam" di Pengaturan: **URL server** (dengan tombol "Kembalikan defau
 
 **Privasi:** server tidak menyimpan apa pun ke disk, dan tidak mencatat nama, videoId, query search,
 atau IP ke log aplikasi. Yang dicatat hanya jumlah room dan koneksi aktif. README diperbarui untuk
-menjelaskan data apa saja yang melewati server Jam.
+menjelaskan data apa saja yang melewati server Ritme.
 
 ### 4.2 Testing
 
-**`:modules:jam-protocol` (JUnit)**
+**`:modules:ritme-protocol` (JUnit)**
 - Round-trip serialisasi untuk setiap jenis pesan dan perintah.
 - `positionAt`: play, pause, anchor di masa depan, batas `[0, durationMs]`.
-- Menulis golden files ke `modules/jam-protocol/fixtures/*.json`. Test gagal kalau file yang ada
+- Menulis golden files ke `modules/ritme-protocol/fixtures/*.json`. Test gagal kalau file yang ada
   berbeda dari hasil serialisasi (perubahan harus dilakukan dengan sengaja lewat flag regenerate).
 
 **`server/` (JUnit + `ktor-server-test-host`)**
@@ -357,7 +394,7 @@ menjelaskan data apa saja yang melewati server Jam.
 **App Android (JUnit di `app/src/test`)**
 - `ClockSync` dengan sampel sintetis: offset dari RTT terkecil, jendela 8 sampel.
 - `DriftCorrector`: tiga zona dan reset kecepatan.
-- `JamSession` dengan `JamClient` palsu: versi lama diabaikan, alur reconnect, `Kicked` → keluar
+- `RitmeSession` dengan `RitmeClient` palsu: versi lama diabaikan, alur reconnect, `Kicked` → keluar
   dan snapshot antrean dikembalikan.
 
 **Uji manual (checklist)**
@@ -366,9 +403,9 @@ menjelaskan data apa saja yang melewati server Jam.
 - [ ] Mode pesawat 10 detik saat lagu berjalan → menyambung kembali dan sinkron.
 - [ ] Host force stop → host pindah setelah 30 detik.
 - [ ] Kunci kontrol → anggota menekan tombol headset/notifikasi → ditolak dengan toast.
-- [ ] Keluar Jam → antrean pribadi kembali.
+- [ ] Keluar Ritme → antrean pribadi kembali.
 
-**CI:** test `jam-protocol` dan `server`, plus `npm ci && npm test && npm run build` untuk web,
+**CI:** test `ritme-protocol` dan `server`, plus `npm ci && npm test && npm run build` untuk web,
 ditambahkan ke `.github/workflows/build.yml` dan `build_pr.yml`. Job baru membangun image Docker
 server (termasuk build web) tanpa push otomatis.
 
@@ -379,10 +416,10 @@ server (termasuk build web) tanpa push otomatis.
 ### 5.1 Bentuk & hosting
 
 - TypeScript + Vite + Preact, mobile-first.
-- Hasil build disajikan oleh server Ktor dari origin yang sama (`/`, `/j/{code}`, aset statis),
+- Hasil build disajikan oleh server Ktor dari origin yang sama (`/`, `/r/{code}`, aset statis),
   jadi WebSocket tanpa CORS dan cukup satu image Docker.
-- `/j/{code}` membuka web app langsung di alur gabung room itu, dengan tombol
-  "Buka di aplikasi Musicfy" (`musicfy://jam/{code}`) dan link ke halaman Releases GitHub.
+- `/r/{code}` membuka web app langsung di alur gabung room itu, dengan tombol
+  "Buka di aplikasi Musicfy" (`musicfy://ritme/{code}`) dan link ke halaman Releases GitHub.
 
 ### 5.2 Fitur
 
@@ -417,7 +454,7 @@ server (termasuk build web) tanpa push otomatis.
 ### 5.5 Kesamaan protokol Kotlin ↔ TypeScript
 
 - Tipe ditulis ulang di `web/src/protocol.ts`, dengan fungsi `parseServerMessage` yang memvalidasi bentuk pesan.
-- Test Vitest membaca `modules/jam-protocol/fixtures/*.json` (golden files dari 4.2). Setiap file
+- Test Vitest membaca `modules/ritme-protocol/fixtures/*.json` (golden files dari 4.2). Setiap file
   harus lolos parse, dan serialisasi pesan klien di TS harus sama dengan fixture-nya.
   Perubahan protokol yang hanya dilakukan di satu sisi membuat CI gagal.
 
@@ -431,8 +468,8 @@ server (termasuk build web) tanpa push otomatis.
 
 ## 6. Urutan pengerjaan
 
-1. `:modules:jam-protocol` + golden files
+1. `:modules:ritme-protocol` + golden files
 2. `server/`: room, WebSocket, CommandHandler, Reaper, search, Docker
 3. `web/`: web pendamping (bisa diuji end-to-end dengan beberapa tab, tanpa build Android)
-4. Integrasi Android: JamClient/Session/Bridge, JamQueue, UI, deep link, Pengaturan
+4. Integrasi Android: RitmeClient/Session/Bridge, RitmeQueue, UI, deep link, Pengaturan
 5. CI + README (privasi & cara self-host server)
