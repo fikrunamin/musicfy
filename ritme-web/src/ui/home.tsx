@@ -98,7 +98,11 @@ export function HomeScreen({ session, state, routeCode, prefs }: Props) {
               autoComplete="off"
               spellcheck={false}
               placeholder={t.codePlaceholder}
-              onInput={(e) => setCode(sanitizeCodeInput(e.currentTarget.value))}
+              onInput={(e) => {
+                const sanitized = sanitizeCodeInput(e.currentTarget.value);
+                e.currentTarget.value = sanitized; // state may be unchanged (7th char), so Preact would not re-render
+                setCode(sanitized);
+              }}
             />
           </label>
           <button type="submit" class={routeCode ? 'btn btn-primary' : 'btn'} disabled={busy}>

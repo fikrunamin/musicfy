@@ -64,4 +64,12 @@ describe('HomeScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Gabung' }));
     expect(session.join).toHaveBeenCalledWith('K7M2QX', 'Sari');
   });
+
+  it('keeps the DOM input at 6 characters when a 7th is typed', () => {
+    render(<HomeScreen session={fakeSession()} state={initialSession} routeCode={null} prefs={memoryStore()} />);
+    const input = screen.getByLabelText('Kode room') as HTMLInputElement;
+    fireEvent.input(input, { target: { value: 'K7M2QX' } });
+    fireEvent.input(input, { target: { value: 'K7M2QXZ' } });
+    expect(input.value).toBe('K7M2QX');
+  });
 });

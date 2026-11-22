@@ -77,6 +77,8 @@ export const t = {
   leave: 'Keluar Ritme',
   end: 'Akhiri',
   confirmEnd: 'Akhiri Ritme untuk semua anggota?',
+  endRoom: 'Akhiri Ritme untuk semua',
+  confirmKick: (name: string) => `Keluarkan ${name} dari Ritme?`,
 } as const;
 
 export const noticeText: Record<NoticeKey, string> = {
