@@ -24,22 +24,22 @@ class PeerOutbox(
 
     val overBudget: Boolean get() = pendingBytes > maxBytes || queue.size > maxMessages
 
-    /** Queues [message]; returns the change in pending bytes (negative when a bigger snapshot was replaced). */
-    fun add(message: Outgoing): Long {
-        var delta = message.size.toLong()
+    /** Queues [message]; returns the pending snapshot it replaced, if any. */
+    fun add(message: Outgoing): Outgoing? {
+        var replaced: Outgoing? = null
         if (message.message is ServerMessage.State) {
             val stale = queue.indexOfFirst { it.message is ServerMessage.State }
-            if (stale >= 0) delta -= queue.removeAt(stale).size
+            if (stale >= 0) replaced = queue.removeAt(stale).also { pendingBytes -= it.size }
         }
         queue.addLast(message)
-        pendingBytes += delta
-        return delta
+        pendingBytes += message.size
+        return replaced
     }
 
     fun take(): Outgoing? = queue.removeFirstOrNull()?.also { pendingBytes -= it.size }
 
-    /** Empties the outbox; returns the bytes it held. */
-    fun clear(): Long = pendingBytes.also {
+    /** Empties the outbox; returns what it held. */
+    fun clear(): List<Outgoing> = queue.toList().also {
         queue.clear()
         pendingBytes = 0
     }
@@ -50,12 +50,25 @@ class PeerOutbox(
  * members are let in until the backlog drains (stalled clients are dropped within SEND_STALL_MS).
  */
 class PeerStats(val budget: Long = Limits.MAX_PENDING_BYTES_TOTAL) {
-    /** Bytes waiting in every client's outbox plus the frames being written (shared bytes counted per client). */
+    /**
+     * Bytes of every message still waiting in some client's outbox or being written; a broadcast
+     * held by many clients is counted once (see [hold]/[drop]).
+     */
     val pendingBytes = AtomicLong()
     val peakPendingBytes = AtomicLong()
     val aborted = AtomicInteger()
 
     val overBudget: Boolean get() = pendingBytes.get() > budget
+
+    /** A client starts holding [message]. */
+    fun hold(message: Outgoing) {
+        if (message.retain()) add(message.size.toLong())
+    }
+
+    /** A client no longer holds [message] (written, replaced or dropped). */
+    fun drop(message: Outgoing) {
+        if (message.release()) add(-message.size.toLong())
+    }
 
     fun add(delta: Long) {
         val now = pendingBytes.addAndGet(delta)

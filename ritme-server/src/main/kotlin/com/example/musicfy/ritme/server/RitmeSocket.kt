@@ -58,6 +58,9 @@ class WebSocketPeer(
                 }
                 // flush() returns once the frame is written to the socket: a client that stops
                 // reading is noticed even when nothing else is queued for it.
+                // Note: stallMs measures the write into the local socket, which in production is the
+                // connection to Caddy (its kernel buffer), not delivery to the end client. It
+                // detects a stuck connection; it is not a client timeout and must not be tuned as one.
                 val written = try {
                     withTimeoutOrNull(stallMs) {
                         session.outgoing.send(Frame.Text(true, next.bytes))
@@ -65,7 +68,7 @@ class WebSocketPeer(
                     }
                 } finally {
                     synchronized(lock) { inFlight = 0 }
-                    stats.add(-next.size.toLong())
+                    stats.drop(next)
                 }
                 if (written == null) {
                     abort() // the client stopped reading
@@ -75,10 +78,10 @@ class WebSocketPeer(
         } catch (_: ClosedSendChannelException) {
             // The socket is already gone; nothing left to deliver.
         } finally {
-            stats.add(-synchronized(lock) {
+            synchronized(lock) {
                 closed = true
                 outbox.clear()
-            })
+            }.forEach(stats::drop)
         }
     }
 
@@ -86,7 +89,8 @@ class WebSocketPeer(
         val drop = synchronized(lock) {
             if (closed) throw ClosedSendChannelException("peer closed")
             val backlog = outbox.pendingBytes + inFlight
-            stats.add(outbox.add(message))
+            stats.hold(message)
+            outbox.add(message)?.let(stats::drop)
             // Over the server-wide budget, clients that are already behind go first.
             outbox.overBudget || (backlog > 0 && stats.overBudget)
         }
@@ -116,7 +120,7 @@ class WebSocketPeer(
             closed = true
             outbox.clear()
         }
-        stats.add(-cleared)
+        cleared.forEach(stats::drop)
         stats.aborted.incrementAndGet()
         wake.close()
         pump.cancel()

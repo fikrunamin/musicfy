@@ -36,10 +36,11 @@ class PeerOutboxTest {
         val outbox = PeerOutbox()
         val small = state(1)
         val big = state(2, queue = 50)
-        assertEquals(small.size.toLong(), outbox.add(small))
-        assertEquals((big.size - small.size).toLong(), outbox.add(big))
+        assertNull(outbox.add(small))
+        assertEquals(small.size.toLong(), outbox.pendingBytes)
+        assertSame(small, outbox.add(big)) // the replaced snapshot is handed back
         assertEquals(big.size.toLong(), outbox.pendingBytes)
-        assertEquals(big.size.toLong(), outbox.clear())
+        assertEquals(listOf(big), outbox.clear())
         assertEquals(0, outbox.pendingBytes)
     }
 
@@ -76,5 +77,17 @@ class PeerOutboxTest {
         assertFalse(budgeted.overBudget)
         budgeted.add(1)
         assertTrue(budgeted.overBudget)
+    }
+
+    @Test
+    fun aBroadcastHeldByManyClientsIsCountedOnce() {
+        val stats = PeerStats()
+        val shared = state(1, queue = 20)
+        repeat(20) { stats.hold(shared) }
+        assertEquals(shared.size.toLong(), stats.pendingBytes.get())
+        repeat(19) { stats.drop(shared) }
+        assertEquals(shared.size.toLong(), stats.pendingBytes.get())
+        stats.drop(shared)
+        assertEquals(0, stats.pendingBytes.get())
     }
 }

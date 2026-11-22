@@ -8,6 +8,7 @@ import com.example.musicfy.ritme.protocol.ServerMessage
 import com.example.musicfy.ritme.protocol.encode
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * A server message together with its UTF-8 JSON, encoded exactly once however many peers receive
@@ -17,6 +18,15 @@ class Outgoing(val message: ServerMessage) {
     val bytes: ByteArray = message.encode().encodeToByteArray()
     val text: String by lazy { bytes.decodeToString() }
     val size: Int get() = bytes.size
+
+    /** Clients still holding this message (see PeerStats), so shared bytes are counted once. */
+    private val holders = AtomicInteger()
+
+    /** True for the first holder. */
+    fun retain(): Boolean = holders.getAndIncrement() == 0
+
+    /** True for the last holder. */
+    fun release(): Boolean = holders.decrementAndGet() == 0
 }
 
 /**
