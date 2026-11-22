@@ -92,6 +92,7 @@ export class PlaybackController {
     const key = `${entry.entryId}|${isPlaying}|${positionMs}|${anchorServerTimeMs}`;
     const changed = key !== this.appliedKey;
     this.appliedKey = key;
+    if (changed) this.ended = false; // only a real playback change revives an ended track
     this.apply(changed);
   }
 
@@ -117,7 +118,6 @@ export class PlaybackController {
   /** force: playback changed, the anchor was reached, or the tab came back (skips the 5 s rule). */
   private apply(force: boolean): void {
     this.clearStart();
-    if (force) this.ended = false;
     const room = this.room;
     const player = this.player;
     if (!room || !player || !this.entry) return;
@@ -125,6 +125,7 @@ export class PlaybackController {
     const { isPlaying, anchorServerTimeMs } = room.playback;
     if (isPlaying && now >= anchorServerTimeMs) {
       this.wantPlaying = true;
+      if (this.ended) return; // keep an ended track ended: no restart, prompt or seek
       this.lastPlayRetryAt = now;
       player.play();
       this.armTap();

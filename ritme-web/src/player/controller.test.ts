@@ -325,6 +325,41 @@ describe('PlaybackController', () => {
       expect(t.needsTap.at(-1)).toBe(true);
     });
 
+    describe('after ended', () => {
+      function ended() {
+        const t = setup();
+        const state = at([single('a', 10_000)], 'a', 100_000);
+        t.controller.update(state, {});
+        t.player().position = 0;
+        t.player().emit({ type: 'playing', gen: t.player().lastGen });
+        t.player().emit({ type: 'ended', gen: t.player().lastGen });
+        serverNow = 110_500;
+        return { t, state, before: t.player().calls.length };
+      }
+
+      it('a members-only update does not restart it or prompt', () => {
+        const { t, state, before } = ended();
+        t.controller.update({ ...state, version: 2 }, {});
+        vi.advanceTimersByTime(10_000);
+        expect(t.player().calls.slice(before)).toEqual([]);
+        expect(t.needsTap).toEqual([]);
+      });
+
+      it('resync() does not restart it or prompt', () => {
+        const { t, before } = ended();
+        t.controller.resync();
+        vi.advanceTimersByTime(10_000);
+        expect(t.player().calls.slice(before)).toEqual([]);
+        expect(t.needsTap).toEqual([]);
+      });
+
+      it('a room Seek resumes normally', () => {
+        const { t, state, before } = ended();
+        t.controller.update({ ...state, version: 2, playback: { isPlaying: true, positionMs: 2_000, anchorServerTimeMs: 110_500 } }, {});
+        expect(t.player().calls.slice(before)).toContain('play');
+      });
+    });
+
     it('destroy() stops timers, destroys the player and ignores later input', () => {
       const t = setup();
       t.controller.update(playing(0, 100_000), {});
