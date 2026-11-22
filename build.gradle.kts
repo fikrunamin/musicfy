@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.ksp) apply (false)
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.protobufPlugin) apply false
+    alias(libs.plugins.compose.multiplatform) apply false
 }
 
 buildscript {
@@ -35,14 +36,15 @@ subprojects {
     }
 }
 
-// Unit tests of every plain-JVM shared module (core + providers + modules). The app's own unit tests run
-// per variant via :app:test<Variant>UnitTest.
+// Unit tests of every shared module (core + providers + modules). The app's own unit tests run
+// per variant via :app:test<Variant>UnitTest. core:designsystem is KMP: its JVM tests are desktopTest.
 tasks.register("jvmTests") {
     group = "verification"
     description = "Runs unit tests for all :core, :providers and :modules modules."
+    val kmpModules = setOf(":core:designsystem")
     dependsOn(
         subprojects
             .filter { it.path.startsWith(":core:") || it.path.startsWith(":providers:") || it.path.startsWith(":modules:") }
-            .map { "${it.path}:test" },
+            .map { if (it.path in kmpModules) "${it.path}:desktopTest" else "${it.path}:test" },
     )
 }

@@ -43,6 +43,7 @@ include(":core:settings")
 include(":core:model")
 include(":core:database")
 include(":core:resolver")
+include(":core:designsystem")
 
 // local newpipe extractor
 //includeBuild("../NewPipeExtractor") {

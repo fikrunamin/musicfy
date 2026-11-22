@@ -395,6 +395,7 @@ dependencies {
     implementation(project(":core:settings"))
     implementation(project(":core:model"))
     implementation(project(":core:resolver"))
+    implementation(project(":core:designsystem"))
 
 
     implementation(libs.ktor.client.core)
