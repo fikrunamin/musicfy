@@ -35,14 +35,14 @@ subprojects {
     }
 }
 
-// Unit tests of every plain-JVM shared module (core + providers). The app's own unit tests run
+// Unit tests of every plain-JVM shared module (core + providers + modules). The app's own unit tests run
 // per variant via :app:test<Variant>UnitTest.
 tasks.register("jvmTests") {
     group = "verification"
-    description = "Runs unit tests for all :core and :providers modules."
+    description = "Runs unit tests for all :core, :providers and :modules modules."
     dependsOn(
         subprojects
-            .filter { it.path.startsWith(":core:") || it.path.startsWith(":providers:") }
+            .filter { it.path.startsWith(":core:") || it.path.startsWith(":providers:") || it.path.startsWith(":modules:") }
             .map { "${it.path}:test" },
     )
 }

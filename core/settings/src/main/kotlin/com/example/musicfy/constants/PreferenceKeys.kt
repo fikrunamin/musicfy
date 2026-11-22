@@ -1,4 +1,8 @@
 // PreferenceKeys.kt
+//
+// Every preference key must be declared in this file: the golden test (PreferenceKeyNamesTest)
+// reflects only over PreferenceKeysKt (plus playerStyleRotatedKey), so keys declared elsewhere
+// are not pinned against accidental renames.
 
 package com.example.musicfy.constants
 
@@ -10,7 +14,6 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 
-import com.music.innertube.models.IpVersion
 
 val IsFirstRunKey = booleanPreferencesKey("isFirstRun")
 val EnableDynamicIconKey = booleanPreferencesKey("enableDynamicIcon")
@@ -240,6 +243,8 @@ val AddToPlaylistSortDescendingKey = booleanPreferencesKey("addToPlaylistSortDes
 val ArtistSongSortTypeKey = stringPreferencesKey("artistSongSortType")
 val ArtistSongSortDescendingKey = booleanPreferencesKey("artistSongSortDescending")
 val MixSortTypeKey = stringPreferencesKey("mixSortType")
+// Intentionally shares the stored name "albumSortDescending" with AlbumSortDescendingKey
+// (pre-existing); renaming would reset users' setting.
 val MixSortDescendingKey = booleanPreferencesKey("albumSortDescending")
 
 val SongFilterKey = stringPreferencesKey("songFilter")

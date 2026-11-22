@@ -48,7 +48,7 @@ jobs:
             -dname "CN=Android Debug,O=Android,C=US"
 
       - name: Unit tests (shared JVM modules + app)
-        run: ./gradlew --console=plain jvmTests :app:testUniversalFossDebugUnitTest
+        run: ./gradlew --console=plain jvmTests :app:testUniversalGmsDebugUnitTest
 
       - name: Build Debug APK
         env:

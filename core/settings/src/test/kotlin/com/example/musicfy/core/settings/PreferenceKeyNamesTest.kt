@@ -11,6 +11,9 @@ import java.lang.reflect.Modifier
 /**
  * Renaming a key silently resets that setting for every user. This pins every
  * `val XKey = ...PreferencesKey("name")` in PreferenceKeys.kt to its stored name.
+ *
+ * Every preference key must be declared in PreferenceKeys.kt: this test reflects only over
+ * `PreferenceKeysKt` (plus `playerStyleRotatedKey`), so keys declared elsewhere are not covered.
  */
 class PreferenceKeyNamesTest {
     private val golden = File("src/test/resources/preference-keys.golden.txt")

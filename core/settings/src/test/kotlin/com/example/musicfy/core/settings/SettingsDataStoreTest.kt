@@ -8,8 +8,9 @@ import com.example.musicfy.constants.SelectedThemeColorKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -37,7 +38,7 @@ class SettingsDataStoreTest {
             it[DensityScaleKey] = 1.25f
             it[DarkModeKey] = "ON"
         }
-        firstScope.cancel()
+        firstScope.coroutineContext.job.cancelAndJoin()
 
         assertTrue(dir.resolve("settings.preferences_pb").isFile)
 
@@ -47,6 +48,6 @@ class SettingsDataStoreTest {
         assertEquals(0x123456, prefs[SelectedThemeColorKey])
         assertEquals(1.25f, prefs[DensityScaleKey])
         assertEquals("ON", prefs[DarkModeKey])
-        secondScope.cancel()
+        secondScope.coroutineContext.job.cancelAndJoin()
     }
 }

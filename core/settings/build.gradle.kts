@@ -8,7 +8,6 @@ kotlin {
 
 dependencies {
     api(libs.datastore.preferences.core)
-    api(project(":providers:innertube"))
     testImplementation(libs.junit)
 }
 

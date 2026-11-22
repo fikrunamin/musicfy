@@ -149,7 +149,7 @@ object Paxsenix {
         }
 
         if (allResults.isEmpty()) {
-            PaxLog.w("No tracks found for any query")
+            PaxLog.d("No tracks found for any query")
             throw IllegalStateException("No tracks found on Paxsenix")
         }
 
@@ -187,7 +187,7 @@ object Paxsenix {
             PaxLog.d("Using Paxsenix lyrics without word-level sync")
             return Result.success(it)
         }
-        PaxLog.w("No lyrics content from Paxsenix for matched tracks")
+        PaxLog.d("No lyrics content from Paxsenix for matched tracks")
         return Result.failure(IllegalStateException("No lyrics available from Paxsenix"))
     }
 
