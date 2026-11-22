@@ -50,6 +50,15 @@
 9. Starting or joining is refused while casting (toast). Changing the server URL applies to the next room.
 10. When the service is destroyed while in a room the bridge sends `Leave`.
 11. No App Links: the https deep link stays without `autoVerify`. Follow-up (not in this plan): publish `/.well-known/assetlinks.json` on the Ritme server and set `autoVerify="true"` once the domain is final.
+12. **Unknown song length** (`MediaMetadata.duration` ≤ 0, rare for YouTube items) maps to `durationMs = 0`, which the protocol reads as live: no drift correction for that entry, no server fallback advance; the first Android `TrackEnded` still moves the room on (accepted for live entries). Accepted as is; no later duration lookup.
+13. **Persistence while in a room:** the local queue is saved once on entering (before the gate opens); while the gate is open neither the queue (`saveQueueToDisk`) nor shuffle/repeat (`ShuffleModeKey`/`RepeatModeKey`) are written, so a process death inside a room keeps the user's own queue and settings.
+
+## Known follow-ups (accepted, not in this plan)
+
+- Scrubbing the turntable arm (`ui/player/customize/TurntableArm.kt:199`) seeks the local player directly; in a room the drift loop reverts it within ~1 s instead of sending a room Seek.
+- The cover swipe in `MorphingCover` (previous/next gesture) does nothing in a room.
+- Spec 3.4 "dimmed" controls: only the queue page's shuffle button is dimmed; elsewhere blocked controls stay normal-looking and answer with a toast ("Not available during Ritme" / "The host locked the controls").
+- App Links (`assetlinks.json` + `autoVerify="true"`) once the domain is final (Decision 11).
 
 ## File Structure
 
@@ -1040,7 +1049,7 @@ git commit -m "feat(ritme-android): session state, reducer and permission table"
 **Interfaces:**
 - Consumes: Task 3 `ConnectionEvent`, `ConnectionLike`, `ConnectionStatus`, `EndReason`, `JoinIntent`; protocol `ClientMessage`, `ServerMessage`, `Command`, `ErrorCode`, `PROTOCOL_VERSION`, `encode()`, `decodeServerMessageOrNull`.
 - Produces:
-  - `interface RitmeSocket { fun send(text: String): Boolean; fun close() }`
+  - `interface RitmeSocket { fun send(text: String): Boolean; fun close(); fun cancel() }` (`cancel` = drop at once, used for a socket that never opened)
   - `interface RitmeSocketListener { fun onOpen(); fun onMessage(text: String); fun onClosed() }`
   - `fun interface RitmeSocketFactory { fun open(url: String, listener: RitmeSocketListener): RitmeSocket }` — must never call the listener from inside `open()`.
   - `fun interface RitmeTimer { fun cancel() }`, `interface RitmeTimers { fun now(): Long; fun schedule(delayMs: Long, block: () -> Unit): RitmeTimer }` — never runs `block` from inside `schedule()`.
@@ -1054,10 +1063,14 @@ git commit -m "feat(ritme-android): session state, reducer and permission table"
 ```kotlin
 package com.example.musicfy.ritme.net
 
-/** One WebSocket. [send] queues a text frame; [close] starts a normal close (queued frames go first). */
+/**
+ * One WebSocket. [send] queues a text frame; [close] starts a normal close (queued frames go
+ * first); [cancel] drops the connection at once (a socket that never opened has nothing to flush).
+ */
 interface RitmeSocket {
     fun send(text: String): Boolean
     fun close()
+    fun cancel()
 }
 
 /** Called on the connection's thread. [onClosed] covers a normal close and any failure, once. */
@@ -1143,6 +1156,14 @@ class FakeSocket(val url: String, private val listener: RitmeSocketListener) : R
     }
 
     override fun close() {
+        closed = true
+    }
+
+    var cancelled = false
+        private set
+
+    override fun cancel() {
+        cancelled = true
         closed = true
     }
 
@@ -1283,7 +1304,7 @@ class RitmeConnectionTest {
         connection().start(JoinIntent.Join("K7M2QX", "Budi"))
         timers.advanceBy(8_000)
         assertEquals(EndReason.Unreachable, ended())
-        assertTrue(sockets.last.closed)
+        assertTrue(sockets.last.cancelled) // cancelled, not closed: nothing to flush
     }
 
     @Test
@@ -1487,7 +1508,7 @@ class RitmeConnection(
         }
         current = socketFactory.open(url, listener)
         socket = current
-        later(CONNECT_TIMEOUT_MS) { if (!opened) drop(current) }
+        later(CONNECT_TIMEOUT_MS) { if (!opened) drop(current, abort = true) }
     }
 
     private fun joinMessage(): ClientMessage = when (val i = intent!!) {
@@ -1534,9 +1555,9 @@ class RitmeConnection(
         }
     }
 
-    private fun drop(dropped: RitmeSocket) {
+    private fun drop(dropped: RitmeSocket, abort: Boolean = false) {
         if (socket !== dropped) return
-        detach(dropped)
+        detach(dropped, abort)
         if (ended) return
         if (!welcomed) {
             finish(EndReason.Unreachable)
@@ -1573,13 +1594,13 @@ class RitmeConnection(
         emit(ConnectionEvent.Ended(reason))
     }
 
-    /** Forgets a socket: its timers cancelled, its callbacks ignored from now on, closed. */
-    private fun detach(s: RitmeSocket) {
+    /** Forgets a socket: its timers cancelled, its callbacks ignored from now on, closed (or cancelled when [abort]). */
+    private fun detach(s: RitmeSocket, abort: Boolean = false) {
         socketTimers.forEach { it.cancel() }
         socketTimers.clear()
         if (socket === s) socket = null
         joined = false
-        s.close()
+        if (abort) s.cancel() else s.close()
     }
 
     private fun ack(version: Long) {
@@ -1646,7 +1667,7 @@ git commit -m "feat(ritme-android): connection state machine with Ack flow contr
 - Produces:
   - `data class InitialQueue(val first: List<NewEntry>, val startIndex: Int, val startPositionMs: Long, val overflow: List<List<NewEntry>>, val skipped: Int) { val total: Int; companion object { val EMPTY } }`
   - `data class AddBatches(val batches: List<List<NewEntry>>, val count: Int, val skipped: Int)`
-  - `object RitmeEntries { const val MAX_BATCH = 200; const val MAX_QUEUE = 500; const val MAX_TEXT = 300; const val MAX_DURATION_MS = 86_400_000L; fun safeThumbnail(url: String?): String?; fun toNewEntry(song: MediaMetadata?): NewEntry?; fun buildInitialQueue(songs: List<MediaMetadata?>, currentIndex: Int, positionMs: Long): InitialQueue; fun toAddBatches(songs: List<MediaMetadata?>): AddBatches; fun isPlayable(entry: QueueEntry): Boolean; fun toMediaMetadata(entry: QueueEntry): MediaMetadata }`
+  - `object RitmeEntries { const val MAX_BATCH = 200; const val MAX_QUEUE = 500; const val MAX_TEXT = 300; const val MAX_DURATION_MS = 86_400_000L; fun safeThumbnail(url: String?): String?; fun hasVisibleText(text: String): Boolean; fun toNewEntry(song: MediaMetadata?): NewEntry?; fun buildInitialQueue(songs: List<MediaMetadata?>, currentIndex: Int, positionMs: Long): InitialQueue; fun toAddBatches(songs: List<MediaMetadata?>): AddBatches; fun isPlayable(entry: QueueEntry): Boolean; fun toMediaMetadata(entry: QueueEntry): MediaMetadata }`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1702,6 +1723,9 @@ class RitmeEntriesTest {
         assertNull(RitmeEntries.toNewEntry(song(localUri = "content://media/1")))
         assertNull(RitmeEntries.toNewEntry(song(id = "local:42")))
         assertNull(RitmeEntries.toNewEntry(song(title = "   ")))
+        // only zero-width/filler characters: the server's hasVisible(cleanText(title)) would refuse the whole batch
+        assertNull(RitmeEntries.toNewEntry(song(title = "\u200B\u3164 \u2800")))
+        assertEquals("Lagu", RitmeEntries.toNewEntry(song(title = "\u200BLagu"))?.title?.replace("\u200B", ""))
         assertNull(RitmeEntries.toNewEntry(null))
     }
 
@@ -1793,6 +1817,7 @@ import com.example.musicfy.ritme.protocol.MediaKind
 import com.example.musicfy.ritme.protocol.NewEntry
 import com.example.musicfy.ritme.protocol.QueueEntry
 import java.net.URI
+import java.text.Normalizer
 
 /** What Create sends: [first] in the Create itself, [overflow] as Add batches after the Welcome. */
 data class InitialQueue(
@@ -1826,6 +1851,23 @@ object RitmeEntries {
     private val VIDEO_ID = Regex("^[A-Za-z0-9_-]{1,64}$")
     private val THUMBNAIL_HOST_SUFFIXES = listOf(".ytimg.com", ".googleusercontent.com", ".ggpht.com")
 
+    // Copied from ritme-server RoomLogic.cleanText/hasVisible: a title the server sees as blank fails the whole Add.
+    private val INVISIBLE = Regex("""[\p{Cc}\p{Cs}\u200B\u202A-\u202E\u2066-\u2069\uFEFF\u2028\u2029]""")
+    private val NOT_VISIBLE_TYPES = setOf(
+        Character.FORMAT.toInt(),
+        Character.NON_SPACING_MARK.toInt(),
+        Character.ENCLOSING_MARK.toInt(),
+        Character.SPACE_SEPARATOR.toInt(),
+        Character.CONTROL.toInt(),
+    )
+    private val BLANK_LETTERS = setOf(0x115F, 0x1160, 0x3164, 0xFFA0, 0x2800)
+
+    /** Same verdict as the server's `hasVisible(cleanText(text))`. */
+    fun hasVisibleText(text: String): Boolean =
+        Normalizer.normalize(text, Normalizer.Form.NFC).replace(INVISIBLE, "").trim().codePoints().anyMatch {
+            !Character.isWhitespace(it) && Character.getType(it) !in NOT_VISIBLE_TYPES && it !in BLANK_LETTERS
+        }
+
     /** The thumbnail if the server accepts it for a YouTube entry, else null. */
     fun safeThumbnail(url: String?): String? {
         if (url == null || url.length > MAX_THUMBNAIL_LENGTH || !url.startsWith("https://")) return null
@@ -1834,11 +1876,15 @@ object RitmeEntries {
         return url.takeIf { allowed }
     }
 
-    /** A YOUTUBE_MUSIC entry for [song], or null for local files and anything the server would refuse. */
+    /**
+     * A YOUTUBE_MUSIC entry for [song], or null for local files and anything the server would refuse.
+     * An unknown length (duration <= 0) becomes durationMs = 0, which the protocol treats as live
+     * (accepted, see Decision 12).
+     */
     fun toNewEntry(song: MediaMetadata?): NewEntry? {
         if (song == null || song.localUri != null || !VIDEO_ID.matches(song.id)) return null
         val title = song.title.trim().take(MAX_TEXT)
-        if (title.isBlank()) return null
+        if (!hasVisibleText(title)) return null
         val artist = song.artists.joinToString(", ") { it.name }.trim().take(MAX_TEXT)
         return NewEntry(
             videoId = song.id,
@@ -2332,6 +2378,10 @@ class OkHttpRitmeSocketFactory(
             override fun send(text: String): Boolean = webSocket.send(text)
             override fun close() {
                 webSocket.close(1000, "bye")
+            }
+
+            override fun cancel() {
+                webSocket.cancel()
             }
         }
     }
@@ -3593,7 +3643,7 @@ git commit -m "feat(ritme-android): gate and controller route local intents to t
 **Interfaces:**
 - Consumes: Task 5 `RitmeEntries.toMediaMetadata`; Task 6 `RitmeSession`; Task 7 `RitmeSyncPlanner`, `LocalPlayerView`, `PlayerOp`, `SyncInput`, `RitmeModeTransitions`, `RitmeTransition`; Task 8 `RitmeGate`, `RitmeController`, `RitmeLocalPlayback`, `LocalPlayOrder`, `RitmeNotifier`, `RitmeToast`; app `MediaMetadata.toMediaItem()`, `Player.mediaItems`, `MediaItem.metadata`, `ListQueue`, `EmptyQueue`.
 - Produces:
-  - `interface RitmePlayerHost { val player: ExoPlayer; val isCasting: Boolean; fun playOrderQueue(): LocalPlayOrder; fun enterRitmeMode(): LocalQueueSnapshot; fun loadRitmeItem(item: MediaItem, startPositionMs: Long); fun exitRitmeMode(snapshot: LocalQueueSnapshot) }`
+  - `interface RitmePlayerHost { val player: ExoPlayer; val isCasting: Boolean; fun playOrderQueue(): LocalPlayOrder; fun saveLocalQueue(); fun enterRitmeMode(): LocalQueueSnapshot; fun loadRitmeItem(item: MediaItem, startPositionMs: Long); fun exitRitmeMode(snapshot: LocalQueueSnapshot) }`
   - `data class LocalQueueSnapshot(val title: String?, val items: List<MediaItem>, val index: Int, val positionMs: Long, val shuffle: Boolean, val repeatMode: Int, val skipSilence: Boolean) { companion object { val EMPTY } }`
   - `@Singleton class RitmePlaybackBridge @Inject constructor(session, controller, gate, notifier) : RitmeLocalPlayback { fun attach(host: RitmePlayerHost); fun detach() }` (implements `pauseLocally()` with a plain `player.pause()`; Task 7's planner keeps that device paused until the room changes)
   - `MusicService.ritmeGate: RitmeGate` (public `@Inject lateinit var`, read by `PlayerConnection` in Task 10) and a private `ritmeHost` used by Task 10's session-player swap.
@@ -3617,6 +3667,9 @@ interface RitmePlayerHost {
     val isCasting: Boolean
 
     fun playOrderQueue(): LocalPlayOrder
+
+    /** Persists the local queue to disk now, while the gate is still closed (survives a death inside a room). */
+    fun saveLocalQueue()
 
     /**
      * Saves the local queue and hands the player to the room: pauses it and switches off
@@ -3787,6 +3840,9 @@ class RitmePlaybackBridge @Inject constructor(
 
     private fun enter() {
         val h = host ?: return
+        // Order matters: persist the user's queue while the gate is closed, then open the gate so
+        // nothing done while entering (shuffle/repeat off, the room's item) is persisted.
+        h.saveLocalQueue()
         gate.activate()
         snapshot = h.enterRitmeMode()
         inRitme = true
@@ -3851,6 +3907,7 @@ class RitmePlaybackBridge @Inject constructor(
             is PlayerOp.Load -> {
                 loadedEntryId = op.entry.entryId
                 endedEntryId = null
+                reportedEndFor = null
                 lastSeekAt = null
                 h.loadRitmeItem(RitmeEntries.toMediaMetadata(op.entry).toMediaItem(), op.startMs)
             }
@@ -3863,6 +3920,7 @@ class RitmePlaybackBridge @Inject constructor(
                 player.seekTo(op.positionMs)
                 lastSeekAt = localNow
                 endedEntryId = null
+                reportedEndFor = null // a replayed entry reports its end again
             }
             is PlayerOp.SetSpeed -> player.playbackParameters = PlaybackParameters(op.speed, 1f)
             PlayerOp.Halt -> {
@@ -3941,19 +3999,23 @@ with
         ritmeBridge.attach(ritmeHost)
 ```
 
-In `onDestroy`, replace
+In `onDestroy`, detach **after** the queue save, so the save is still skipped while the gate is open (the saved queue stays the user's own). Replace
 
 ```kotlin
-    override fun onDestroy() {
-        isRunning = false
+        castConnectionHandler?.release()
+        if (dataStore.get(PersistentQueueKey, true)) {
+            saveQueueToDisk()
+        }
 ```
 
 with
 
 ```kotlin
-    override fun onDestroy() {
+        castConnectionHandler?.release()
+        if (dataStore.get(PersistentQueueKey, true)) {
+            saveQueueToDisk()
+        }
         ritmeBridge.detach()
-        isRunning = false
 ```
 
 Directly above `override fun onDestroy() {` add the host:
@@ -3983,6 +4045,10 @@ Directly above `override fun onDestroy() {` add the host:
             )
         }
 
+        override fun saveLocalQueue() {
+            if (dataStore.get(PersistentQueueKey, true)) saveQueueToDisk()
+        }
+
         override fun enterRitmeMode(): com.example.musicfy.ritme.playback.LocalQueueSnapshot {
             val p = this@MusicService.player
             val snapshot = com.example.musicfy.ritme.playback.LocalQueueSnapshot(
@@ -4001,6 +4067,8 @@ Directly above `override fun onDestroy() {` add the host:
             crossfadeTriggerJob?.cancel()
             crossfadeTriggerJob = null
             if (isCrossfading) cleanupCrossfade()
+            // stops a running Crossmix hand-over and drops a planned one
+            crossmixDirector.onItemChanged()
             p.pause()
             p.shuffleModeEnabled = false
             p.repeatMode = REPEAT_MODE_OFF
@@ -4042,7 +4110,7 @@ Directly above `override fun onDestroy() {` add the host:
 
 - [ ] **Step 4: Add the in-room guards to MusicService**
 
-Each edit below is exact; outside a room every guard is `false` and the code runs as before.
+Each edit below is exact (nine of them); outside a room every guard is `false` and the code runs as before.
 
 1. `ensureQueueRunway()` — replace `        if (!playerInitialized.value) return` with:
 
@@ -4089,7 +4157,7 @@ with
         if (player.mediaItemCount == 0) {
 ```
 
-6. `scheduleCrossfade()` — replace
+6. `scheduleCrossfade()` — the guard goes **after** `crossmixDirector.schedule()`, which cancels a pending plan once `crossmixBlocker()` (edit 7) reports Ritme. Replace
 
 ```kotlin
     private fun scheduleCrossfade() {
@@ -4101,13 +4169,14 @@ with
 
 ```kotlin
     private fun scheduleCrossfade() {
+        // Crossmix plans its own hand-overs; it cancels itself when it's off or can't run
+        // (in a Ritme room crossmixBlocker() says so)
+        crossmixDirector.schedule()
         if (ritmeGate.isActive) {
             crossfadeTriggerJob?.cancel()
             crossfadeTriggerJob = null
             return
         }
-        // Crossmix plans its own hand-overs; it cancels itself when it's off or can't run
-        crossmixDirector.schedule()
 ```
 
 7. `CrossmixHost.crossmixBlocker()` — replace `            !crossfadeEnabled -> "Crossfade is off"` with:
@@ -4130,6 +4199,52 @@ with
                 if (ritmeGate.isActive) return@collect
                 val params = PlaybackParameters(settings.speed, settings.pitch)
 ```
+
+9. Shuffle/repeat persistence — entering a room switches both off; that must not be written over the user's saved choice. In `onShuffleModeEnabledChanged` replace
+
+```kotlin
+        if (dataStore.get(RememberShuffleAndRepeatKey, true)) {
+            scope.launch {
+                dataStore.edit { settings ->
+                    settings[ShuffleModeKey] = shuffleModeEnabled
+```
+
+with
+
+```kotlin
+        if (dataStore.get(RememberShuffleAndRepeatKey, true) && !ritmeGate.isActive) {
+            scope.launch {
+                dataStore.edit { settings ->
+                    settings[ShuffleModeKey] = shuffleModeEnabled
+```
+
+   and in `onRepeatModeChanged` replace
+
+```kotlin
+    override fun onRepeatModeChanged(repeatMode: Int) {
+        updateNotification()
+        scope.launch {
+            dataStore.edit { settings ->
+                settings[RepeatModeKey] = repeatMode
+            }
+        }
+```
+
+with
+
+```kotlin
+    override fun onRepeatModeChanged(repeatMode: Int) {
+        updateNotification()
+        if (!ritmeGate.isActive) {
+            scope.launch {
+                dataStore.edit { settings ->
+                    settings[RepeatModeKey] = repeatMode
+                }
+            }
+        }
+```
+
+   (The bridge opens the gate before `enterRitmeMode()` and closes it before `exitRitmeMode()`, so the OFF values are never stored and the restored values are.)
 
 - [ ] **Step 5: Compile, test and smoke-check the non-Ritme path**
 
@@ -4156,14 +4271,14 @@ git commit -m "feat(ritme-android): playback bridge follows the room through a n
 **Files:**
 - Create: `app/src/main/kotlin/com/example/musicfy/ritme/playback/RitmeSessionPlayer.kt`
 - Create: `app/src/main/kotlin/com/example/musicfy/ritme/RitmeQueueSongs.kt`
-- Modify: `app/src/main/kotlin/com/example/musicfy/playback/MusicService.kt` (`playQueue`, `playNext`, `addToQueue`, session-player swap in the host)
+- Modify: `app/src/main/kotlin/com/example/musicfy/playback/MusicService.kt` (`playQueue`, `playNext`, `addToQueue`, `startRadioSeamlessly`, widget actions in `onStartCommand`, session-player swap in the host)
 - Modify: `app/src/main/kotlin/com/example/musicfy/playback/PlayerConnection.kt`
 - Modify: `app/src/main/kotlin/com/example/musicfy/ui/player/PlayerControls.kt`, `ui/player/styles/StyleKit.kt`, `ui/player/TurntableControls.kt`, `ui/player/PlayerProgressSlider.kt`, `ui/player/LyricsScreen.kt`, `ui/component/BottomSheet.kt`, `ui/player/BottomSheetPlayer.kt`, `ui/menu/OldPlayerMenu.kt`, `ui/menu/PlayerMenu.kt`, `ui/screens/AlbumScreen.kt`, `ui/screens/search/OnlineSearchResult.kt` (all under `app/src/main/kotlin/com/example/musicfy/`)
 
 **Interfaces:**
 - Consumes: Task 8 `RitmeGate`, `RitmeLocalAction`; Task 9 `MusicService.ritmeGate`, `ritmeHost`.
 - Produces:
-  - `class RitmeSessionPlayer(player: Player, gate: RitmeGate) : ForwardingPlayer`
+  - `class RitmeSessionPlayer(player: Player, gate: RitmeGate) : ForwardingSimpleBasePlayer` with `val wrapped: Player`
   - `fun Queue.ritmeSongs(): List<MediaMetadata?>`
   - `PlayerConnection.ritmeGate: RitmeGate`, `inline fun PlayerConnection.ritmeOr(action: RitmeLocalAction, local: () -> Unit)` (member)
 
@@ -4174,89 +4289,47 @@ git commit -m "feat(ritme-android): playback bridge follows the room through a n
 ```kotlin
 package com.example.musicfy.ritme.playback
 
-import androidx.media3.common.ForwardingPlayer
+import androidx.media3.common.C
+import androidx.media3.common.ForwardingSimpleBasePlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.util.UnstableApi
 import com.example.musicfy.extensions.metadata
 import com.example.musicfy.ritme.RitmeGate
 import com.example.musicfy.ritme.RitmeLocalAction
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 
 /**
  * The media session's player while a Ritme room is active (MusicService swaps it in and out).
- * Notification buttons, headset keys, Bluetooth and Android Auto all reach the player through the
- * session, so here they become room commands via [gate] instead of changing the local player.
- * Whether a pause is a room Pause or "this device only" is decided by RitmeController, not here.
- * Next/previous stay available although the real player only holds the current entry.
+ * Notification buttons, headset keys, Bluetooth, Android Auto and the widget-less media controls
+ * all reach the player through the session, so here they become intents for [gate] instead of
+ * changing the local player. Whether a pause is a room Pause or "this device only" is decided by
+ * RitmeController, not here.
+ *
+ * Built on ForwardingSimpleBasePlayer (Media3 1.7.1): the commands it advertises come from
+ * [getState], so the events the session forwards to the notification carry next/previous too. (A
+ * ForwardingPlayer that only overrides getAvailableCommands() still forwards the wrapped player's
+ * commands in onAvailableCommandsChanged/onEvents, and the buttons can vanish.) SimpleBasePlayer
+ * calls handleSeek for seekToNext/seekToPrevious even when the wrapped player has nothing next
+ * (with mediaItemIndex = C.INDEX_UNSET), which is what a one-item player in a room needs.
+ *
+ * Never call release() on it: that releases the wrapped ExoPlayer. MusicService keeps one per player.
  */
 @androidx.annotation.OptIn(UnstableApi::class)
-class RitmeSessionPlayer(player: Player, private val gate: RitmeGate) : ForwardingPlayer(player) {
+class RitmeSessionPlayer(player: Player, private val gate: RitmeGate) : ForwardingSimpleBasePlayer(player) {
 
-    private fun routed(action: RitmeLocalAction): Boolean = gate.intercept(action)
+    /** The player behind it, so MusicService can reuse this wrapper for the same player. */
+    val wrapped: Player get() = player
 
-    override fun play() { if (!routed(RitmeLocalAction.Play)) super.play() }
-    override fun pause() { if (!routed(RitmeLocalAction.Pause)) super.pause() }
-    override fun setPlayWhenReady(playWhenReady: Boolean) {
-        if (!routed(if (playWhenReady) RitmeLocalAction.Play else RitmeLocalAction.Pause)) super.setPlayWhenReady(playWhenReady)
-    }
+    private fun done(): ListenableFuture<*> = Futures.immediateVoidFuture()
 
-    override fun seekTo(positionMs: Long) { if (!routed(RitmeLocalAction.Seek(positionMs))) super.seekTo(positionMs) }
-    override fun seekTo(mediaItemIndex: Int, positionMs: Long) {
-        if (!routed(RitmeLocalAction.Seek(positionMs))) super.seekTo(mediaItemIndex, positionMs)
-    }
-    override fun seekToDefaultPosition() { if (!routed(RitmeLocalAction.Seek(0))) super.seekToDefaultPosition() }
-    override fun seekToDefaultPosition(mediaItemIndex: Int) {
-        if (!routed(RitmeLocalAction.Seek(0))) super.seekToDefaultPosition(mediaItemIndex)
-    }
-    override fun seekBack() {
-        if (!routed(RitmeLocalAction.Seek((currentPosition - seekBackIncrement).coerceAtLeast(0)))) super.seekBack()
-    }
-    override fun seekForward() {
-        if (!routed(RitmeLocalAction.Seek(currentPosition + seekForwardIncrement))) super.seekForward()
-    }
-    override fun seekToNext() { if (!routed(RitmeLocalAction.Next)) super.seekToNext() }
-    override fun seekToNextMediaItem() { if (!routed(RitmeLocalAction.Next)) super.seekToNextMediaItem() }
-    override fun seekToPrevious() { if (!routed(RitmeLocalAction.Previous)) super.seekToPrevious() }
-    override fun seekToPreviousMediaItem() { if (!routed(RitmeLocalAction.Previous)) super.seekToPreviousMediaItem() }
-
-    override fun setShuffleModeEnabled(shuffleModeEnabled: Boolean) {
-        if (!routed(RitmeLocalAction.Shuffle)) super.setShuffleModeEnabled(shuffleModeEnabled)
-    }
-    override fun setRepeatMode(repeatMode: Int) { if (!routed(RitmeLocalAction.Repeat)) super.setRepeatMode(repeatMode) }
-    override fun setPlaybackSpeed(speed: Float) { if (!routed(RitmeLocalAction.Speed)) super.setPlaybackSpeed(speed) }
-    override fun setPlaybackParameters(playbackParameters: PlaybackParameters) {
-        if (!routed(RitmeLocalAction.Speed)) super.setPlaybackParameters(playbackParameters)
-    }
-
-    override fun setMediaItem(mediaItem: MediaItem) { if (!routedPlay(listOf(mediaItem))) super.setMediaItem(mediaItem) }
-    override fun setMediaItem(mediaItem: MediaItem, startPositionMs: Long) {
-        if (!routedPlay(listOf(mediaItem))) super.setMediaItem(mediaItem, startPositionMs)
-    }
-    override fun setMediaItem(mediaItem: MediaItem, resetPosition: Boolean) {
-        if (!routedPlay(listOf(mediaItem))) super.setMediaItem(mediaItem, resetPosition)
-    }
-    override fun setMediaItems(mediaItems: MutableList<MediaItem>) { if (!routedPlay(mediaItems)) super.setMediaItems(mediaItems) }
-    override fun setMediaItems(mediaItems: MutableList<MediaItem>, resetPosition: Boolean) {
-        if (!routedPlay(mediaItems)) super.setMediaItems(mediaItems, resetPosition)
-    }
-    override fun setMediaItems(mediaItems: MutableList<MediaItem>, startIndex: Int, startPositionMs: Long) {
-        if (!routedPlay(mediaItems.drop(startIndex.coerceAtLeast(0)))) super.setMediaItems(mediaItems, startIndex, startPositionMs)
-    }
-    override fun addMediaItem(mediaItem: MediaItem) { if (!routedAdd(listOf(mediaItem))) super.addMediaItem(mediaItem) }
-    override fun addMediaItem(index: Int, mediaItem: MediaItem) { if (!routedAdd(listOf(mediaItem))) super.addMediaItem(index, mediaItem) }
-    override fun addMediaItems(mediaItems: MutableList<MediaItem>) { if (!routedAdd(mediaItems)) super.addMediaItems(mediaItems) }
-    override fun addMediaItems(index: Int, mediaItems: MutableList<MediaItem>) {
-        if (!routedAdd(mediaItems)) super.addMediaItems(index, mediaItems)
-    }
-
-    private fun routedPlay(items: List<MediaItem>) = routed(RitmeLocalAction.PlayQueue(items.map { it.metadata }))
-    private fun routedAdd(items: List<MediaItem>) = routed(RitmeLocalAction.AddItems(items.map { it.metadata }, playNext = false))
-
-    override fun getAvailableCommands(): Player.Commands {
-        val commands = super.getAvailableCommands()
-        if (!gate.isActive) return commands
-        return commands.buildUpon()
+    override fun getState(): SimpleBasePlayer.State {
+        val state = super.getState()
+        if (!gate.isActive) return state
+        val commands = state.availableCommands.buildUpon()
             .addAll(
                 Player.COMMAND_SEEK_TO_NEXT,
                 Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
@@ -4264,13 +4337,52 @@ class RitmeSessionPlayer(player: Player, private val gate: RitmeGate) : Forwardi
                 Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
             )
             .build()
+        return state.buildUpon().setAvailableCommands(commands).build()
     }
 
-    override fun isCommandAvailable(command: Int): Boolean = availableCommands.contains(command)
+    override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> =
+        if (gate.intercept(if (playWhenReady) RitmeLocalAction.Play else RitmeLocalAction.Pause)) done()
+        else super.handleSetPlayWhenReady(playWhenReady)
+
+    override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {
+        if (!gate.isActive) return super.handleSeek(mediaItemIndex, positionMs, seekCommand)
+        when (seekCommand) {
+            Player.COMMAND_SEEK_TO_NEXT,
+            Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> gate.intercept(RitmeLocalAction.Next)
+            Player.COMMAND_SEEK_TO_PREVIOUS,
+            Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> gate.intercept(RitmeLocalAction.Previous)
+            // Media3's play button on an ENDED player seeks to the default position first; in a room
+            // that must not restart anything, so it is a no-op (the play() that follows is routed).
+            Player.COMMAND_SEEK_TO_DEFAULT_POSITION -> Unit
+            // seek bar, seek back/forward, seekTo(index, position)
+            else -> if (positionMs != C.TIME_UNSET) gate.intercept(RitmeLocalAction.Seek(positionMs.coerceAtLeast(0)))
+        }
+        return done()
+    }
+
+    override fun handleSetShuffleModeEnabled(shuffleModeEnabled: Boolean): ListenableFuture<*> =
+        if (gate.intercept(RitmeLocalAction.Shuffle)) done() else super.handleSetShuffleModeEnabled(shuffleModeEnabled)
+
+    override fun handleSetRepeatMode(repeatMode: Int): ListenableFuture<*> =
+        if (gate.intercept(RitmeLocalAction.Repeat)) done() else super.handleSetRepeatMode(repeatMode)
+
+    override fun handleSetPlaybackParameters(playbackParameters: PlaybackParameters): ListenableFuture<*> =
+        if (gate.intercept(RitmeLocalAction.Speed)) done() else super.handleSetPlaybackParameters(playbackParameters)
+
+    override fun handleSetMediaItems(mediaItems: List<MediaItem>, startIndex: Int, startPositionMs: Long): ListenableFuture<*> {
+        val from = if (startIndex == C.INDEX_UNSET) 0 else startIndex.coerceAtLeast(0)
+        val songs = mediaItems.drop(from).map { it.metadata }
+        return if (gate.intercept(RitmeLocalAction.PlayQueue(songs))) done()
+        else super.handleSetMediaItems(mediaItems, startIndex, startPositionMs)
+    }
+
+    override fun handleAddMediaItems(index: Int, mediaItems: List<MediaItem>): ListenableFuture<*> =
+        if (gate.intercept(RitmeLocalAction.AddItems(mediaItems.map { it.metadata }, playNext = false))) done()
+        else super.handleAddMediaItems(index, mediaItems)
 }
 ```
 
-> If the Kotlin compiler reports a signature mismatch on `setMediaItems`/`addMediaItems`, change `MutableList<MediaItem>` to `List<MediaItem>` (Media3 declares `java.util.List`; both map to it). Nothing else changes.
+> If the Kotlin compiler reports an override mismatch on `handleSetMediaItems`/`handleAddMediaItems`, use `MutableList<MediaItem>` for the list parameter (Media3 declares `java.util.List`; both map to it). Nothing else changes.
 
 `app/src/main/kotlin/com/example/musicfy/ritme/RitmeQueueSongs.kt`:
 
@@ -4358,15 +4470,81 @@ with
 5. Directly below the `ritmeHost` object add:
 
 ```kotlin
+    // One wrapper per player: it listens to the player for good and must never be released.
+    private var ritmeSessionPlayer: com.example.musicfy.ritme.playback.RitmeSessionPlayer? = null
+
     /** While in a Ritme room, external controllers talk to a RitmeSessionPlayer instead of the player itself. */
     private fun useRitmeSessionPlayer(enabled: Boolean) {
-        val target: Player = if (enabled) com.example.musicfy.ritme.playback.RitmeSessionPlayer(player, ritmeGate) else player
+        val target: Player = if (enabled) {
+            ritmeSessionPlayer?.takeIf { it.wrapped === player }
+                ?: com.example.musicfy.ritme.playback.RitmeSessionPlayer(player, ritmeGate).also { ritmeSessionPlayer = it }
+        } else {
+            player
+        }
         try {
             (mediaSession as MediaSession).player = target
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Ritme: could not swap the session player")
         }
     }
+```
+
+6. `startRadioSeamlessly()` (reached from PlayerMenu, OldPlayerMenu and the notification's ACTION_TOGGLE_START_RADIO) would append radio songs after the room's single item. Replace `    fun startRadioSeamlessly() {` with:
+
+```kotlin
+    fun startRadioSeamlessly() {
+        if (ritmeGate.isActive) {
+            ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.QueueEdit)
+            return
+        }
+```
+
+7. Home-screen widget actions in `onStartCommand` go through the gate too. Replace
+
+```kotlin
+            MusicWidgetReceiver.ACTION_PLAY_PAUSE -> {
+                if (player.isPlaying) player.pause() else player.play()
+                updateWidgetUI(player.isPlaying)
+            }
+```
+
+with
+
+```kotlin
+            MusicWidgetReceiver.ACTION_PLAY_PAUSE -> {
+                if (!ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.TogglePlayPause)) {
+                    if (player.isPlaying) player.pause() else player.play()
+                }
+                updateWidgetUI(player.isPlaying)
+            }
+```
+
+   replace
+
+```kotlin
+            MusicWidgetReceiver.ACTION_NEXT -> {
+                player.seekToNext()
+```
+
+with
+
+```kotlin
+            MusicWidgetReceiver.ACTION_NEXT -> {
+                if (!ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.Next)) player.seekToNext()
+```
+
+   and replace
+
+```kotlin
+            MusicWidgetReceiver.ACTION_PREVIOUS -> {
+                player.seekToPrevious()
+```
+
+with
+
+```kotlin
+            MusicWidgetReceiver.ACTION_PREVIOUS -> {
+                if (!ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.Previous)) player.seekToPrevious()
 ```
 
 - [ ] **Step 3: Intercept in PlayerConnection**
@@ -4988,7 +5166,8 @@ fun PopupSheetState.showRitmeRoomSheet(ritme: RitmeUi, navController: NavControl
             ritme = ritme,
             onAddSongs = {
                 handle?.dismiss()
-                if (playerSheet.isExpanded) playerSheet.collapseSoft()
+                // compositionLocalOf<BottomSheetState?>: null outside the main layout
+                playerSheet?.let { if (it.isExpanded) it.collapseSoft() }
                 // In a room, tapping a search result adds it to the room (RitmeController, PlayQueue).
                 navController.navigate(Screens.Search.route)
             },
@@ -5524,7 +5703,7 @@ fun RitmeQueuePage(onClose: () -> Unit, navController: NavController, bottomPadd
             ritme = ritme,
             onAddSongs = {
                 onClose()
-                playerSheet.collapseSoft()
+                playerSheet?.collapseSoft()
                 navController.navigate(Screens.Search.route)
             },
             onLeft = onClose,
@@ -6444,7 +6623,9 @@ Record each result in the PR description.
 - [ ] Host turns "Members can control" off; a member presses next/previous/seek on the headset, in the notification and in the app → "The host locked the controls", nothing changes in the room. The member presses pause → "Paused on this device only", only that phone stops, the room plays on and the phone stays paused through the 1 s loop; play resumes it in sync; when the host seeks or changes the song while the member is paused, the member's phone re-syncs and plays.
 - [ ] Leave Ritme → the personal queue is back, paused, with shuffle/repeat/speed as before. Same after being kicked ("You were removed from Ritme") and after the host ends it ("The host ended Ritme").
 - [ ] A track ends: every phone switches together ~1.5 s later; one phone with a broken stream shows the stream-failure UI, does not skip, and follows the room when it moves on.
-- [ ] Shuffle, repeat, speed (player buttons, "⋯" menu, notification custom shuffle) show "Not available during Ritme" and do nothing.
+- [ ] Shuffle, repeat, speed, "Start radio" (player buttons, "⋯" menu, notification custom actions) show "Not available during Ritme" and do nothing.
+- [ ] Home-screen widget play/pause/next/previous in a room follow the same rules as the notification; notification next/previous stay visible in a room; the notification play button on an ended track does not restart the room.
+- [ ] Shuffle and repeat on, join a room, `adb shell am force-stop` the app, reopen: the saved local queue and shuffle/repeat are the pre-room ones.
 - [ ] "Start Ritme with this" from a song menu creates a room with that song; "Add to queue"/"Play next" in any song menu and tapping a search result add to the room ("Added 1 song to Ritme"); local files are skipped with a toast.
 - [ ] Share opens the Android share sheet with `https://ritme.dubeli.id/r/{code}`; the QR scans with the camera app and opens the web page.
 - [ ] A browser member adds a non-YouTube `URL` entry (if the web build allows it) or one is present: Android shows "Not supported yet" and pauses while it is current.
@@ -6489,6 +6670,7 @@ git commit -m "fix(ritme-android): <what was wrong>" -m "Co-Authored-By: Claude 
 | 3.4 pill (mini + full player, reconnecting), queue page replaced, dimmed/blocked controls + toasts, headset/notification intercepted | 12, 10 (`RitmeSessionPlayer`, toasts), 9 |
 | Coordinator decision: members without control pause/resume their own device only, re-sync on room change, seek/skip still blocked | 8 (`pause()`, `PausedLocally`, tests), 7 (planner test), 9 (`pauseLocally`), 10 (routing), 14 |
 | Merge with main: `PreferenceKeys.kt` in `:core:settings` with a golden key test | 1 (path + golden regeneration) |
+| Pre-flight review: nullable sheet state, start-radio/widget/default-position routing, persistence while in a room, Crossmix stop, visible titles, end re-reporting, socket cancel | 11, 10, 9, 9, 5, 9, 4; follow-ups listed under "Known follow-ups" |
 | 3.5 settings: server URL + restore default, display name | 13 |
 | 4.1 errors: unreachable/retry, room not found/full/upgrade, reconnecting, lost, kicked/closed, stream failure no auto-skip, rejected commands toast, process death | 11 (inline errors), 8 (`RitmeTexts`), 9 (`failStream` guard, notices), 9 (`detach` leaves) |
 | 4.2 Android JUnit: ClockSync, DriftCorrector, RitmeSession (stale, reconnect, Kicked) | 2, 6; reconnect in 4; "Kicked → queue restored" split into session end (6) + `RitmeModeTransitions` (7) + manual (14) |
@@ -6496,6 +6678,6 @@ git commit -m "fix(ritme-android): <what was wrong>" -m "Co-Authored-By: Claude 
 | PopupSheet only, no Dialog/ModalBottomSheet | 11, 12 (`TempoPitchDialog` is pre-existing and only gets a guard) |
 | Strings in Indonesian + English | 8, 11, 12, 13 |
 
-**Placeholder scan:** every code step shows the full code; the only conditional instruction is the `MutableList`→`List` override note in Task 10 Step 1 and the merged-manifest path fallback in Task 13 Step 5, both with the exact alternative.
+**Placeholder scan:** every code step shows the full code; the only conditional instruction is the `List`→`MutableList` override note in Task 10 Step 1 and the merged-manifest path fallback in Task 13 Step 5, both with the exact alternative.
 
 **Type consistency checked:** `RitmeLocalAction`, `RitmeToast`, `LocalPlayOrder`, `InitialQueue`, `ConnectionEvent.Failure`, `PlayerOp`, `SyncInput`, `RitmePlayerHost.loadRitmeItem(item, startPositionMs)`, `RitmeController.openSheet/openJoin/openStartWith/startRoom/joinRoom/shareLink`, `RitmeRoomContent(ritme, onAddSongs, onLeft, modifier, bottomPadding)` and `RitmeQueuePage(onClose, navController, bottomPadding, modifier)` are used with the same names and parameters in every task.
