@@ -391,6 +391,7 @@ dependencies {
     implementation(project(":modules:api"))
     implementation(project(":modules:applemusic"))
     implementation(project(":modules:monochrome"))
+    implementation(project(":core:platform"))
 
 
     implementation(libs.ktor.client.core)
