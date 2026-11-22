@@ -13,6 +13,7 @@ import io.ktor.websocket.ProtocolViolationException
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.channels.ClosedSendChannelException
@@ -26,32 +27,46 @@ import kotlin.time.TimeSource
 /**
  * Never suspends on the network: messages go into a small per-client queue that its own coroutine
  * drains into the socket, so a slow client cannot hold the room lock. A client that falls
- * [SEND_BUFFER] messages behind is disconnected; it can resume with its token and get fresh state.
+ * [SEND_BUFFER] messages behind is cut off at once (its session is cancelled, so the room sees a
+ * disconnect and starts the grace period); it can resume with its token and get fresh state.
  */
 class WebSocketPeer(private val session: DefaultWebSocketServerSession) : Peer {
     private val queue = Channel<Outgoing>(capacity = SEND_BUFFER)
     private val pump = session.launch {
-        for (message in queue) session.outgoing.send(Frame.Text(message.text))
+        try {
+            for (message in queue) session.outgoing.send(Frame.Text(message.text))
+        } catch (_: ClosedSendChannelException) {
+            // The socket is already gone; nothing left to deliver.
+        }
     }.also { job -> job.invokeOnCompletion { queue.close() } }
 
     override suspend fun send(message: Outgoing) {
         val result = queue.trySend(message)
         if (result.isClosed) throw ClosedSendChannelException("peer closed")
-        if (result.isFailure) close()
+        if (result.isFailure) abort()
     }
 
+    /** Delivers what is already queued (Kicked, RoomClosed, ...) and then closes the socket. */
     override suspend fun close() {
         if (!queue.close()) return
         session.launch {
-            runCatching {
+            val closed = withTimeoutOrNull(CLOSE_FLUSH_MS) {
                 pump.join()
                 session.close(CloseReason(CloseReason.Codes.NORMAL, "bye"))
             }
+            if (closed == null) session.cancel() // the client stopped reading: drop it
         }
+    }
+
+    private fun abort() {
+        queue.close()
+        pump.cancel()
+        session.cancel()
     }
 
     companion object {
         const val SEND_BUFFER = 64
+        const val CLOSE_FLUSH_MS = 5_000L
     }
 }
 

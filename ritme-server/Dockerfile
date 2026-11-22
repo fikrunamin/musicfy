@@ -12,6 +12,6 @@ RUN useradd --system --uid 10001 ritme && mkdir -p /app/web
 WORKDIR /app
 COPY --from=build /src/ritme-server/build/install/ritme-server /app
 USER ritme
-ENV PORT=8080 WEB_DIR=/app/web
+ENV PORT=8080 WEB_DIR=/app/web JAVA_OPTS="-XX:MaxRAMPercentage=75"
 EXPOSE 8080
 ENTRYPOINT ["/app/bin/ritme-server"]

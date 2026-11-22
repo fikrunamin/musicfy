@@ -6,6 +6,12 @@ services:
       dockerfile: ritme-server/Dockerfile
     image: ritme-server:latest
     restart: unless-stopped
+    mem_limit: 512m
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       PUBLIC_URL: https://${RITME_DOMAIN}
     # Not published to the internet: only Caddy talks to it (it trusts X-Forwarded-For).
@@ -15,6 +21,7 @@ services:
   caddy:
     image: caddy:2
     restart: unless-stopped
+    logging: *logging
     depends_on:
       - ritme
     ports:

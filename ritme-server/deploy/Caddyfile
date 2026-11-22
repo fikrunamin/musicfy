@@ -1,3 +1,13 @@
+# Privacy: Caddy must not record client IPs or URLs (room codes in /r/{code}, search queries in
+# /api/search?q=). Access logs are off unless a site enables them (none does); request error logs
+# (http.log.error) and Go's stdlib server log (http.stdlib: "TLS handshake error from <ip>") are
+# excluded here. Startup, TLS and certificate messages are still logged.
+{
+	log default {
+		exclude http.log.access http.log.error http.stdlib http.handlers.reverse_proxy
+	}
+}
+
 # HTTPS certificates are issued automatically for this domain.
 # Caddy replaces any client-sent X-Forwarded-For (default, no trusted_proxies); the server relies on that.
 {$RITME_DOMAIN} {

@@ -6,14 +6,10 @@ import com.example.musicfy.ritme.protocol.ErrorCode
 import com.example.musicfy.ritme.protocol.NewEntry
 import com.example.musicfy.ritme.protocol.PROTOCOL_VERSION
 import com.example.musicfy.ritme.protocol.ServerMessage
-import com.example.musicfy.ritme.protocol.decodeServerMessage
-import com.example.musicfy.ritme.protocol.encode
-import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.server.testing.testApplication
 import io.ktor.websocket.Frame
-import io.ktor.websocket.readText
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -21,15 +17,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RitmeSocketTest {
-    private suspend fun DefaultClientWebSocketSession.sendClient(message: ClientMessage) =
-        send(Frame.Text(message.encode()))
-
-    private suspend fun DefaultClientWebSocketSession.receiveServer(): ServerMessage = withTimeout(5_000) {
-        var frame = incoming.receive()
-        while (frame !is Frame.Text) frame = incoming.receive()
-        decodeServerMessage((frame as Frame.Text).readText())
-    }
-
     @Test
     fun pingIsAnsweredBeforeJoining() = testApplication {
         application { ritmeModule(testDeps()) }
@@ -97,6 +84,27 @@ class RitmeSocketTest {
 
             val afterGuestLeft = host.receiveServer() as ServerMessage.State
             assertFalse(afterGuestLeft.state.members.single { it.name == "Sari" }.connected)
+        }
+    }
+
+    @Test
+    fun aKickIsDeliveredBeforeTheSocketCloses() = testApplication {
+        application { ritmeModule(testDeps()) }
+        val client = createClient { install(WebSockets) }
+        client.ritme("10.0.0.3") {
+            val host = this
+            host.sendClient(ClientMessage.Create(PROTOCOL_VERSION, "Budi"))
+            val code = (host.receiveServer() as ServerMessage.Welcome).state.code
+            client.ritme("10.0.0.4") {
+                val guest = this
+                guest.sendClient(ClientMessage.Join(PROTOCOL_VERSION, code, "Sari"))
+                val guestId = (guest.receiveServer() as ServerMessage.Welcome).memberId
+                host.receiveServer()
+                host.sendClient(ClientMessage.Send("k", Command.Kick(guestId)))
+                assertEquals(ServerMessage.Kicked, guest.receiveServer())
+                assertTrue(guest.closedByServer())
+                assertEquals(listOf("Budi"), (host.receiveServer() as ServerMessage.State).state.members.map { it.name })
+            }
         }
     }
 }

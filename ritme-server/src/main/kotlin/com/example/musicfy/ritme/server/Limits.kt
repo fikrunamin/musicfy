@@ -4,7 +4,12 @@ object Limits {
     const val MAX_MEMBERS = 20
     const val MAX_QUEUE = 500
     const val COMMANDS_PER_SECOND = 10
-    const val MAX_FRAME_BYTES = 64L * 1024
+    /**
+     * Largest inbound frame. Safe because every field has its own cap; outbound frames are not
+     * limited (a 500-entry snapshot is ~200 KB, ~3 MB with every field at its cap): clients must
+     * accept >= 1 MB (4 MB recommended).
+     */
+    const val MAX_FRAME_BYTES = 256L * 1024
     const val MAX_NAME_LENGTH = 32
     const val MAX_VIDEO_ID_LENGTH = 64
     const val MAX_TEXT_LENGTH = 300
@@ -50,6 +55,9 @@ object Limits {
     /** Every inbound frame (pings and garbage included) per connection; beyond this the socket is closed. */
     const val FRAMES_PER_SECOND = 20
     const val FRAME_BURST = 40
+
+    /** Ktor's per-socket inbound and outgoing frame channels (see WebSocketPeer.SEND_BUFFER for ours). */
+    const val WS_CHANNEL_CAPACITY = 8
 
     const val METRICS_INTERVAL_MS = 10 * 60_000L
 

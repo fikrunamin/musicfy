@@ -2,6 +2,7 @@ package com.example.musicfy.ritme.server
 
 import com.example.musicfy.ritme.protocol.ErrorCode
 import com.example.musicfy.ritme.protocol.RitmeJson
+import io.ktor.websocket.ChannelOverflow
 import io.ktor.websocket.CloseReason
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -51,12 +52,34 @@ fun Application.ritmeModule(deps: ServerDeps) {
         timeout = 30.seconds
         maxFrameSize = Limits.MAX_FRAME_BYTES
         masking = false
+        // Ktor's default is UNLIMITED in both directions: a client that stops reading would grow
+        // the outgoing buffer forever (WebSocketPeer's send queue would never fill), and a flood
+        // would pile up inbound frames faster than the frame limiter sees them. Bounded + SUSPEND
+        // turns both into TCP backpressure.
+        channels {
+            incoming = bounded(Limits.WS_CHANNEL_CAPACITY, ChannelOverflow.SUSPEND)
+            outgoing = bounded(Limits.WS_CHANNEL_CAPACITY, ChannelOverflow.SUSPEND)
+        }
     }
 
     launch {
         while (isActive) {
             delay(Limits.SWEEP_INTERVAL_MS)
-            runCatching { registry.sweep() }.onFailure { log.error("room sweep failed", it) }
+            try {
+                registry.sweep()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.error("room sweep failed", e)
+            }
+        }
+    }
+
+    // Counts only: no codes, names or addresses.
+    launch {
+        while (isActive) {
+            delay(Limits.METRICS_INTERVAL_MS)
+            log.info("rooms={} connections={}", registry.size, guard.connections)
         }
     }
 

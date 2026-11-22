@@ -51,6 +51,10 @@ sealed interface Command {
 
 @Serializable
 sealed interface ClientMessage {
+    /**
+     * Inbound frames are limited to 256 KB. Send at most 200 [initialQueue] entries here and the
+     * rest as [Command.Add] batches of at most 200 after Welcome.
+     */
     @Serializable @SerialName("Create")
     data class Create(
         val protocolVersion: Int,
@@ -87,6 +91,12 @@ sealed interface ServerMessage {
     @Serializable @SerialName("Welcome")
     data class Welcome(val memberId: String, val resumeToken: String, val state: RoomState, val serverTime: Long) : ServerMessage
 
+    /**
+     * A full snapshot. Server-to-client frames are not size-limited and can exceed 256 KB (a
+     * 500-entry queue is ~200 KB), so clients must accept inbound frames of at least 1 MB; 4 MB is
+     * recommended, since with every field at its cap a full queue can reach ~3 MB. The same holds
+     * for [Welcome].
+     */
     @Serializable @SerialName("State")
     data class State(val state: RoomState) : ServerMessage
 
