@@ -21,6 +21,7 @@ export interface YTPlayer {
   pauseVideo(): void;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   getCurrentTime(): number;
+  getPlayerState(): number;
   getVideoData(): { video_id?: string };
   destroy(): void;
 }
@@ -101,8 +102,8 @@ export function createYouTubePlayer(
   /** Last accepted state; -1 right after a (re-)cue. Cued/unstarted: seekTo would start playback. */
   let lastState = -1;
   let cuedStartMs: number | null = null;
-  let droppedState: number | null = null;
-  let recheckTimers: ReturnType<typeof setTimeout>[] = [];
+  let dropped = false;
+  let recheckTimers: (ReturnType<typeof setTimeout> | undefined)[] = [];
 
   const cue = (videoId: string, startMs: number | null) => {
     cuedStartMs = startMs;
@@ -124,7 +125,7 @@ export function createYouTubePlayer(
   const emit = (type: PlayerEvent['type']) => onEvent({ type, gen: currentGen });
 
   const acceptState = (state: number) => {
-    droppedState = null;
+    dropped = false;
     if (state === STATE_CUED || state === STATE_PLAYING) {
       awaitingNewVideo = false;
       filterActive = false;
@@ -136,21 +137,27 @@ export function createYouTubePlayer(
   };
 
   const clearRechecks = () => {
-    for (const t of recheckTimers) clearTimeout(t);
+    for (const t of recheckTimers) if (t !== undefined) clearTimeout(t);
     recheckTimers = [];
-    droppedState = null;
+    dropped = false;
   };
 
-  /** A state dropped as stale may have been the real one (cached video data lagging): look again. */
+  /** Something was dropped as stale (cached video data may lag): read the player's actual state. */
   const recheck = () => {
-    if (destroyed || droppedState === null) return;
-    if (!isStale()) acceptState(droppedState);
+    if (destroyed || !dropped || !yt || isStale()) return;
+    acceptState(yt.getPlayerState());
   };
 
   const scheduleRecheck = () => {
-    if (recheckTimers.length > 0) return;
-    const remaining = Math.max(0, loadedAt + STALE_WINDOW_MS - Date.now());
-    recheckTimers = [setTimeout(recheck, RECHECK_MS), setTimeout(recheck, remaining + 1)];
+    const arm = (slot: 0 | 1, delay: number) => {
+      if (recheckTimers[slot]) return;
+      recheckTimers[slot] = setTimeout(() => {
+        recheckTimers[slot] = undefined;
+        recheck();
+      }, delay);
+    };
+    arm(0, RECHECK_MS);
+    arm(1, Math.max(0, loadedAt + STALE_WINDOW_MS - Date.now()) + 1);
   };
 
   const connect = () => {
@@ -173,7 +180,7 @@ export function createYouTubePlayer(
             onStateChange: (e) => {
               if (destroyed) return;
               if (isStale()) {
-                droppedState = e.data;
+                dropped = true;
                 scheduleRecheck();
                 return;
               }

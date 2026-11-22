@@ -9,6 +9,8 @@ class FakeYTPlayer {
   time = 0;
   /** The video the (fake) player currently reports; tests move it to simulate the switch. */
   shownVideoId = '';
+  /** What getPlayerState() reports (YT.PlayerState: 1 playing, 5 cued, ...). */
+  playerState = -1;
   constructor(
     readonly element: HTMLElement,
     readonly options: YTPlayerOptions,
@@ -29,6 +31,9 @@ class FakeYTPlayer {
   }
   getCurrentTime() {
     return this.time;
+  }
+  getPlayerState() {
+    return this.playerState;
   }
   getVideoData() {
     return { video_id: this.shownVideoId };
@@ -243,9 +248,49 @@ describe('createYouTubePlayer', () => {
       expect(events).toEqual([]);
       expect(player.currentMs()).toBeNull();
       yt.shownVideoId = 'b'; // no further state events
+      yt.playerState = 1;
       vi.advanceTimersByTime(250);
       expect(events).toEqual([{ type: 'playing', gen: 2 }]);
       expect(player.currentMs()).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a stale ENDED of the previous video is not replayed under the new gen', async () => {
+    const { player, yt, events } = await readyPlayer();
+    player.load({ kind: 'youtube', videoId: 'a' }, 0, 1);
+    yt.shownVideoId = 'a';
+    yt.options.events.onStateChange({ data: 1 });
+    events.length = 0;
+    vi.useFakeTimers();
+    try {
+      player.load({ kind: 'youtube', videoId: 'b' }, 0, 2);
+      yt.options.events.onStateChange({ data: 0 }); // A's ENDED, dropped
+      yt.shownVideoId = 'b';
+      yt.playerState = CUED; // B is actually cued
+      vi.advanceTimersByTime(250);
+      expect(events).toEqual([]);
+      expect(player.currentMs()).not.toBeNull(); // awaiting cleared
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a stale PAUSED after a dropped PLAYING recovers as playing', async () => {
+    const { player, yt, events } = await readyPlayer();
+    player.load({ kind: 'youtube', videoId: 'a' }, 0, 1);
+    yt.shownVideoId = 'a';
+    yt.options.events.onStateChange({ data: CUED });
+    vi.useFakeTimers();
+    try {
+      player.load({ kind: 'youtube', videoId: 'b' }, 0, 2);
+      yt.options.events.onStateChange({ data: 1 }); // B's PLAYING, dropped (cache lags)
+      yt.options.events.onStateChange({ data: 2 }); // A's stale PAUSED, dropped
+      yt.shownVideoId = 'b';
+      yt.playerState = 1;
+      vi.advanceTimersByTime(250);
+      expect(events).toEqual([{ type: 'playing', gen: 2 }]);
     } finally {
       vi.useRealTimers();
     }
