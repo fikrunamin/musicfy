@@ -1,0 +1,19 @@
+{
+    "type": "Command",
+    "reqId": "r1",
+    "cmd": {
+        "type": "Add",
+        "entries": [
+            {
+                "videoId": "",
+                "title": "Live stream",
+                "artist": "",
+                "thumbnailUrl": null,
+                "durationMs": 0,
+                "kind": "URL",
+                "url": "https://example.com/live/index.m3u8"
+            }
+        ],
+        "playNext": false
+    }
+}

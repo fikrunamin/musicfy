@@ -1,0 +1,8 @@
+{
+    "type": "Command",
+    "reqId": "r1",
+    "cmd": {
+        "type": "Remove",
+        "entryId": "e1"
+    }
+}

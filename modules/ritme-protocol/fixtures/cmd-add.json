@@ -1,0 +1,19 @@
+{
+    "type": "Command",
+    "reqId": "r1",
+    "cmd": {
+        "type": "Add",
+        "entries": [
+            {
+                "videoId": "dQw4w9WgXcQ",
+                "title": "Never Gonna Give You Up",
+                "artist": "Rick Astley",
+                "thumbnailUrl": null,
+                "durationMs": 213000,
+                "kind": "YOUTUBE_MUSIC",
+                "url": null
+            }
+        ],
+        "playNext": true
+    }
+}

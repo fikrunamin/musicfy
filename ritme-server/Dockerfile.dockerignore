@@ -1,0 +1,12 @@
+*
+!gradlew
+!gradle/
+!modules/ritme-protocol/
+!ritme-server/
+!ritme-web/
+**/build/
+**/.gradle/
+**/node_modules/
+ritme-web/dist/
+ritme-web/test-results/
+ritme-web/playwright-report/

@@ -1,0 +1,9 @@
+# Append to the host Caddyfile (replace the domain and port if you changed them), then:
+#   caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
+# No `log` directive: Caddy writes no access log for this site (room codes are in /r/{code},
+# search queries in /api/search?q=). Caddy replaces any client-sent X-Forwarded-For (no
+# trusted_proxies), which the server relies on for per-IP limits.
+ritme.example.com {
+	encode gzip
+	reverse_proxy 127.0.0.1:18080
+}

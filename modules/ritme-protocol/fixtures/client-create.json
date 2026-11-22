@@ -1,0 +1,18 @@
+{
+    "type": "Create",
+    "protocolVersion": 1,
+    "name": "Budi",
+    "initialQueue": [
+        {
+            "videoId": "dQw4w9WgXcQ",
+            "title": "Never Gonna Give You Up",
+            "artist": "Rick Astley",
+            "thumbnailUrl": null,
+            "durationMs": 213000,
+            "kind": "YOUTUBE_MUSIC",
+            "url": null
+        }
+    ],
+    "startIndex": 0,
+    "startPositionMs": 0
+}

@@ -1,0 +1,40 @@
+# On the VPS, from this directory:  cp .env.example .env  (edit)  &&  docker compose up -d --build
+services:
+  ritme:
+    build:
+      context: ../..
+      dockerfile: ritme-server/Dockerfile
+    image: ritme-server:latest
+    restart: unless-stopped
+    mem_limit: 1408m
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    environment:
+      PUBLIC_URL: https://${RITME_DOMAIN}
+    # Not published to the internet: only Caddy talks to it (it trusts X-Forwarded-For).
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      - ritme
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      RITME_DOMAIN: ${RITME_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

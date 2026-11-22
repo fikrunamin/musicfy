@@ -1,0 +1,19 @@
+# For a VPS that already runs Caddy natively (systemd) for other sites. Runs only the Ritme
+# container, from the image GitHub Actions publishes, bound to 127.0.0.1 so only the local Caddy
+# can reach it (the server trusts X-Forwarded-For). Add Caddyfile.snippet to the host Caddyfile.
+#
+#   cp .env.example .env   (edit)   &&   docker compose pull   &&   docker compose up -d
+services:
+  ritme:
+    image: ghcr.io/fikrunamin/ritme-server:${RITME_TAG:-latest}
+    restart: unless-stopped
+    mem_limit: 1408m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    environment:
+      PUBLIC_URL: https://${RITME_DOMAIN}
+    ports:
+      - "127.0.0.1:${RITME_HOST_PORT:-18080}:8080"
