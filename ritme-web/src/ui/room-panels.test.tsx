@@ -103,6 +103,21 @@ describe('SearchPanel', () => {
     expect(session.add).toHaveBeenLastCalledWith(expect.objectContaining({ videoId: 'dQw4w9WgXcQ' }), true);
   });
 
+  it('shows only https YouTube thumbnails in the results, else the placeholder', async () => {
+    const results = [
+      { ...song, videoId: 'aaaaaaaaaaa', title: 'A', thumbnailUrl: 'https://i.ytimg.com/vi/a/hq.jpg' },
+      { ...song, videoId: 'bbbbbbbbbbb', title: 'B', thumbnailUrl: 'http://i.ytimg.com/vi/b/hq.jpg' },
+      { ...song, videoId: 'ccccccccccc', title: 'C', thumbnailUrl: 'https://evil.example/c.jpg' },
+    ];
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(results), { status: 200 })) as unknown as typeof fetch;
+    render(<SearchPanel session={fakeSession()} online fetchImpl={fetchImpl} />);
+    fireEvent.input(screen.getByLabelText('Cari lagu'), { target: { value: 'rick' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cari' }));
+    await screen.findByRole('button', { name: 'Tambah: A' });
+    expect([...document.querySelectorAll('img.thumb')].map((i) => i.getAttribute('src'))).toEqual(['https://i.ytimg.com/vi/a/hq.jpg']);
+    expect(document.querySelectorAll('.thumb-empty')).toHaveLength(2);
+  });
+
   it('explains rate limiting', async () => {
     const fetchImpl = vi.fn(async () => new Response('', { status: 429 })) as unknown as typeof fetch;
     render(<SearchPanel session={fakeSession()} online fetchImpl={fetchImpl} />);

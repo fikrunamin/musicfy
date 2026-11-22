@@ -66,14 +66,20 @@ export async function searchSongs(
   }
 }
 
-function validThumbnail(thumb: string | null): string | null {
+/** The URL when it is an https URL of at most 512 chars (what the server accepts), else null. */
+export function httpsThumbnail(thumb: string | null): string | null {
   if (!thumb || !thumb.startsWith('https://') || thumb.length > MAX_THUMBNAIL_URL_LENGTH) return null;
-  let host: string;
   try {
-    host = new URL(thumb).hostname.toLowerCase();
+    return new URL(thumb).protocol === 'https:' ? thumb : null;
   } catch {
     return null;
   }
+}
+
+/** An https thumbnail on a YouTube image host (search results), else null. */
+export function validThumbnail(thumb: string | null): string | null {
+  if (!httpsThumbnail(thumb)) return null;
+  const host = new URL(thumb!).hostname.toLowerCase();
   return host === 'i.ytimg.com' || THUMBNAIL_HOST_SUFFIXES.some((s) => host.endsWith(s)) ? thumb : null;
 }
 

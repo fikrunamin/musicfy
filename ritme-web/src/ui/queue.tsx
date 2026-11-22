@@ -1,3 +1,4 @@
+import { httpsThumbnail } from '../net/search';
 import { type QueueEntry, type RoomState, isLive } from '../protocol';
 import { canControl, canRemove, moveDownTarget, moveUpTarget, splitQueue } from '../session/permissions';
 import type { SessionApi } from '../session/session';
@@ -14,9 +15,11 @@ interface Props {
   pageIsHttps: boolean;
 }
 
-export function Thumb({ entry }: { entry: QueueEntry }) {
-  return entry.thumbnailUrl ? (
-    <img class="thumb" src={entry.thumbnailUrl} alt="" loading="lazy" referrerpolicy="no-referrer" width={48} height={48} />
+/** A 48 px thumbnail, or the placeholder unless the URL is https (entries come from any client). */
+export function Thumb({ url }: { url: string | null }) {
+  const src = httpsThumbnail(url);
+  return src ? (
+    <img class="thumb" src={src} alt="" loading="lazy" referrerpolicy="no-referrer" width={48} height={48} />
   ) : (
     <div class="thumb thumb-empty" aria-hidden="true">
       ♪
@@ -32,7 +35,7 @@ function Row({ entry, session, room, memberId, unplayable, online, pageIsHttps, 
   const label = unplayableLabel(entry, unplayable, pageIsHttps);
   return (
     <li class="queue-row">
-      <Thumb entry={entry} />
+      <Thumb url={entry.thumbnailUrl} />
       <div class="queue-text">
         <span class="title">{entry.title}</span>
         <span class="muted small">

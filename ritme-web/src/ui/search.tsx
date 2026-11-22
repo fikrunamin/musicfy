@@ -1,7 +1,8 @@
 import { useRef, useState } from 'preact/hooks';
-import { type SearchResult, searchSongs, toNewEntry } from '../net/search';
+import { type SearchResult, searchSongs, toNewEntry, validThumbnail } from '../net/search';
 import type { SessionApi } from '../session/session';
 import { formatMs } from './format';
+import { Thumb } from './queue';
 import { searchFailureText, t } from './strings';
 
 interface Props {
@@ -67,13 +68,7 @@ export function SearchPanel({ session, online, fetchImpl }: Props) {
         <ul class="queue">
           {results.map((r) => (
             <li key={r.videoId} class="queue-row">
-              {r.thumbnailUrl ? (
-                <img class="thumb" src={r.thumbnailUrl} alt="" loading="lazy" referrerpolicy="no-referrer" width={48} height={48} />
-              ) : (
-                <div class="thumb thumb-empty" aria-hidden="true">
-                  ♪
-                </div>
-              )}
+              <Thumb url={validThumbnail(r.thumbnailUrl)} />
               <div class="queue-text">
                 <span class="title">{r.title}</span>
                 <span class="muted small">
