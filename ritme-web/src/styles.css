@@ -307,8 +307,9 @@ input:not([type]) {
 .now-row,
 .queue-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 4px 12px;
 }
 
 .queue {
@@ -338,6 +339,19 @@ input:not([type]) {
   display: flex;
   gap: 2px;
   flex-shrink: 0;
+}
+
+/* Narrow screens: keep the title readable, actions drop onto their own line. */
+@media (max-width: 400px) {
+  .queue-text {
+    flex: 1 1 0;
+    min-width: 120px;
+  }
+
+  .queue-actions {
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
 }
 
 .thumb {
