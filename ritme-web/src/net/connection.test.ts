@@ -96,6 +96,17 @@ describe('RitmeConnection: joining', () => {
     expect(t.last().closed).toBe(true);
   });
 
+  it('a RATE_LIMITED first join ends as rejected but keeps the resume token for a retry', () => {
+    const storage = memoryStore();
+    storage.set(RESUME_KEY, JSON.stringify({ code: 'K7M2QX', token: 'old' }));
+    const t = setup(storage);
+    t.conn.start({ kind: 'join', code: 'K7M2QX', name: 'Sari' });
+    t.last().open();
+    t.last().receive({ type: 'Error', reqId: null, code: 'RATE_LIMITED' });
+    expect(t.ended()).toEqual([{ type: 'ended', reason: { kind: 'rejected', code: 'RATE_LIMITED' } }]);
+    expect(JSON.parse(storage.get(RESUME_KEY)!)).toEqual({ code: 'K7M2QX', token: 'old' });
+  });
+
   it('a server that cannot be reached ends as unreachable (close or connect timeout)', () => {
     const closed = setup();
     closed.conn.start({ kind: 'create', name: 'Budi' });
@@ -496,6 +507,46 @@ describe('RitmeConnection: snapshot acks', () => {
     sock.open();
     expect(() => sock.receive({ ...welcome(), state: room({ version: 8 }) })).toThrow('boom');
     expect(sock.sent.filter((m) => m.type === 'Ack')).toEqual([{ type: 'Ack', version: 8 }]);
+  });
+
+  it('still reports online (and pings) when the welcome listener throws', () => {
+    const sock = new FakeSocket('ws://x');
+    const events: string[] = [];
+    const conn = new RitmeConnection({
+      url: 'ws://x',
+      socketFactory: () => sock,
+      storage: memoryStore(),
+      now: () => Date.now(),
+      onEvent: (e) => {
+        events.push(e.type === 'status' ? `status:${e.status}` : e.type);
+        if (e.type === 'welcome') throw new Error('boom');
+      },
+    });
+    conn.start({ kind: 'join', code: 'K7M2QX', name: 'Sari' });
+    sock.open();
+    expect(() => sock.receive({ ...welcome(), state: room({ version: 3 }) })).toThrow('boom');
+    expect(events).toEqual(['status:connecting', 'welcome', 'status:online']);
+    expect(sock.sent.filter((m) => m.type === 'Ack')).toEqual([{ type: 'Ack', version: 3 }]);
+    vi.advanceTimersByTime(1_000);
+    expect(sock.types().filter((x) => x === 'Ping')).toHaveLength(5);
+  });
+
+  it('leaves no timers behind when a welcome listener leaves at once', () => {
+    let conn: RitmeConnection | null = null;
+    const sock = new FakeSocket('ws://x');
+    conn = new RitmeConnection({
+      url: 'ws://x',
+      socketFactory: () => sock,
+      storage: memoryStore(),
+      now: () => Date.now(),
+      onEvent: (e) => {
+        if (e.type === 'welcome') conn!.leave();
+      },
+    });
+    conn.start({ kind: 'join', code: 'K7M2QX', name: 'Sari' });
+    sock.open();
+    sock.receive(welcome());
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('sends no Ack after leave, and none on a replaced socket', () => {

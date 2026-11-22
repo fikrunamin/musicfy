@@ -171,7 +171,8 @@ export class RitmeConnection {
         startPositionMs: 0,
       };
     }
-    // A reload resume that hits RATE_LIMITED before any Welcome ends as rejected (not retried): intentional.
+    // A reload resume that hits RATE_LIMITED before any Welcome ends as rejected (not retried):
+    // intentional. The token is kept, so trying again later still resumes.
     const resume = this.resume ?? readResume(this.opts.storage);
     return {
       type: 'Join',
@@ -193,17 +194,25 @@ export class RitmeConnection {
         this.intent = { kind: 'join', code: message.state.code, name: this.intent!.name };
         this.resume = { code: message.state.code, token: message.resumeToken };
         writeResume(this.opts.storage, { code: message.state.code, token: message.resumeToken });
-        // finally: a throwing listener must not skip the Ack, or the server withholds every newer snapshot.
+        const socket = this.socket!;
+        // finally: a throwing welcome listener must not leave the UI offline, nor skip the Ack (the
+        // server withholds every newer snapshot) or the pings; the exception still propagates.
         try {
           this.emit({ type: 'welcome', welcome: message, receivedAt: this.opts.now() });
-          this.emit({ type: 'status', status: 'online' });
         } finally {
-          this.ack(message.state.version);
+          try {
+            this.emit({ type: 'status', status: 'online' });
+          } finally {
+            this.ack(message.state.version);
+            // After the welcome event, so the session has reset its clock before the first Pong;
+            // not if a listener already left (no timers outliving the socket).
+            if (this.socket === socket) {
+              this.pingBurst();
+              this.later(PING_INTERVAL_MS, () => this.pingLoop());
+              this.watchIdle(socket);
+            }
+          }
         }
-        // After the welcome event, so the session has reset its clock before the first Pong.
-        this.pingBurst();
-        this.later(PING_INTERVAL_MS, () => this.pingLoop());
-        this.watchIdle(this.socket!);
         return;
       }
       case 'State':
@@ -273,7 +282,9 @@ export class RitmeConnection {
   private finish(reason: EndReason): void {
     if (this.ended) return;
     this.ended = true;
-    if (reason.kind !== 'unreachable') {
+    // Transient failures keep ritme.resume so a retry (or reload) can still resume the member.
+    const transient = reason.kind === 'unreachable' || (reason.kind === 'rejected' && reason.code === 'RATE_LIMITED');
+    if (!transient) {
       this.resume = null;
       this.opts.storage.remove(RESUME_KEY);
     }
