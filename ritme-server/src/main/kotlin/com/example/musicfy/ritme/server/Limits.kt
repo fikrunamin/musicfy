@@ -9,6 +9,10 @@ object Limits {
     const val MAX_VIDEO_ID_LENGTH = 64
     const val MAX_TEXT_LENGTH = 300
     const val MAX_URL_LENGTH = 2_048
+    const val MAX_THUMBNAIL_URL_LENGTH = 512
+
+    /** Longest accepted entry, and the furthest a live stream can be seeked or started. */
+    const val MAX_DURATION_MS = 86_400_000L
 
     /** A disconnected member keeps their seat (and host role) this long. */
     const val GRACE_MS = 30_000L

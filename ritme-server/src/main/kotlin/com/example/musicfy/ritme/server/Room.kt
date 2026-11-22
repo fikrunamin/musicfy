@@ -5,18 +5,29 @@ import com.example.musicfy.ritme.protocol.ErrorCode
 import com.example.musicfy.ritme.protocol.Member
 import com.example.musicfy.ritme.protocol.RoomState
 import com.example.musicfy.ritme.protocol.ServerMessage
+import com.example.musicfy.ritme.protocol.encode
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+
+/**
+ * A server message together with its JSON, encoded exactly once however many peers receive it
+ * (a full room snapshot can be hundreds of KB).
+ */
+class Outgoing(val message: ServerMessage) {
+    val text: String = message.encode()
+}
 
 /**
  * One client connection, as the room sees it. send/close are called while the room lock is held:
  * implementations must not suspend for long (buffer or drop, close asynchronously).
  */
 interface Peer {
-    suspend fun send(message: ServerMessage)
+    suspend fun send(message: Outgoing)
 
     suspend fun close()
 }
+
+suspend fun Peer.send(message: ServerMessage) = send(Outgoing(message))
 
 /**
  * Live room: applies [RoomLogic] under a mutex, tracks connections, resume tokens and grace
@@ -180,9 +191,10 @@ class Room(initial: RoomState, private val clock: Clock, private val ids: IdGen)
 
     private suspend fun closeAll() {
         closed = true
+        val roomClosed = Outgoing(ServerMessage.RoomClosed)
         peers.values.forEach { peer ->
             runCatching {
-                peer.send(ServerMessage.RoomClosed)
+                peer.send(roomClosed)
                 peer.close()
             }
         }
@@ -191,7 +203,8 @@ class Room(initial: RoomState, private val clock: Clock, private val ids: IdGen)
     }
 
     private suspend fun broadcast(message: ServerMessage, except: String? = null) {
-        peers.forEach { (id, peer) -> if (id != except) runCatching { peer.send(message) } }
+        val outgoing = Outgoing(message)
+        peers.forEach { (id, peer) -> if (id != except) runCatching { peer.send(outgoing) } }
     }
 }
 

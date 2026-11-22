@@ -22,12 +22,12 @@ import kotlinx.coroutines.withContext
  * [SEND_BUFFER] messages behind is disconnected; it can resume with its token and get fresh state.
  */
 class WebSocketPeer(private val session: DefaultWebSocketServerSession) : Peer {
-    private val queue = Channel<ServerMessage>(capacity = SEND_BUFFER)
+    private val queue = Channel<Outgoing>(capacity = SEND_BUFFER)
     private val pump = session.launch {
-        for (message in queue) session.outgoing.send(Frame.Text(message.encode()))
+        for (message in queue) session.outgoing.send(Frame.Text(message.text))
     }.also { job -> job.invokeOnCompletion { queue.close() } }
 
-    override suspend fun send(message: ServerMessage) {
+    override suspend fun send(message: Outgoing) {
         val result = queue.trySend(message)
         if (result.isClosed) throw ClosedSendChannelException("peer closed")
         if (result.isFailure) close()

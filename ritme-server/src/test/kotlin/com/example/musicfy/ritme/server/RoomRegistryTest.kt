@@ -233,4 +233,18 @@ class RoomRegistryTest {
         assertNull(registry.get(host.room.code))
         assertEquals(JoinResult.Rejected(ErrorCode.ROOM_NOT_FOUND), host.room.join("Late", null, FakePeer()))
     }
+
+    @Test
+    fun aBroadcastIsEncodedOnceForAllPeers() = runBlocking {
+        val hostPeer = FakePeer()
+        val host = create(hostPeer, queue = listOf(newEntry()))
+        val guestPeer = FakePeer()
+        join(host.room.code, guestPeer)
+        host.room.command(host.memberId, "p", Command.Pause)
+        val toHost = hostPeer.outgoing.last()
+        val toGuest = guestPeer.outgoing.last()
+        assertTrue(toHost.message is ServerMessage.State)
+        assertSame(toHost, toGuest)
+        assertSame(toHost.text, toGuest.text)
+    }
 }

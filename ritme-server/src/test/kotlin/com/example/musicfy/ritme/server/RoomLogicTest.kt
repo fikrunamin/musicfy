@@ -259,4 +259,75 @@ class RoomLogicTest {
         val ended = ok(apply(state.copy(queue = listOf(live)), HOST, Command.Next))
         assertEquals(false, ended.playback.isPlaying)
     }
+
+    @Test
+    fun entriesCarryOnlyTheFieldsTheirKindNeeds() {
+        fun add(e: NewEntry) = apply(playingA, HOST, Command.Add(listOf(e)))
+        val yt = newEntry()
+        val url = NewEntry("", "Clip", "", null, 60_000, MediaKind.URL, "https://cdn.example/v.mp4")
+        assertEquals(ErrorCode.INVALID, rejected(add(yt.copy(url = "https://x/" + "a".repeat(1_000)))))
+        assertEquals(ErrorCode.INVALID, rejected(add(yt.copy(kind = MediaKind.YOUTUBE_VIDEO, url = "https://x/v"))))
+        assertEquals(ErrorCode.INVALID, rejected(add(url.copy(videoId = "dQw4w9WgXcQ"))))
+        listOf("", "a b", "a/b", "<script>", "é", "a".repeat(Limits.MAX_VIDEO_ID_LENGTH + 1)).forEach {
+            assertEquals("videoId '$it'", ErrorCode.INVALID, rejected(add(yt.copy(videoId = it))))
+        }
+        ok(add(yt.copy(videoId = "Az09_-")))
+        ok(add(yt.copy(videoId = "a".repeat(Limits.MAX_VIDEO_ID_LENGTH))))
+        ok(add(url))
+    }
+
+    @Test
+    fun thumbnailsAreShortHttpsLinksAndYoutubeOnesComeFromYoutubeHosts() {
+        fun add(e: NewEntry) = apply(playingA, HOST, Command.Add(listOf(e)))
+        val yt = newEntry()
+        val url = NewEntry("", "Clip", "", null, 60_000, MediaKind.URL, "https://cdn.example/v.mp4")
+        listOf(
+            "https://i.ytimg.com/vi/x/hqdefault.jpg",
+            "https://i9.ytimg.com/vi/x/hq.jpg",
+            "https://lh3.googleusercontent.com/abc=w544-h544",
+            "https://yt3.ggpht.com/abc",
+        ).forEach { ok(add(yt.copy(thumbnailUrl = it))) }
+        listOf(
+            "http://i.ytimg.com/vi/x/hqdefault.jpg",
+            "https://evil.example/t.jpg",
+            "https://i.ytimg.com.evil.example/t.jpg",
+            "https://ytimg.com.evil.example/t.jpg",
+            "https://notytimg.com/t.jpg",
+            "https://i.ytimg.com/" + "a".repeat(Limits.MAX_THUMBNAIL_URL_LENGTH),
+            "https://i.ytimg.com/a b^",
+            "javascript:alert(1)",
+        ).forEach { assertEquals("thumbnail $it", ErrorCode.INVALID, rejected(add(yt.copy(thumbnailUrl = it)))) }
+        ok(add(url.copy(thumbnailUrl = "https://cdn.example/poster.jpg")))
+        assertEquals(ErrorCode.INVALID, rejected(add(url.copy(thumbnailUrl = "http://cdn.example/poster.jpg"))))
+        assertEquals(
+            ErrorCode.INVALID,
+            rejected(add(url.copy(thumbnailUrl = "https://cdn.example/" + "a".repeat(Limits.MAX_THUMBNAIL_URL_LENGTH)))),
+        )
+    }
+
+    @Test
+    fun durationsAndLivePositionsAreBoundedToADay() {
+        assertEquals(ErrorCode.INVALID, rejected(apply(playingA, HOST, Command.Add(listOf(newEntry(durationMs = Limits.MAX_DURATION_MS + 1))))))
+        ok(apply(playingA, HOST, Command.Add(listOf(newEntry(durationMs = Limits.MAX_DURATION_MS)))))
+        val live = QueueEntry("live", "", "Live", "", null, 0, HOST, MediaKind.URL, "https://example.com/live.m3u8")
+        val state = roomState(queue = listOf(live), currentEntryId = "live", playback = Playback(true, 0, now))
+        assertEquals(Limits.MAX_DURATION_MS, ok(apply(state, HOST, Command.Seek(Long.MAX_VALUE))).playback.positionMs)
+        val create = ClientMessage.Create(
+            PROTOCOL_VERSION,
+            "Host",
+            listOf(NewEntry("", "Live", "", null, 0, MediaKind.URL, "https://example.com/live.m3u8")),
+            startPositionMs = Long.MAX_VALUE,
+        )
+        assertEquals(Limits.MAX_DURATION_MS, RoomLogic.newRoom("ABCDEF", HOST, "Host", create, now, ids).playback.positionMs)
+    }
+
+    @Test
+    fun newRoomDropsInvalidInitialEntries() {
+        val create = ClientMessage.Create(
+            PROTOCOL_VERSION,
+            "Host",
+            listOf(newEntry().copy(url = "javascript:" + "a".repeat(60_000)), newEntry("ok")),
+        )
+        assertEquals(listOf("ok"), RoomLogic.newRoom("ABCDEF", HOST, "Host", create, now, ids).queue.map { it.videoId })
+    }
 }

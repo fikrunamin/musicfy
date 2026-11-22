@@ -12,6 +12,7 @@ import com.example.musicfy.ritme.protocol.RoomState
 import com.example.musicfy.ritme.protocol.currentEntry
 import com.example.musicfy.ritme.protocol.isLive
 import com.example.musicfy.ritme.protocol.positionAt
+import java.net.URI
 
 /** Side effects a command asks the stateful [Room] to carry out. */
 sealed interface Effect {
@@ -70,7 +71,7 @@ object RoomLogic {
             queue = queue,
         )
         val start = queue.getOrNull(create.startIndex) ?: queue.firstOrNull() ?: return base
-        val startAt = if (start.isLive) create.startPositionMs.coerceAtLeast(0) else create.startPositionMs.coerceIn(0, start.durationMs)
+        val startAt = clampPosition(start, create.startPositionMs)
         return base.copy(
             currentEntryId = start.entryId,
             playback = Playback(true, startAt, now + Limits.START_DELAY_MS),
@@ -145,7 +146,7 @@ object RoomLogic {
 
     private fun seek(state: RoomState, positionMs: Long, now: Long): Outcome {
         val current = state.currentEntry() ?: return INVALID
-        val clamped = if (current.isLive) positionMs.coerceAtLeast(0) else positionMs.coerceIn(0, current.durationMs)
+        val clamped = clampPosition(current, positionMs)
         return changed(state.copy(playback = Playback(state.playback.isPlaying, clamped, now)))
     }
 
@@ -215,21 +216,40 @@ object RoomLogic {
 
     private fun changed(state: RoomState): Outcome = Outcome.Ok(bump(state))
 
-    private fun NewEntry.isValid(): Boolean {
+    /** Live entries have no end, but positions stay within a day so time arithmetic cannot overflow. */
+    private fun clampPosition(entry: QueueEntry, positionMs: Long): Long =
+        positionMs.coerceIn(0, if (entry.isLive) Limits.MAX_DURATION_MS else entry.durationMs)
+
+    private val VIDEO_ID = Regex("^[A-Za-z0-9_-]{1,${Limits.MAX_VIDEO_ID_LENGTH}}$")
+    private val YOUTUBE_THUMBNAIL_HOST_SUFFIXES = listOf(".ytimg.com", ".googleusercontent.com", ".ggpht.com")
+
+    /**
+     * Every field is bounded so a full queue stays small when it is broadcast: YouTube kinds carry
+     * only a videoId, URL entries only an http(s) url, thumbnails are short https links (for
+     * YouTube kinds only from YouTube's image hosts).
+     */
+    internal fun NewEntry.isValid(): Boolean {
         val source = when (kind) {
-            MediaKind.YOUTUBE_MUSIC, MediaKind.YOUTUBE_VIDEO ->
-                videoId.isNotBlank() && videoId.length <= Limits.MAX_VIDEO_ID_LENGTH
-            MediaKind.URL -> url?.let { u ->
+            MediaKind.YOUTUBE_MUSIC, MediaKind.YOUTUBE_VIDEO -> url == null && VIDEO_ID.matches(videoId)
+            MediaKind.URL -> videoId.isEmpty() && url?.let { u ->
                 u.length <= Limits.MAX_URL_LENGTH && (u.startsWith("https://") || u.startsWith("http://"))
             } == true
         }
         return source &&
             title.isNotBlank() && title.length <= Limits.MAX_TEXT_LENGTH &&
             artist.length <= Limits.MAX_TEXT_LENGTH &&
-            (thumbnailUrl?.length ?: 0) <= Limits.MAX_URL_LENGTH &&
-            durationMs >= 0
+            isValidThumbnail(thumbnailUrl, youtube = kind != MediaKind.URL) &&
+            durationMs in 0..Limits.MAX_DURATION_MS
+    }
+
+    private fun isValidThumbnail(thumbnailUrl: String?, youtube: Boolean): Boolean {
+        if (thumbnailUrl == null) return true
+        if (thumbnailUrl.length > Limits.MAX_THUMBNAIL_URL_LENGTH || !thumbnailUrl.startsWith("https://")) return false
+        if (!youtube) return true
+        val host = runCatching { URI(thumbnailUrl).host }.getOrNull()?.lowercase() ?: return false
+        return host == "i.ytimg.com" || YOUTUBE_THUMBNAIL_HOST_SUFFIXES.any { host.endsWith(it) }
     }
 
     private fun NewEntry.toQueueEntry(entryId: String, addedBy: String) =
-        QueueEntry(entryId, videoId.trim(), title.trim(), artist.trim(), thumbnailUrl, durationMs, addedBy, kind, url?.trim())
+        QueueEntry(entryId, videoId, title.trim(), artist.trim(), thumbnailUrl, durationMs, addedBy, kind, url?.trim())
 }
