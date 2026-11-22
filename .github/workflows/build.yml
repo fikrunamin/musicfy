@@ -47,6 +47,9 @@ jobs:
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
+      - name: Unit tests (shared JVM modules + app)
+        run: ./gradlew --console=plain jvmTests :app:testUniversalFossDebugUnitTest
+
       - name: Build Debug APK
         env:
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}

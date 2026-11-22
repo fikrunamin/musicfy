@@ -8,6 +8,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [Foss, Gms, Fdroid]
 
     steps:
       - uses: actions/checkout@v6
@@ -44,15 +48,24 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-      - name: Build and Lint Universal FOSS Debug APK
-        run: ./gradlew --console=plain assembleUniversalFossDebug :app:lintUniversalFossDebug --warning-mode summary
+      - name: Unit tests (shared JVM modules + app)
+        if: matrix.flavor == 'Foss'
+        run: ./gradlew --console=plain jvmTests :app:testUniversalFossDebugUnitTest
+
+      - name: Build Universal ${{ matrix.flavor }} Debug APK
+        run: ./gradlew --console=plain assembleUniversal${{ matrix.flavor }}Debug --warning-mode summary
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           PULL_REQUEST: "true"
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
           LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
 
+      - name: Lint
+        if: matrix.flavor == 'Foss'
+        run: ./gradlew --console=plain :app:lintUniversalFossDebug
+
       - name: Upload APK
+        if: matrix.flavor == 'Foss'
         uses: actions/upload-artifact@v6
         with:
           name: app-universal-debug-pr-${{ github.event.number }}
