@@ -51,6 +51,24 @@ out of heap it exits and Docker restarts it (`restart: unless-stopped`) instead 
 Every 10 minutes it logs counts only: rooms, room-state bytes, connections, unsent bytes and
 dropped clients.
 
+### VPS that already runs Caddy (prebuilt image)
+
+`deploy/host-caddy/` runs only the Ritme container, pulled from GitHub Container Registry
+(`ghcr.io/<owner>/ritme-server`, published by the "Ritme server" workflow on every push to
+`main`), on `127.0.0.1:${RITME_HOST_PORT:-18080}`. The host's own Caddy terminates HTTPS:
+
+```bash
+cd ritme-server/deploy/host-caddy
+cp .env.example .env                  # set RITME_DOMAIN (and RITME_HOST_PORT if 18080 is taken)
+docker compose pull && docker compose up -d
+# append Caddyfile.snippet (with your domain/port) to /etc/caddy/Caddyfile, then:
+caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
+curl https://$RITME_DOMAIN/healthz    # -> ok
+```
+
+Update: `docker compose pull && docker compose up -d`. A new GHCR package is private until you
+make it public (or `docker login ghcr.io` on the VPS with a token that has `read:packages`).
+
 ### Heap budget
 
 The limits are sized so their worst cases fit the heap (~1020 MB as reported by the JVM at
