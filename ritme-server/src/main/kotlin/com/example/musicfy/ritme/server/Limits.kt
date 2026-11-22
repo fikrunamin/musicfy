@@ -21,6 +21,9 @@ object Limits {
     const val MAX_MEMBERS = 20
     const val MAX_QUEUE = 500
     const val COMMANDS_PER_SECOND = 10
+
+    /** All members of a room together (commands and TrackEnded), on top of the per-member limit. */
+    const val ROOM_COMMANDS_PER_SECOND = 20
     /** Largest inbound frame. Safe because every field has its own cap. */
     const val MAX_FRAME_BYTES = 256L * 1024
 

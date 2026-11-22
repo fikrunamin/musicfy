@@ -396,4 +396,21 @@ class RoomRegistryTest {
         assertTrue(host.room.state.queue.size in 1 until 200)
         assertTrue(budget.usedBytes <= 20_000)
     }
+
+    @Test
+    fun aRoomSharesOneCommandBudgetAcrossItsMembers() = runBlocking {
+        val hostPeer = FakePeer()
+        val host = create(hostPeer, queue = listOf(newEntry()))
+        val guests = List(3) { join(host.room.code) as JoinResult.Joined }
+        val everyone = listOf(host) + guests
+        // 4 members x 8 commands, each within its own 10/s, but 32 > 20 for the room.
+        repeat(8) { i -> everyone.forEach { it.room.command(it.memberId, it.peer, "r$i", Command.Play) } }
+        val limited = everyone.sumOf { m ->
+            (m.peer as FakePeer).received.count { it is ServerMessage.Error && it.code == ErrorCode.RATE_LIMITED }
+        }
+        assertEquals(32 - Limits.ROOM_COMMANDS_PER_SECOND, limited)
+        clock.now += 1_000
+        host.room.command(host.memberId, host.peer, "later", Command.Play)
+        assertFalse(hostPeer.received.contains(ServerMessage.Error("later", ErrorCode.RATE_LIMITED)))
+    }
 }

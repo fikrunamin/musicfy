@@ -100,7 +100,7 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
 | Concurrent sockets | 48 per IP, 1500 total (~60 KB per idle socket, ~90 MB at the cap) | `Error(RATE_LIMITED)`, closed (1013 try again later), hung up within 0.5 s |
 | Rooms | 1500 total; 120 MB of snapshots in total | `Error(ROOM_FULL)` on Create, closed |
 | Inbound frames | 20/s per socket, burst 40 (pings and garbage included) | closed, no message |
-| Commands + TrackEnded | 10/s per member | `Error(RATE_LIMITED)` (TrackEnded: ignored) |
+| Commands + TrackEnded | 10/s per member and 20/s per room | `Error(RATE_LIMITED)` (TrackEnded: ignored) |
 | Unsent messages per client | snapshots coalesce (only the latest `State` waits); at most 2 MB or 64 messages | disconnected; resume with the token for fresh state |
 | Stalled client | a frame not written to the socket within 20 s | disconnected |
 | Server-wide unsent bytes | 96 MB | clients that are behind are disconnected; `Create`/`Join` get `RATE_LIMITED` until it drains |
