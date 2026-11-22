@@ -447,6 +447,9 @@ class RoomLogicTest {
         assertEquals("ab", RoomLogic.cleanText("a\uD800b")) // lone surrogate
         // Only joiners / selectors left: nothing to show, so not a valid name or title.
         assertNull(RoomLogic.cleanName("\u200D\u200C\uFE0F"))
+        // Letters that render blank (Hangul fillers, blank braille) do not count as visible either.
+        listOf("\u3164", "\u2800\u2800", "\u115F\u1160", "\uFFA0").forEach { assertNull(it, RoomLogic.cleanName(it)) }
+        assertEquals("\u3164a", RoomLogic.cleanName("\u3164a"))
         assertEquals(ErrorCode.INVALID, rejected(apply(playingA, HOST, Command.Add(listOf(newEntry().copy(title = "\u200D\u200B"))))))
     }
 }

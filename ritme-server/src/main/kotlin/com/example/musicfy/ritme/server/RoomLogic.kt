@@ -147,9 +147,13 @@ object RoomLogic {
         Character.CONTROL.toInt(),
     )
 
-    /** True when [text] has something to see (not only joiners, selectors, marks or spaces). */
-    private fun hasVisible(text: String): Boolean =
-        text.codePoints().anyMatch { !Character.isWhitespace(it) && Character.getType(it) !in NOT_VISIBLE_TYPES }
+    /** Letters that render as blank: Hangul fillers and the blank braille pattern. */
+    private val BLANK_LETTERS = setOf(0x115F, 0x1160, 0x3164, 0xFFA0, 0x2800)
+
+    /** True when [text] has something to see (not only joiners, selectors, marks, fillers or spaces). */
+    private fun hasVisible(text: String): Boolean = text.codePoints().anyMatch {
+        !Character.isWhitespace(it) && Character.getType(it) !in NOT_VISIBLE_TYPES && it !in BLANK_LETTERS
+    }
 
     /** Bytes of the snapshot as sent (UTF-8 JSON). */
     fun stateBytes(state: RoomState): Int = jsonBytes(state)
