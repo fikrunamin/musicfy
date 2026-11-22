@@ -1,6 +1,8 @@
 package com.example.musicfy.ritme.server
 
+import com.example.musicfy.ritme.protocol.ErrorCode
 import com.example.musicfy.ritme.protocol.RitmeJson
+import io.ktor.websocket.CloseReason
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.http.content.default
@@ -32,14 +34,18 @@ class ServerDeps(
     val clock: Clock = SystemClock,
     val ids: IdGen = SecureIdGen(),
     val search: SearchService = SearchService(InnerTubeSearchBackend(defaultHttpClient()), clock),
+    val socketLimits: SocketLimits = SocketLimits(),
 )
 
 fun Application.ritmeModule(deps: ServerDeps) {
-    val registry = RoomRegistry(deps.clock, deps.ids)
+    val registry = RoomRegistry(deps.clock, deps.ids, deps.socketLimits.maxRooms)
+    val guard = ConnectionGuard(deps.socketLimits, deps.clock)
     val searchLimiter = IpRateLimiter(deps.clock)
 
-    // Only Caddy can reach this server, so its X-Forwarded-For is the real client IP.
-    install(XForwardedHeaders)
+    // Only Caddy can reach this server, so X-Forwarded-For is trustworthy. Caddy (no
+    // trusted_proxies) replaces any client-sent value; the last entry is always the address Caddy
+    // itself saw, which stays correct even if a CDN / trusted_proxies is added in front later.
+    install(XForwardedHeaders) { useLastProxy() }
     install(WebSockets) {
         pingPeriod = 15.seconds
         timeout = 30.seconds
@@ -56,7 +62,18 @@ fun Application.ritmeModule(deps: ServerDeps) {
 
     routing {
         get("/healthz") { call.respondText("ok") }
-        webSocket("/ritme") { ritmeSession(registry, deps.clock) }
+        webSocket("/ritme") {
+            val remoteHost = call.request.origin.remoteHost
+            if (!guard.tryOpen(remoteHost)) {
+                refuse(ErrorCode.RATE_LIMITED, CloseReason.Codes.TRY_AGAIN_LATER)
+                return@webSocket
+            }
+            try {
+                ritmeSession(registry, deps.clock, guard, remoteHost)
+            } finally {
+                guard.release(remoteHost)
+            }
+        }
 
         get("/api/search") {
             val query = call.request.queryParameters["q"]?.trim().orEmpty()

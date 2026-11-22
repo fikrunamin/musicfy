@@ -11,7 +11,7 @@ sealed interface JoinResult {
     data class Rejected(val code: ErrorCode) : JoinResult
 }
 
-class RoomRegistry(private val clock: Clock, private val ids: IdGen) {
+class RoomRegistry(private val clock: Clock, private val ids: IdGen, private val maxRooms: Int = Limits.MAX_ROOMS) {
     private val rooms = ConcurrentHashMap<String, Room>()
 
     val size: Int get() = rooms.size
@@ -21,6 +21,8 @@ class RoomRegistry(private val clock: Clock, private val ids: IdGen) {
     suspend fun create(msg: ClientMessage.Create, peer: Peer): JoinResult {
         if (msg.protocolVersion != PROTOCOL_VERSION) return JoinResult.Rejected(ErrorCode.UPGRADE_REQUIRED)
         val name = RoomLogic.cleanName(msg.name) ?: return JoinResult.Rejected(ErrorCode.INVALID)
+        // Server-wide room cap; reported as ROOM_FULL ("no room for a new room right now").
+        if (rooms.size >= maxRooms) return JoinResult.Rejected(ErrorCode.ROOM_FULL)
         val hostId = ids.memberId()
         repeat(CODE_ATTEMPTS) {
             val code = ids.roomCode()
@@ -33,7 +35,8 @@ class RoomRegistry(private val clock: Clock, private val ids: IdGen) {
                 return JoinResult.Joined(room, hostId)
             }
         }
-        error("no free room code after $CODE_ATTEMPTS attempts")
+        // Practically unreachable (32^6 codes); treated like a full server.
+        return JoinResult.Rejected(ErrorCode.ROOM_FULL)
     }
 
     suspend fun join(msg: ClientMessage.Join, peer: Peer): JoinResult {

@@ -247,4 +247,36 @@ class RoomRegistryTest {
         assertSame(toHost, toGuest)
         assertSame(toHost.text, toGuest.text)
     }
+
+    @Test
+    fun trackEndedSharesTheCommandBudget() = runBlocking {
+        val hostPeer = FakePeer()
+        val host = create(hostPeer, queue = listOf(newEntry("a"), newEntry("b")))
+        val first = host.room.state.queue[0].entryId
+        clock.now += Limits.START_DELAY_MS + 195_000
+        // Play while playing changes nothing but still spends the budget.
+        repeat(Limits.COMMANDS_PER_SECOND) { host.room.command(host.memberId, "r$it", Command.Play) }
+        host.room.trackEnded(host.memberId, first)
+        assertEquals(first, host.room.state.currentEntryId)
+        clock.now += 1_000
+        host.room.trackEnded(host.memberId, first)
+        assertEquals(host.room.state.queue[1].entryId, host.room.state.currentEntryId)
+    }
+
+    @Test
+    fun theServerWideRoomCapIsEnforced() = runBlocking {
+        val small = RoomRegistry(clock, ids, maxRooms = 1)
+        assertTrue(small.create(ClientMessage.Create(PROTOCOL_VERSION, "A"), FakePeer()) is JoinResult.Joined)
+        assertEquals(JoinResult.Rejected(ErrorCode.ROOM_FULL), small.create(ClientMessage.Create(PROTOCOL_VERSION, "B"), FakePeer()))
+    }
+
+    @Test
+    fun runningOutOfRoomCodesIsARejectionNotACrash() = runBlocking {
+        val sameCode = object : IdGen by SeqIds() {
+            override fun roomCode() = "SAME00"
+        }
+        val stuck = RoomRegistry(clock, sameCode)
+        assertTrue(stuck.create(ClientMessage.Create(PROTOCOL_VERSION, "A"), FakePeer()) is JoinResult.Joined)
+        assertEquals(JoinResult.Rejected(ErrorCode.ROOM_FULL), stuck.create(ClientMessage.Create(PROTOCOL_VERSION, "B"), FakePeer()))
+    }
 }

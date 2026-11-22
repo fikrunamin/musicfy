@@ -163,7 +163,7 @@ class IpRateLimiter(private val clock: Clock, private val perMinute: Int = Limit
 
     fun tryAcquire(ip: String): Boolean {
         if (buckets.size > MAX_TRACKED_IPS) buckets.clear()
-        val limiter = buckets.computeIfAbsent(ip) { RateLimiter(perMinute, perMinute / 60.0, clock) }
+        val limiter = buckets.computeIfAbsent(ipKey(ip)) { RateLimiter(perMinute, perMinute / 60.0, clock) }
         return synchronized(limiter) { limiter.tryAcquire() }
     }
 

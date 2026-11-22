@@ -37,6 +37,22 @@ object Limits {
     const val ROOM_CODE_LENGTH = 6
     const val ROOM_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 
+    /** A new socket must have joined (or created) a room within this long, or it is closed. */
+    const val JOIN_DEADLINE_MS = 10_000L
+
+    /** Create/Join attempts per client IP (IPv6: per /64), successful or not. */
+    const val JOINS_PER_MINUTE = 10
+
+    const val MAX_CONNECTIONS_PER_IP = 16
+    const val MAX_CONNECTIONS = 5_000
+    const val MAX_ROOMS = 2_000
+
+    /** Every inbound frame (pings and garbage included) per connection; beyond this the socket is closed. */
+    const val FRAMES_PER_SECOND = 20
+    const val FRAME_BURST = 40
+
+    const val METRICS_INTERVAL_MS = 10 * 60_000L
+
     const val SEARCH_PER_MINUTE = 30
     const val SEARCH_MAX_QUERY_LENGTH = 200
 }

@@ -107,10 +107,7 @@ class Room(initial: RoomState, private val clock: Clock, private val ids: IdGen)
 
     suspend fun command(memberId: String, reqId: String, cmd: Command) = mutex.withLock {
         val sender = peers[memberId] ?: return@withLock
-        val limiter = limiters.getOrPut(memberId) {
-            RateLimiter(Limits.COMMANDS_PER_SECOND, Limits.COMMANDS_PER_SECOND.toDouble(), clock)
-        }
-        if (!limiter.tryAcquire()) {
+        if (!limiter(memberId).tryAcquire()) {
             sender.send(ServerMessage.Error(reqId, ErrorCode.RATE_LIMITED))
             return@withLock
         }
@@ -141,6 +138,8 @@ class Room(initial: RoomState, private val clock: Clock, private val ids: IdGen)
 
     suspend fun trackEnded(memberId: String, entryId: String) = mutex.withLock {
         if (memberId !in peers) return@withLock
+        // Shares the command budget, so end reports cannot be used to spin the room.
+        if (!limiter(memberId).tryAcquire()) return@withLock
         val next = RoomLogic.onTrackEnded(state, entryId, clock.now()) ?: return@withLock
         state = next
         broadcast(ServerMessage.State(next))
@@ -180,6 +179,10 @@ class Room(initial: RoomState, private val clock: Clock, private val ids: IdGen)
             state = RoomLogic.setConnected(state, memberId, false)
         }
         return sent
+    }
+
+    private fun limiter(memberId: String): RateLimiter = limiters.getOrPut(memberId) {
+        RateLimiter(Limits.COMMANDS_PER_SECOND, Limits.COMMANDS_PER_SECOND.toDouble(), clock)
     }
 
     private fun forget(memberId: String) {

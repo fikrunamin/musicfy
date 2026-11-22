@@ -8,13 +8,20 @@ import com.example.musicfy.ritme.protocol.encode
 import io.ktor.server.websocket.DefaultWebSocketServerSession
 import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
+import io.ktor.websocket.FrameTooBigException
+import io.ktor.websocket.ProtocolViolationException
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import java.io.IOException
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.TimeSource
 
 /**
  * Never suspends on the network: messages go into a small per-client queue that its own coroutine
@@ -49,14 +56,46 @@ class WebSocketPeer(private val session: DefaultWebSocketServerSession) : Peer {
 }
 
 /**
- * One connection: Ping works any time; the first other message must be Create or Join; after
- * that, commands go to the room. Dropping the socket starts the member's grace period.
+ * Refuses a socket before it gets a session: tells the client why, then closes. Used for the
+ * connection caps (RATE_LIMITED) and for rejected Create/Join (the rejection's code).
  */
-suspend fun DefaultWebSocketServerSession.ritmeSession(registry: RoomRegistry, clock: Clock) {
+suspend fun DefaultWebSocketServerSession.refuse(code: ErrorCode, reason: CloseReason.Codes = CloseReason.Codes.NORMAL) {
+    // Not under any room lock: send directly so it is flushed before we close.
+    runCatching { outgoing.send(Frame.Text(ServerMessage.Error(code = code).encode())) }
+    close(CloseReason(reason, "rejected"))
+}
+
+/** Abuse (flooding, idling before join): close without an answer. */
+private suspend fun DefaultWebSocketServerSession.closeQuietly() {
+    close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, ""))
+}
+
+/**
+ * One connection: Ping works any time; the first other message must be Create or Join, and the
+ * socket must have joined within [SocketLimits.joinDeadlineMs]; after that, commands go to the
+ * room. Every inbound frame counts against a per-connection limiter. Dropping the socket starts
+ * the member's grace period.
+ */
+suspend fun DefaultWebSocketServerSession.ritmeSession(
+    registry: RoomRegistry,
+    clock: Clock,
+    guard: ConnectionGuard,
+    remoteHost: String,
+) {
+    val limits = guard.limits
     val peer = WebSocketPeer(this)
+    val frames = RateLimiter(limits.frameBurst, limits.framesPerSecond.toDouble(), clock)
+    val joinDeadline = TimeSource.Monotonic.markNow() + limits.joinDeadlineMs.milliseconds
     var session: JoinResult.Joined? = null
     try {
-        for (frame in incoming) {
+        while (true) {
+            val frame = if (session == null) {
+                withTimeoutOrNull(-joinDeadline.elapsedNow()) { incoming.receive() }
+                    ?: return closeQuietly()
+            } else {
+                incoming.receive()
+            }
+            if (!frames.tryAcquire()) return closeQuietly()
             if (frame !is Frame.Text) continue
             val message = runCatching { decodeClientMessage(frame.readText()) }.getOrNull()
             if (message == null) {
@@ -70,18 +109,16 @@ suspend fun DefaultWebSocketServerSession.ritmeSession(registry: RoomRegistry, c
             val joined = session
             if (joined == null) {
                 val result = when (message) {
-                    is ClientMessage.Create -> registry.create(message, peer)
-                    is ClientMessage.Join -> registry.join(message, peer)
+                    is ClientMessage.Create, is ClientMessage.Join -> when {
+                        !guard.tryJoin(remoteHost) -> JoinResult.Rejected(ErrorCode.RATE_LIMITED)
+                        message is ClientMessage.Create -> registry.create(message, peer)
+                        else -> registry.join(message as ClientMessage.Join, peer)
+                    }
                     else -> JoinResult.Rejected(ErrorCode.INVALID)
                 }
                 when (result) {
                     is JoinResult.Joined -> session = result
-                    is JoinResult.Rejected -> {
-                        // Not under any room lock: send directly so it is flushed before we return.
-                        runCatching { outgoing.send(Frame.Text(ServerMessage.Error(code = result.code).encode())) }
-                        close(CloseReason(CloseReason.Codes.NORMAL, "rejected"))
-                        return
-                    }
+                    is JoinResult.Rejected -> return refuse(result.code)
                 }
                 continue
             }
@@ -98,6 +135,13 @@ suspend fun DefaultWebSocketServerSession.ritmeSession(registry: RoomRegistry, c
                 is ClientMessage.Ping -> Unit
             }
         }
+    } catch (_: ClosedReceiveChannelException) {
+        // The client went away or the server closed the socket: a normal end, never an ERROR log.
+    } catch (_: ClosedSendChannelException) {
+    } catch (_: FrameTooBigException) {
+        // Ktor already closed the socket with TOO_BIG.
+    } catch (_: ProtocolViolationException) {
+    } catch (_: IOException) {
     } finally {
         val joined = session
         if (joined != null) {
