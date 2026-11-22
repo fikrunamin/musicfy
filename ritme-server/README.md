@@ -102,7 +102,7 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
 | GET | `/healthz` | `ok` |
 | WS | `/ritme` | Room protocol (see `modules/ritme-protocol`) |
 | GET | `/api/search?q=` | Up to 20 songs `{videoId,title,artist,durationMs,thumbnailUrl}`; 30/min per IP (429), 300 uncached/min in total (503) |
-| GET | `/`, `/r/{code}` | Web client (`ritme-web`), or the landing page with a `musicfy://ritme/{code}` button when `WEB_DIR` has no `index.html` |
+| GET | `/`, `/r/{code}` | Web client (`ritme-web`), or the landing page with a `musicfy://ritme/{code}` button when `WEB_DIR` has no `index.html`. These and the static files are sent with `Content-Security-Policy: frame-ancestors 'none'` and `X-Frame-Options: DENY` |
 
 ## Protocol notes
 
