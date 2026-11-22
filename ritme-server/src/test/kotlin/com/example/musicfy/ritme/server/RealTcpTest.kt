@@ -13,23 +13,26 @@ import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.security.SecureRandom
 import java.util.Base64
 
 /**
- * Over real TCP (the in-memory test engine buffers without limit, so it cannot show backpressure):
- * a client that never reads must be cut off while the rest of the room keeps working.
+ * Over real TCP against Netty: the in-memory test engine buffers without limit and never holds a
+ * half-closed connection, so it cannot show backpressure or clients that ignore Close frames.
  */
-class SlowClientTest {
-    /** A WebSocket client on a raw socket with a tiny receive window that never reads a byte. */
+class RealTcpTest {
+    /** A WebSocket client on a raw socket with a tiny receive window; it reads only when asked. */
     private class DeafClient(port: Int) : AutoCloseable {
         private val socket = Socket().apply {
             receiveBufferSize = 4_096
@@ -57,7 +60,73 @@ class SlowClientTest {
             out.write(ByteArray(payload.size) { (payload[it].toInt() xor mask[it % 4].toInt()).toByte() })
         }
 
+        /** Reads one server frame (servers never mask) and returns its payload as text. */
+        fun readText(): String {
+            val input = socket.getInputStream()
+            fun byte() = input.read().also { if (it < 0) throw IOException("closed") }
+            byte()
+            val len = when (val n = byte() and 0x7f) {
+                126 -> (byte() shl 8) or byte()
+                127 -> (0 until 8).fold(0L) { acc, _ -> (acc shl 8) or byte().toLong() }.toInt()
+                else -> n
+            }
+            return String(input.readNBytes(len))
+        }
+
+        /** Reads (and discards) until the server closes the TCP connection; ms waited, or null on timeout. */
+        fun millisUntilServerHangsUp(timeoutMs: Int): Long? {
+            socket.soTimeout = timeoutMs
+            val start = System.nanoTime()
+            return try {
+                val input = socket.getInputStream()
+                while (input.read() != -1) Unit
+                (System.nanoTime() - start) / 1_000_000
+            } catch (_: SocketTimeoutException) {
+                null
+            } catch (_: IOException) {
+                (System.nanoTime() - start) / 1_000_000 // reset by the server
+            }
+        }
+
         override fun close() = socket.close()
+    }
+
+    private fun <T> withServer(limits: SocketLimits, block: suspend (port: Int) -> T): T = runBlocking {
+        val server = embeddedServer(Netty, port = 0) { ritmeModule(testDeps(socketLimits = limits)) }.start()
+        try {
+            block(server.engine.resolvedConnectors().first().port)
+        } finally {
+            server.stop(0, 0)
+        }
+    }
+
+    @Test
+    fun aClientThatIgnoresTheCloseFrameIsHungUpOnAndFreesItsSlot() = withServer(SocketLimits(joinDeadlineMs = 200, maxConnectionsPerIp = 1)) { port ->
+        DeafClient(port).use { idle ->
+            // Join deadline -> Close frame, never answered -> TCP closed after the handshake timeout.
+            val waited = checkNotNull(idle.millisUntilServerHangsUp(timeoutMs = 10_000)) { "still connected after 10 s" }
+            assertTrue("hung up after $waited ms", waited < 200 + CLOSE_HANDSHAKE_MS + 2_000)
+        }
+        // The per-IP slot (cap 1) is released right after the hang-up.
+        delay(200)
+        DeafClient(port).use { next ->
+            next.send(ClientMessage.Ping(1))
+            val reply = next.readText()
+            assertTrue(reply, reply.contains("Pong")) // accepted, not RATE_LIMITED
+        }
+    }
+
+    @Test
+    fun overCapConnectionsThatIgnoreTheCloseFrameAreHungUpOnToo() = withServer(SocketLimits(maxConnectionsPerIp = 1)) { port ->
+        DeafClient(port).use { first ->
+            first.send(ClientMessage.Ping(1))
+            check(first.readText().contains("Pong")) // its handler runs, so it holds the only slot
+            DeafClient(port).use { refused ->
+                check(refused.readText().contains("RATE_LIMITED"))
+                val waited = checkNotNull(refused.millisUntilServerHangsUp(timeoutMs = 10_000)) { "still connected after 10 s" }
+                assertTrue("hung up after $waited ms", waited < CLOSE_HANDSHAKE_MS + 2_000)
+            }
+        }
     }
 
     @Test

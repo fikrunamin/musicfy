@@ -1,9 +1,7 @@
 package com.example.musicfy.ritme.server
 
-import com.example.musicfy.ritme.protocol.ErrorCode
 import com.example.musicfy.ritme.protocol.RitmeJson
 import io.ktor.websocket.ChannelOverflow
-import io.ktor.websocket.CloseReason
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.http.content.default
@@ -85,18 +83,7 @@ fun Application.ritmeModule(deps: ServerDeps) {
 
     routing {
         get("/healthz") { call.respondText("ok") }
-        webSocket("/ritme") {
-            val remoteHost = call.request.origin.remoteHost
-            if (!guard.tryOpen(remoteHost)) {
-                refuse(ErrorCode.RATE_LIMITED, CloseReason.Codes.TRY_AGAIN_LATER)
-                return@webSocket
-            }
-            try {
-                ritmeSession(registry, deps.clock, guard, remoteHost)
-            } finally {
-                guard.release(remoteHost)
-            }
-        }
+        webSocket("/ritme") { ritmeConnection(registry, deps.clock, guard) }
 
         get("/api/search") {
             val query = call.request.queryParameters["q"]?.trim().orEmpty()

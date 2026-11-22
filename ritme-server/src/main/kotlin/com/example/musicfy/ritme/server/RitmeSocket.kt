@@ -5,6 +5,7 @@ import com.example.musicfy.ritme.protocol.ErrorCode
 import com.example.musicfy.ritme.protocol.ServerMessage
 import com.example.musicfy.ritme.protocol.decodeClientMessage
 import com.example.musicfy.ritme.protocol.encode
+import io.ktor.server.plugins.origin
 import io.ktor.server.websocket.DefaultWebSocketServerSession
 import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
@@ -50,11 +51,11 @@ class WebSocketPeer(private val session: DefaultWebSocketServerSession) : Peer {
     override suspend fun close() {
         if (!queue.close()) return
         session.launch {
-            val closed = withTimeoutOrNull(CLOSE_FLUSH_MS) {
+            withTimeoutOrNull(CLOSE_FLUSH_MS) {
                 pump.join()
                 session.close(CloseReason(CloseReason.Codes.NORMAL, "bye"))
             }
-            if (closed == null) session.cancel() // the client stopped reading: drop it
+            session.endConnection() // also if the client stopped reading or ignores the Close
         }
     }
 
@@ -71,6 +72,47 @@ class WebSocketPeer(private val session: DefaultWebSocketServerSession) : Peer {
 }
 
 /**
+ * Makes sure the connection really ends. After the server sends Close, Ktor keeps the TCP
+ * connection open until the client answers with its own Close (closeReason is already complete by
+ * then, so it cannot tell), which an abusive client never does. So: discard whatever the client
+ * still sends for up to [CLOSE_HANDSHAKE_MS] until its Close ends `incoming`, then cancel the
+ * session, which closes the TCP connection in any case.
+ */
+suspend fun DefaultWebSocketServerSession.endConnection() {
+    withContext(NonCancellable) {
+        withTimeoutOrNull(CLOSE_HANDSHAKE_MS) {
+            runCatching { for (frame in incoming) Unit }
+        }
+    }
+    // The session's scope (not the coroutine running this): closes the TCP connection.
+    cancel()
+}
+
+const val CLOSE_HANDSHAKE_MS = 3_000L
+
+/**
+ * `/ritme`: enforces the connection caps (a slot is held until the TCP connection has really
+ * ended), then runs [ritmeSession].
+ */
+suspend fun DefaultWebSocketServerSession.ritmeConnection(registry: RoomRegistry, clock: Clock, guard: ConnectionGuard) {
+    val remoteHost = call.request.origin.remoteHost
+    if (!guard.tryOpen(remoteHost)) {
+        refuse(ErrorCode.RATE_LIMITED, CloseReason.Codes.TRY_AGAIN_LATER)
+        endConnection()
+        return
+    }
+    try {
+        ritmeSession(registry, clock, guard, remoteHost)
+    } finally {
+        try {
+            endConnection()
+        } finally {
+            guard.release(remoteHost)
+        }
+    }
+}
+
+/**
  * Refuses a socket before it gets a session: tells the client why, then closes. Used for the
  * connection caps (RATE_LIMITED) and for rejected Create/Join (the rejection's code).
  */
@@ -80,9 +122,13 @@ suspend fun DefaultWebSocketServerSession.refuse(code: ErrorCode, reason: CloseR
     close(CloseReason(reason, "rejected"))
 }
 
-/** Abuse (flooding, idling before join): close without an answer. */
+/**
+ * Abuse (flooding, idling before join): no answer and no close handshake; the TCP connection is
+ * dropped right after the Close frame, so a flood is not read any further.
+ */
 private suspend fun DefaultWebSocketServerSession.closeQuietly() {
     close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, ""))
+    cancel()
 }
 
 /**
