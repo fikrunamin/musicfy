@@ -40,11 +40,12 @@ subprojects {
 // per variant via :app:test<Variant>UnitTest. core:designsystem is KMP: its JVM tests are desktopTest.
 tasks.register("jvmTests") {
     group = "verification"
-    description = "Runs unit tests for all :core, :providers and :modules modules."
+    description = "Runs unit tests for all :core, :providers and :modules modules, and :desktopApp."
     val kmpModules = setOf(":core:designsystem")
     dependsOn(
         subprojects
             .filter { it.path.startsWith(":core:") || it.path.startsWith(":providers:") || it.path.startsWith(":modules:") }
             .map { if (it.path in kmpModules) "${it.path}:desktopTest" else "${it.path}:test" },
     )
+    dependsOn(":desktopApp:test")
 }
