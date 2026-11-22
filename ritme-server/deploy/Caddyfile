@@ -1,0 +1,6 @@
+# HTTPS certificates are issued automatically for this domain.
+# Caddy replaces any client-sent X-Forwarded-For (default, no trusted_proxies); the server relies on that.
+{$RITME_DOMAIN} {
+	encode gzip
+	reverse_proxy ritme:8080
+}

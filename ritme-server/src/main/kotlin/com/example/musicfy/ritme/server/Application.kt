@@ -3,12 +3,15 @@ package com.example.musicfy.ritme.server
 import com.example.musicfy.ritme.protocol.RitmeJson
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.http.content.default
+import io.ktor.server.http.content.staticFiles
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.application.log
 import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
 import io.ktor.server.plugins.origin
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondFile
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
@@ -21,6 +24,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
+import java.io.File
 import kotlin.time.Duration.Companion.seconds
 
 class ServerDeps(
@@ -75,6 +79,15 @@ fun Application.ritmeModule(deps: ServerDeps) {
                 return@get
             }
             call.respondText(RitmeJson.encodeToString(ListSerializer(SearchResult.serializer()), results), ContentType.Application.Json)
+        }
+
+        val webIndex = File(deps.config.webDir, "index.html")
+        if (webIndex.isFile) {
+            staticFiles("/", deps.config.webDir) { default("index.html") }
+            get("/r/{code}") { call.respondFile(webIndex) }
+        } else {
+            get("/") { call.respondText(Landing.page(null), ContentType.Text.Html) }
+            get("/r/{code}") { call.respondText(Landing.page(call.parameters["code"]), ContentType.Text.Html) }
         }
     }
 }

@@ -1,0 +1,30 @@
+name: Ritme server
+
+on:
+  push:
+    paths:
+      - "ritme-server/**"
+      - "modules/ritme-protocol/**"
+      - "gradle/libs.versions.toml"
+      - ".github/workflows/ritme-server.yml"
+  pull_request:
+    paths:
+      - "ritme-server/**"
+      - "modules/ritme-protocol/**"
+      - "gradle/libs.versions.toml"
+      - ".github/workflows/ritme-server.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          java-version: 21
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Test protocol and server
+        run: ./gradlew --console=plain -p ritme-server test :ritme-protocol:test
+      - name: Build image
+        run: docker build -f ritme-server/Dockerfile -t ritme-server:ci .

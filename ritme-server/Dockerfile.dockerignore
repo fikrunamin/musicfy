@@ -1,0 +1,7 @@
+*
+!gradlew
+!gradle/
+!modules/ritme-protocol/
+!ritme-server/
+**/build/
+**/.gradle/
