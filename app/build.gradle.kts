@@ -104,6 +104,9 @@ extensions.configure<ApplicationExtension> {
     sourceSets {
         getByName("fdroid") {
             java.directories.add("src/foss/kotlin")
+            // AGP 9's built-in Kotlin only compiles .kt files from kotlin dirs; without this the
+            // foss Cast stubs are invisible to fdroid and the flavor fails to compile.
+            kotlin.directories.add("src/foss/kotlin")
             res.directories.add("src/foss/res")
         }
     }
