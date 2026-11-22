@@ -109,6 +109,7 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
 | Join limiter | per IP (IPv6: per /64): burst 30, refilled 10/min; charged for every `Create` and for failed Joins (`ROOM_NOT_FOUND`, `ROOM_FULL`, `UPGRADE_REQUIRED`); successful joins and resumes are free but need a non-empty bucket | `Error(RATE_LIMITED)`, closed |
 | Concurrent sockets | 48 per IP, 1500 total (~60 KB per idle socket, ~90 MB at the cap) | `Error(RATE_LIMITED)`, closed (1013 try again later), hung up within 0.5 s |
 | Rooms | 1500 total; 120 MB of snapshots in total | `Error(ROOM_FULL)` on Create, closed |
+| Live rooms per creator | 10 per IP (IPv6: per /64), until the room is deleted | `Error(RATE_LIMITED)` on Create, closed |
 | Inbound frames | 20/s per socket, burst 40 (pings and garbage included) | closed, no message |
 | Commands + TrackEnded | 10/s per member and 20/s per room | `Error(RATE_LIMITED)` (TrackEnded: ignored) |
 | Unsent messages per client | snapshots coalesce (only the latest `State` waits); at most 2 MB or 64 messages | disconnected; resume with the token for fresh state |

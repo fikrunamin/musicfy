@@ -413,4 +413,44 @@ class RoomRegistryTest {
         host.room.command(host.memberId, host.peer, "later", Command.Play)
         assertFalse(hostPeer.received.contains(ServerMessage.Error("later", ErrorCode.RATE_LIMITED)))
     }
+
+    @Test
+    fun anAddressCanHoldAtMostTenLiveRooms() = runBlocking {
+        val mine = List(Limits.MAX_ROOMS_PER_IP) {
+            registry.create(ClientMessage.Create(PROTOCOL_VERSION, "H$it"), FakePeer(), "1.2.3.4") as JoinResult.Joined
+        }
+        assertEquals(JoinResult.Rejected(ErrorCode.RATE_LIMITED), registry.create(ClientMessage.Create(PROTOCOL_VERSION, "H"), FakePeer(), "1.2.3.4"))
+        assertTrue(registry.create(ClientMessage.Create(PROTOCOL_VERSION, "Other"), FakePeer(), "5.6.7.8") is JoinResult.Joined)
+        // IPv6 counts per /64.
+        repeat(Limits.MAX_ROOMS_PER_IP) {
+            assertTrue(registry.create(ClientMessage.Create(PROTOCOL_VERSION, "V$it"), FakePeer(), "2001:db8:1:2::$it") is JoinResult.Joined)
+        }
+        assertEquals(
+            JoinResult.Rejected(ErrorCode.RATE_LIMITED),
+            registry.create(ClientMessage.Create(PROTOCOL_VERSION, "V"), FakePeer(), "2001:db8:1:2:ffff::1"),
+        )
+        // A deleted room frees its slot.
+        val gone = mine.first()
+        gone.room.disconnected(gone.memberId, gone.peer)
+        registry.sweep()
+        clock.now += Limits.EMPTY_ROOM_MS
+        registry.sweep()
+        assertEquals(Limits.MAX_ROOMS_PER_IP - 1, registry.roomsCreatedBy("1.2.3.4"))
+        assertTrue(registry.create(ClientMessage.Create(PROTOCOL_VERSION, "H"), FakePeer(), "1.2.3.4") is JoinResult.Joined)
+    }
+
+    @Test
+    fun aFailedCreateDoesNotKeepTheSlot() = runBlocking {
+        repeat(Limits.MAX_ROOMS_PER_IP + 2) {
+            assertEquals(JoinResult.Rejected(ErrorCode.INVALID), registry.create(ClientMessage.Create(PROTOCOL_VERSION, "H"), DeadPeer(), "9.9.9.9"))
+        }
+        assertEquals(0, registry.roomsCreatedBy("9.9.9.9"))
+        val sameCode = object : IdGen by SeqIds() {
+            override fun roomCode() = "SAME00"
+        }
+        val stuck = RoomRegistry(clock, sameCode)
+        assertTrue(stuck.create(ClientMessage.Create(PROTOCOL_VERSION, "A"), FakePeer(), "8.8.8.8") is JoinResult.Joined)
+        assertEquals(JoinResult.Rejected(ErrorCode.ROOM_FULL), stuck.create(ClientMessage.Create(PROTOCOL_VERSION, "B"), FakePeer(), "8.8.8.8"))
+        assertEquals(1, stuck.roomsCreatedBy("8.8.8.8"))
+    }
 }

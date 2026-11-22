@@ -89,6 +89,9 @@ object Limits {
     /** Sized to the heap budget above: ~340 KB worst case per connection. */
     const val MAX_CONNECTIONS = 1_500
 
+    /** Live rooms per creator IP (IPv6: per /64), held until the room is deleted; beyond it RATE_LIMITED. */
+    const val MAX_ROOMS_PER_IP = 10
+
     /** A room lives only while someone is (or was, < 60 s ago) connected: one room per connection. */
     const val MAX_ROOMS = MAX_CONNECTIONS
 

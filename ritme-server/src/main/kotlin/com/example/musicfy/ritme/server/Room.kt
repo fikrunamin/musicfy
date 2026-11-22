@@ -50,6 +50,8 @@ class Room(
     private val clock: Clock,
     private val ids: IdGen,
     private val budget: StateBudget = StateBudget(Long.MAX_VALUE),
+    /** The creator's [ipKey], for the per-IP live-room cap (released with the room). */
+    val creatorKey: String = "",
 ) {
     private val mutex = Mutex()
 
@@ -244,12 +246,13 @@ class Room(
         tokens.clear()
     }
 
-    /** Gives the room's bytes back to the server-wide budget; called once the room is gone. */
-    fun dispose() {
+    /** Gives the room's bytes back to the server-wide budget once the room is gone; true the first time. */
+    fun dispose(): Boolean {
         synchronized(this) {
-            if (disposed) return
+            if (disposed) return false
             disposed = true
             budget.add(-snapshotBytes.toLong())
+            return true
         }
     }
 

@@ -4,8 +4,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * ROOM_FULL also means the server is at its room cap; RATE_LIMITED also means a connection cap
- * was hit (try again later).
+ * ROOM_FULL also means the server is at its room cap or room-state budget; RATE_LIMITED also means
+ * a connection cap, the join limiter or the per-IP live-room cap was hit (try again later).
  */
 @Serializable(with = ErrorCodeSerializer::class)
 enum class ErrorCode {
