@@ -36,13 +36,11 @@ function PlayerHost({ session, room, unplayable, pageIsHttps }: Omit<Props, 'mod
     });
     controller.current = c;
     c.update(room, unplayable);
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') c.resync();
-    };
-    document.addEventListener('visibilitychange', onVisible);
+    // The session decides when: on becoming visible, or once the clock is fresh after a sleep or reconnect.
+    const offResync = session.onResync(() => c.resync());
     const release = keepScreenOn();
     return () => {
-      document.removeEventListener('visibilitychange', onVisible);
+      offResync();
       release();
       c.destroy();
       controller.current = null;
@@ -70,18 +68,20 @@ function PlayerHost({ session, room, unplayable, pageIsHttps }: Omit<Props, 'mod
 export function ListenPanel({ session, room, unplayable, mode, onModeChange, pageIsHttps }: Props) {
   const [gateOpen, setGateOpen] = useState(false);
 
-  // Fetch the IFrame API early so the player appears quickly after the tap.
+  // Fetch the IFrame API early so the player appears quickly after the tap. Remote mode closes
+  // the gate, so coming back to listen asks for a new tap (the autoplay gate, spec 5.4).
   useEffect(() => {
     if (mode === 'listen') loadYouTubeApi().catch(() => {});
+    else setGateOpen(false);
   }, [mode]);
 
   return (
     <section class="card listen" aria-label={t.listenMode}>
-      <div class="segmented" role="radiogroup" aria-label={t.listenMode}>
-        <button type="button" role="radio" aria-checked={mode === 'listen'} onClick={() => onModeChange('listen')}>
+      <div class="segmented" role="group" aria-label={t.modeGroup}>
+        <button type="button" aria-pressed={mode === 'listen'} onClick={() => onModeChange('listen')}>
           {t.listenMode}
         </button>
-        <button type="button" role="radio" aria-checked={mode === 'remote'} onClick={() => onModeChange('remote')}>
+        <button type="button" aria-pressed={mode === 'remote'} onClick={() => onModeChange('remote')}>
           {t.remoteMode}
         </button>
       </div>

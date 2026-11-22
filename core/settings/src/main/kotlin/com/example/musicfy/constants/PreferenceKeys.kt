@@ -1,8 +1,11 @@
 // PreferenceKeys.kt
+//
+// Every preference key must be declared in this file: the golden test (PreferenceKeyNamesTest)
+// reflects only over PreferenceKeysKt (plus playerStyleRotatedKey), so keys declared elsewhere
+// are not pinned against accidental renames.
 
 package com.example.musicfy.constants
 
-import android.os.Build
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -11,7 +14,6 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 
-import com.music.innertube.models.IpVersion
 
 val IsFirstRunKey = booleanPreferencesKey("isFirstRun")
 val EnableDynamicIconKey = booleanPreferencesKey("enableDynamicIcon")
@@ -241,6 +243,8 @@ val AddToPlaylistSortDescendingKey = booleanPreferencesKey("addToPlaylistSortDes
 val ArtistSongSortTypeKey = stringPreferencesKey("artistSongSortType")
 val ArtistSongSortDescendingKey = booleanPreferencesKey("artistSongSortDescending")
 val MixSortTypeKey = stringPreferencesKey("mixSortType")
+// Intentionally shares the stored name "albumSortDescending" with AlbumSortDescendingKey
+// (pre-existing); renaming would reset users' setting.
 val MixSortDescendingKey = booleanPreferencesKey("albumSortDescending")
 
 val SongFilterKey = stringPreferencesKey("songFilter")
@@ -533,21 +537,6 @@ val SeekBarStyleKey = stringPreferencesKey("seekBarStyle")
 val ButtonStyleKey = stringPreferencesKey("buttonStyle")
 
 val PlayerCoverStyleKey = stringPreferencesKey("playerCoverStyle")
-
-/**
- * Cover style to use when the user has not picked one.
- *
- * Edge-to-edge art leans on the backdrop blur behind it to separate the cover from the controls,
- * and that blur needs API 31. Below that the full-bleed art runs straight under the chrome with
- * nothing softening it, so squared reads far better there. This is only the *default* - an
- * explicit choice in Player customise still wins on every device.
- */
-val DefaultPlayerCoverStyle: PlayerCoverStyle
-    get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        PlayerCoverStyle.EDGE_TO_EDGE
-    } else {
-        PlayerCoverStyle.SQUARED
-    }
 
 val ShowBigDiscStylesKey = booleanPreferencesKey("showBigDiscStyles")
 

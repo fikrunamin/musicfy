@@ -42,7 +42,7 @@ export function NowPlaying({ session, room, memberId, unplayable, online, pageIs
     <section class="card now-playing" aria-labelledby="now-title">
       <h2 id="now-title">{t.nowPlaying}</h2>
       <div class="now-row">
-        <Thumb entry={entry} />
+        <Thumb url={entry.thumbnailUrl} />
         <div class="queue-text">
           <span class="title">{entry.title}</span>
           <span class="muted small">
@@ -59,6 +59,7 @@ export function NowPlaying({ session, room, memberId, unplayable, online, pageIs
           <input
             type="range"
             aria-label={t.seek}
+            aria-valuetext={formatMs(position)}
             min={0}
             max={entry.durationMs}
             step={1000}

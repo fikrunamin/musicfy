@@ -2,7 +2,6 @@ import { useState } from 'preact/hooks';
 import type { KeyValueStore } from '../net/storage';
 import { MODE_KEY } from '../net/storage';
 import type { RoomState } from '../protocol';
-import { isHost } from '../session/permissions';
 import type { SessionState } from '../session/reducer';
 import type { SessionApi } from '../session/session';
 import { pageIsHttps } from './badges';
@@ -46,7 +45,6 @@ export function RoomScreen({ session, state, prefs }: Props) {
     prefs.set(MODE_KEY, m);
     setMode(m);
   };
-  const host = isHost(room, memberId);
   const shared = { session, room, memberId, unplayable, online, pageIsHttps: https };
 
   return (
@@ -73,22 +71,11 @@ export function RoomScreen({ session, state, prefs }: Props) {
       <SearchPanel session={session} online={online} />
       <MembersPanel session={session} room={room} memberId={memberId} online={online} />
 
+      {/* Ending the room lives in the members panel's host section, right above. */}
       <footer class="room-footer">
         <button type="button" class="btn" onClick={() => session.leave()}>
           {t.leave}
         </button>
-        {host && (
-          <button
-            type="button"
-            class="btn btn-danger"
-            disabled={!online}
-            onClick={() => {
-              if (window.confirm(t.confirmEnd)) session.endRoom();
-            }}
-          >
-            {t.end}
-          </button>
-        )}
       </footer>
     </main>
   );

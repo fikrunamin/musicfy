@@ -265,7 +265,7 @@ input:not([type]) {
   cursor: pointer;
 }
 
-.segmented button[aria-checked='true'] {
+.segmented button[aria-pressed='true'] {
   background: var(--surface);
   color: var(--fg);
   font-weight: 600;

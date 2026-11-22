@@ -13,6 +13,9 @@ From the repository root (JDK 21):
 ./gradlew -p ritme-server run           # http://localhost:8080
 ```
 
+The web client lives in `ritme-web/` (see its README). The Docker image builds it and serves it
+from `/app/web`.
+
 Protocol shapes live in `modules/ritme-protocol`. After an intentional protocol change, refresh
 the golden fixtures with `./gradlew -p ritme-server :ritme-protocol:test -PupdateGolden=true` and
 review `git diff modules/ritme-protocol/fixtures/`.
@@ -23,7 +26,7 @@ review `git diff modules/ritme-protocol/fixtures/`.
 |---|---|---|
 | `PORT` | `8080` | HTTP port |
 | `PUBLIC_URL` | `http://localhost:8080` | Reserved for share links; not used by the server yet |
-| `WEB_DIR` | `/app/web` | Built web client; without `index.html` a small landing page is served |
+| `WEB_DIR` | `/app/web` | Built web client (`ritme-web/dist`, included in the Docker image); without `index.html` a small landing page is served |
 
 ## Deploy on a VPS (Docker + Caddy)
 
@@ -43,29 +46,52 @@ Rooms live only in memory, so every deploy or restart ends all rooms; clients ge
 and have to create a new room. Deploy when nobody is listening.
 
 Container logs are rotated (json-file, 10 MB x 3 per service); the server runs with a 1408 MB
-memory limit (heap: 75 % of it, ~1056 MB) and `-XX:+ExitOnOutOfMemoryError`, so should it ever run
+memory limit (heap: 75 % of it, ~1020 MB as the JVM reports it) and `-XX:+ExitOnOutOfMemoryError`, so should it ever run
 out of heap it exits and Docker restarts it (`restart: unless-stopped`) instead of limping on.
 Every 10 minutes it logs counts only: rooms, room-state bytes, connections, unsent bytes and
 dropped clients.
 
+### VPS that already runs Caddy (prebuilt image)
+
+`deploy/host-caddy/` runs only the Ritme container, pulled from GitHub Container Registry
+(`ghcr.io/<owner>/ritme-server`, published by the "Ritme server" workflow on every push to
+`main`), on `127.0.0.1:${RITME_HOST_PORT:-18080}`. The host's own Caddy terminates HTTPS:
+
+```bash
+cd ritme-server/deploy/host-caddy
+cp .env.example .env                  # set RITME_DOMAIN (and RITME_HOST_PORT if 18080 is taken)
+docker compose pull && docker compose up -d
+# append Caddyfile.snippet (with your domain/port) to /etc/caddy/Caddyfile, then:
+caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
+curl https://$RITME_DOMAIN/healthz    # -> ok
+```
+
+Update: `docker compose pull && docker compose up -d`. A new GHCR package is private until you
+make it public (or `docker login ghcr.io` on the VPS with a token that has `read:packages`).
+
 ### Heap budget
 
-The limits are sized so their worst cases fit the ~1056 MB heap (see `Limits.kt`):
+The limits are sized so their worst cases fit the heap (~1020 MB as reported by the JVM at
+`mem_limit: 1408m`; see `Limits.kt`):
 
 | Part | Bound | Worst case in heap |
 |---|---|---|
 | Baseline (JVM, Ktor, Netty, caches) | measured | ~80 MB |
-| Connections | 650 x ~0.9 MB worst case (colluding Acks: clients that ack predictable versions without reading can fill Ktor's 1 MiB output buffer; an honest client holds ~60 KB + one unacknowledged 256 KB snapshot) | ~585 MB |
+| Connections | 380 x ~1.5 MB worst case (colluding Acks: clients that ack predictable versions without reading can fill Ktor's 1 MiB output buffer, plus our outgoing slot and the frame being written; measured up to ~1.35 MB. An honest client holds ~60 KB + one unacknowledged 256 KB snapshot) | ~570 MB |
 | Unsent outbound bytes (our outboxes) | server-wide budget | 96 MB |
 | Rooms at rest | 120 MB of encoded snapshots x 1.3 (measured heap/encoded: 0.88-1.27) | ~156 MB |
-| Headroom (GC, in-flight encodes) | rest | >= 130 MB |
+| Headroom (GC, in-flight encodes) | rest | ~118 MB |
 
-At most 650 rooms, of which at most 480 can be full (120 MB / 256 KB).
+At most 380 rooms (the 120 MB room-state budget alone would allow 480 full ones).
 
-Caveat: in one stress run with 570 colluding connections (ack without reading) live heap peaked
-at 883 MB (~1.35 MB per connection; another run peaked at 418 MB). The theoretical bound is
-~1.5 MB per connection, so a full server under that attack can exceed the heap; the JVM then
-exits and Docker restarts it. A per-snapshot ack token (planned) removes this case.
+### Capacity
+
+380 concurrent connections, i.e. about 19 full rooms of 20 members (or many more small rooms of
+a few people each), at `mem_limit: 1408m`. 380 rather than 400 because 400 would leave only ~88 MB
+of headroom at the worst case, and stress runs already showed back-to-back full GCs at 87 % heap
+occupancy. To raise it: the planned per-snapshot ack token (which caps each connection at one
+snapshot again, ~0.35 MB worst case), or more memory (each extra 100 connections needs ~150 MB of
+heap, ~200 MB of `mem_limit`).
 
 The app's server URL setting must be `https://<RITME_DOMAIN>`.
 
@@ -76,7 +102,7 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
 | GET | `/healthz` | `ok` |
 | WS | `/ritme` | Room protocol (see `modules/ritme-protocol`) |
 | GET | `/api/search?q=` | Up to 20 songs `{videoId,title,artist,durationMs,thumbnailUrl}`; 30/min per IP (429), 300 uncached/min in total (503) |
-| GET | `/`, `/r/{code}` | Web client, or the landing page with a `musicfy://ritme/{code}` button |
+| GET | `/`, `/r/{code}` | Web client (`ritme-web`), or the landing page with a `musicfy://ritme/{code}` button when `WEB_DIR` has no `index.html`. These and the static files are sent with `Content-Security-Policy: frame-ancestors 'none'` and `X-Frame-Options: DENY` |
 
 ## Protocol notes
 
@@ -112,8 +138,8 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
 |---|---|---|
 | Join deadline | a socket must have joined a room within 10 s | closed (policy violation), no message |
 | Join limiter | per IP (IPv6: per /64): burst 30, refilled 10/min; charged for every `Create` and for failed Joins (`ROOM_NOT_FOUND`, `ROOM_FULL`, `UPGRADE_REQUIRED`); successful joins and resumes are free but need a non-empty bucket | `Error(RATE_LIMITED)`, closed |
-| Concurrent sockets | 48 per IP, 650 total (sized to the heap budget above) | `Error(RATE_LIMITED)`, closed (1013 try again later), hung up within 0.5 s |
-| Rooms | 650 total; 120 MB of snapshots in total | `Error(ROOM_FULL)` on Create, closed |
+| Concurrent sockets | 48 per IP, 380 total (sized to the heap budget above) | `Error(RATE_LIMITED)`, closed (1013 try again later), hung up within 0.5 s |
+| Rooms | 380 total; 120 MB of snapshots in total | `Error(ROOM_FULL)` on Create, closed |
 | Live rooms per creator | 10 per IP (IPv6: per /64), until the room is deleted | `Error(RATE_LIMITED)` on Create, closed |
 | Inbound frames | 20/s per socket, burst 40 (pings and garbage included; an `Ack` for the snapshot the client is awaiting is free) | closed, no message |
 | Commands + TrackEnded | 10/s per member and 20/s per room | `Error(RATE_LIMITED)` (TrackEnded: ignored) |

@@ -54,3 +54,31 @@ describe('QueueList', () => {
     expect(screen.getAllByText(/oleh Budi/).length).toBeGreaterThan(0);
   });
 });
+
+describe('Thumb', () => {
+  const thumbQueue = (thumbnailUrl: string | null) =>
+    render(
+      <QueueList
+        session={fakeSession()}
+        room={room({ queue: [entry('a'), entry('b', { thumbnailUrl })], currentEntryId: 'a' })}
+        memberId="m1"
+        unplayable={{}}
+        online
+        pageIsHttps
+      />,
+    );
+
+  it('shows an https thumbnail', () => {
+    thumbQueue('https://images.example/b.jpg');
+    expect(document.querySelector('img.thumb')?.getAttribute('src')).toBe('https://images.example/b.jpg');
+  });
+
+  it('shows the placeholder for a non-https thumbnail', () => {
+    thumbQueue('http://images.example/b.jpg');
+    expect(document.querySelector('img.thumb')).toBeNull();
+    expect(document.querySelector('.thumb-empty')).toBeTruthy();
+    cleanup();
+    thumbQueue('javascript:alert(1)');
+    expect(document.querySelector('img.thumb')).toBeNull();
+  });
+});

@@ -33,6 +33,16 @@ function joinIn(t: ReturnType<typeof setup>, intent: JoinIntent = { kind: 'join'
   t.last().receive(welcome());
 }
 
+/** Answers every Ping on the socket with a Pong after `delayMs`, like a live server (keeps the watchdog quiet). */
+function autoPong(socket: FakeSocket, delayMs = 30) {
+  const send = socket.send.bind(socket);
+  socket.send = (d: string) => {
+    send(d);
+    const m = JSON.parse(d);
+    if (m.type === 'Ping') setTimeout(() => socket.receive({ type: 'Pong', clientTime: m.clientTime, serverTime: 1 }), delayMs);
+  };
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(0);
@@ -86,6 +96,17 @@ describe('RitmeConnection: joining', () => {
     expect(t.last().closed).toBe(true);
   });
 
+  it('a RATE_LIMITED first join ends as rejected but keeps the resume token for a retry', () => {
+    const storage = memoryStore();
+    storage.set(RESUME_KEY, JSON.stringify({ code: 'K7M2QX', token: 'old' }));
+    const t = setup(storage);
+    t.conn.start({ kind: 'join', code: 'K7M2QX', name: 'Sari' });
+    t.last().open();
+    t.last().receive({ type: 'Error', reqId: null, code: 'RATE_LIMITED' });
+    expect(t.ended()).toEqual([{ type: 'ended', reason: { kind: 'rejected', code: 'RATE_LIMITED' } }]);
+    expect(JSON.parse(storage.get(RESUME_KEY)!)).toEqual({ code: 'K7M2QX', token: 'old' });
+  });
+
   it('a server that cannot be reached ends as unreachable (close or connect timeout)', () => {
     const closed = setup();
     closed.conn.start({ kind: 'create', name: 'Budi' });
@@ -113,11 +134,50 @@ describe('RitmeConnection: in the room', () => {
   it('pings 5 times 200 ms apart, then every 30 s', () => {
     const t = setup();
     joinIn(t);
+    autoPong(t.last());
     vi.advanceTimersByTime(1_000);
     expect(t.last().types().filter((x) => x === 'Ping')).toHaveLength(5);
     expect(t.last().sent.filter((m) => m.type === 'Ping').map((m) => m.clientTime)).toEqual([0, 200, 400, 600, 800]);
     vi.advanceTimersByTime(29_000);
     expect(t.last().types().filter((x) => x === 'Ping')).toHaveLength(6);
+  });
+
+  it('starts the ping burst on Welcome, not on open, so the session can reset its clock first', () => {
+    const t = setup();
+    t.conn.start({ kind: 'join', code: 'K7M2QX', name: 'Sari' });
+    t.last().open();
+    vi.advanceTimersByTime(1_000);
+    expect(t.last().types()).not.toContain('Ping');
+    const order: string[] = [];
+    const sock = t.last();
+    const send = sock.send.bind(sock);
+    sock.send = (d: string) => {
+      order.push(`send:${JSON.parse(d).type}`);
+      send(d);
+    };
+    sock.receive(welcome());
+    order.push('welcome-dispatched');
+    vi.advanceTimersByTime(1_000);
+    expect(sock.sent.filter((m) => m.type === 'Ping').map((m) => m.clientTime)).toEqual([1_000, 1_200, 1_400, 1_600, 1_800]);
+    expect(order.indexOf('welcome-dispatched')).toBeLessThan(order.indexOf('send:Ping'));
+  });
+
+  it('pingBurst sends 5 more pings 200 ms apart while joined, and nothing otherwise', () => {
+    const t = setup();
+    t.conn.pingBurst();
+    joinIn(t);
+    autoPong(t.last());
+    vi.advanceTimersByTime(10_000);
+    const pings = () => t.last().sent.filter((m) => m.type === 'Ping').map((m) => m.clientTime);
+    expect(pings()).toHaveLength(5);
+    t.conn.pingBurst();
+    vi.advanceTimersByTime(1_000);
+    expect(pings().slice(5)).toEqual([10_000, 10_200, 10_400, 10_600, 10_800]);
+    t.last().serverClose();
+    t.conn.pingBurst();
+    vi.advanceTimersByTime(900);
+    expect(t.sockets).toHaveLength(1);
+    expect(pings()).toHaveLength(10);
   });
 
   it('reports pongs with the receive time', () => {
@@ -344,6 +404,7 @@ describe('RitmeConnection: deadlines and edge cases', () => {
     vi.advanceTimersByTime(1_000);
     t.last().open();
     t.last().receive(welcome());
+    autoPong(t.last());
     vi.advanceTimersByTime(1_000);
     expect(t.last().types().filter((x) => x === 'Ping')).toHaveLength(5);
     vi.advanceTimersByTime(29_000);
@@ -448,6 +509,46 @@ describe('RitmeConnection: snapshot acks', () => {
     expect(sock.sent.filter((m) => m.type === 'Ack')).toEqual([{ type: 'Ack', version: 8 }]);
   });
 
+  it('still reports online (and pings) when the welcome listener throws', () => {
+    const sock = new FakeSocket('ws://x');
+    const events: string[] = [];
+    const conn = new RitmeConnection({
+      url: 'ws://x',
+      socketFactory: () => sock,
+      storage: memoryStore(),
+      now: () => Date.now(),
+      onEvent: (e) => {
+        events.push(e.type === 'status' ? `status:${e.status}` : e.type);
+        if (e.type === 'welcome') throw new Error('boom');
+      },
+    });
+    conn.start({ kind: 'join', code: 'K7M2QX', name: 'Sari' });
+    sock.open();
+    expect(() => sock.receive({ ...welcome(), state: room({ version: 3 }) })).toThrow('boom');
+    expect(events).toEqual(['status:connecting', 'welcome', 'status:online']);
+    expect(sock.sent.filter((m) => m.type === 'Ack')).toEqual([{ type: 'Ack', version: 3 }]);
+    vi.advanceTimersByTime(1_000);
+    expect(sock.types().filter((x) => x === 'Ping')).toHaveLength(5);
+  });
+
+  it('leaves no timers behind when a welcome listener leaves at once', () => {
+    let conn: RitmeConnection | null = null;
+    const sock = new FakeSocket('ws://x');
+    conn = new RitmeConnection({
+      url: 'ws://x',
+      socketFactory: () => sock,
+      storage: memoryStore(),
+      now: () => Date.now(),
+      onEvent: (e) => {
+        if (e.type === 'welcome') conn!.leave();
+      },
+    });
+    conn.start({ kind: 'join', code: 'K7M2QX', name: 'Sari' });
+    sock.open();
+    sock.receive(welcome());
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('sends no Ack after leave, and none on a replaced socket', () => {
     const t = setup();
     joinIn(t);
@@ -483,6 +584,82 @@ describe('RitmeConnection: snapshot acks', () => {
     s.receive({ type: 'Kicked' });
     s.receive({ type: 'State', state: room({ version: 4 }) });
     expect(acks(s)).toHaveLength(1);
+  });
+});
+
+describe('RitmeConnection: liveness watchdog', () => {
+  const statuses = (t: ReturnType<typeof setup>) => t.events.filter((e) => e.type === 'status').map((e) => (e as { status: string }).status);
+
+  it('a Ping without a Pong within 10 s drops the socket and reconnects with the token', () => {
+    const t = setup();
+    joinIn(t); // burst Pings at 0..800 ms, never answered
+    t.last().receive({ type: 'State', state: room({ version: 2 }) }); // other traffic is not a Pong
+    vi.advanceTimersByTime(9_999);
+    expect(t.last().closed).toBe(false);
+    expect(statuses(t)).not.toContain('reconnecting');
+    vi.advanceTimersByTime(1);
+    expect(t.sockets[0].closed).toBe(true);
+    expect(statuses(t).at(-1)).toBe('reconnecting');
+    vi.advanceTimersByTime(1_000);
+    expect(t.sockets).toHaveLength(2);
+    t.last().open();
+    expect(t.last().sent[0]).toMatchObject({ type: 'Join', resumeToken: 'tok-1' });
+    expect(t.ended()).toEqual([]);
+  });
+
+  it('a Pong for a later Ping also counts', () => {
+    const t = setup();
+    joinIn(t);
+    vi.advanceTimersByTime(9_000);
+    t.last().receive({ type: 'Pong', clientTime: 800, serverTime: 1 });
+    vi.advanceTimersByTime(20_000);
+    expect(t.sockets[0].closed).toBe(false);
+  });
+
+  it('nothing received for 75 s drops the socket, even when no Ping could be sent', () => {
+    const t = setup();
+    joinIn(t);
+    t.last().readyState = 2; // stuck in CLOSING: send() is skipped and onclose never fires
+    vi.advanceTimersByTime(74_999);
+    expect(t.sockets[0].closed).toBe(false);
+    expect(t.ended()).toEqual([]);
+    vi.advanceTimersByTime(1);
+    expect(t.sockets[0].closed).toBe(true);
+    expect(statuses(t).at(-1)).toBe('reconnecting');
+  });
+
+  it('the idle deadline restarts with every inbound frame, known or not', () => {
+    const t = setup();
+    joinIn(t);
+    t.last().readyState = 2;
+    vi.advanceTimersByTime(60_000);
+    t.last().receive({ type: 'Reaction', emoji: 'x' });
+    vi.advanceTimersByTime(74_999);
+    expect(t.sockets[0].closed).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(t.sockets[0].closed).toBe(true);
+  });
+
+  it('a healthy connection that answers every Ping is never dropped', () => {
+    const t = setup();
+    t.conn.start({ kind: 'join', code: 'K7M2QX', name: 'Sari' });
+    autoPong(t.last(), 9_000);
+    t.last().open();
+    t.last().receive(welcome());
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(t.sockets).toHaveLength(1);
+    expect(t.sockets[0].closed).toBe(false);
+    expect(statuses(t)).not.toContain('reconnecting');
+  });
+
+  it('the watchdog timers die with the socket', () => {
+    const t = setup();
+    joinIn(t);
+    t.conn.leave();
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(t.sockets).toHaveLength(1);
+    expect(t.ended()).toEqual([{ type: 'ended', reason: { kind: 'left' } }]);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 

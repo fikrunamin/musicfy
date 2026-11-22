@@ -7,10 +7,12 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.http.content.default
 import io.ktor.server.http.content.staticFiles
 import io.ktor.server.application.Application
+import io.ktor.server.application.createRouteScopedPlugin
 import io.ktor.server.application.install
 import io.ktor.server.application.log
 import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
 import io.ktor.server.plugins.origin
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondFile
 import io.ktor.server.response.respondText
@@ -37,6 +39,19 @@ class ServerDeps(
     val peerStats: PeerStats = PeerStats(),
     val stateBudget: StateBudget = StateBudget(),
 )
+
+/**
+ * Clickjacking protection for the pages and static files (the web client and the landing page):
+ * nobody may frame them. Installed only on those routes; the WebSocket, search and health routes
+ * are not documents, so they do without. The CSP header carries only frame-ancestors (which a
+ * `<meta>` CSP cannot express); the rest of the policy stays in index.html.
+ */
+private val NoFraming = createRouteScopedPlugin("NoFraming") {
+    onCall { call ->
+        call.response.header("Content-Security-Policy", "frame-ancestors 'none'")
+        call.response.header("X-Frame-Options", "DENY")
+    }
+}
 
 fun Application.ritmeModule(deps: ServerDeps) {
     val registry = RoomRegistry(deps.clock, deps.ids, deps.socketLimits.maxRooms, deps.stateBudget)
@@ -122,12 +137,17 @@ fun Application.ritmeModule(deps: ServerDeps) {
         }
 
         val webIndex = File(deps.config.webDir, "index.html")
-        if (webIndex.isFile) {
-            staticFiles("/", deps.config.webDir) { default("index.html") }
-            get("/r/{code}") { call.respondFile(webIndex) }
+        val pages = if (webIndex.isFile) {
+            listOf(
+                staticFiles("/", deps.config.webDir) { default("index.html") },
+                get("/r/{code}") { call.respondFile(webIndex) },
+            )
         } else {
-            get("/") { call.respondText(Landing.page(null), ContentType.Text.Html) }
-            get("/r/{code}") { call.respondText(Landing.page(call.parameters["code"]), ContentType.Text.Html) }
+            listOf(
+                get("/") { call.respondText(Landing.page(null), ContentType.Text.Html) },
+                get("/r/{code}") { call.respondText(Landing.page(call.parameters["code"]), ContentType.Text.Html) },
+            )
         }
+        pages.forEach { it.install(NoFraming) }
     }
 }

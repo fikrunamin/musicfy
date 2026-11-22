@@ -80,6 +80,12 @@ describe('NowPlaying', () => {
     expect(screen.getByText('Host mengunci kontrol')).toBeTruthy();
   });
 
+  it('gives the seek slider the formatted position as aria-valuetext', () => {
+    const paused = room({ queue: [entry('e1')], currentEntryId: 'e1', playback: { isPlaying: false, positionMs: 83_400, anchorServerTimeMs: 0 } });
+    render(<NowPlaying session={fakeSession()} room={paused} memberId="m1" unplayable={{}} online pageIsHttps />);
+    expect(screen.getByRole('slider', { name: 'Posisi lagu' }).getAttribute('aria-valuetext')).toBe('1:23');
+  });
+
   it('shows LIVE instead of a seek bar for live entries', () => {
     const live = room({ queue: [entry('e1', { durationMs: 0 })], currentEntryId: 'e1' });
     render(<NowPlaying session={fakeSession()} room={live} memberId="m1" unplayable={{}} online pageIsHttps />);
@@ -101,6 +107,30 @@ describe('SearchPanel', () => {
     expect(session.add).toHaveBeenCalledWith(expect.objectContaining({ videoId: 'dQw4w9WgXcQ', kind: 'YOUTUBE_MUSIC' }), false);
     fireEvent.click(screen.getByRole('button', { name: 'Putar berikutnya: Never Gonna Give You Up' }));
     expect(session.add).toHaveBeenLastCalledWith(expect.objectContaining({ videoId: 'dQw4w9WgXcQ' }), true);
+  });
+
+  it('shows only https YouTube thumbnails in the results, else the placeholder', async () => {
+    const results = [
+      { ...song, videoId: 'aaaaaaaaaaa', title: 'A', thumbnailUrl: 'https://i.ytimg.com/vi/a/hq.jpg' },
+      { ...song, videoId: 'bbbbbbbbbbb', title: 'B', thumbnailUrl: 'http://i.ytimg.com/vi/b/hq.jpg' },
+      { ...song, videoId: 'ccccccccccc', title: 'C', thumbnailUrl: 'https://evil.example/c.jpg' },
+    ];
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(results), { status: 200 })) as unknown as typeof fetch;
+    render(<SearchPanel session={fakeSession()} online fetchImpl={fetchImpl} />);
+    fireEvent.input(screen.getByLabelText('Cari lagu'), { target: { value: 'rick' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cari' }));
+    await screen.findByRole('button', { name: 'Tambah: A' });
+    expect([...document.querySelectorAll('img.thumb')].map((i) => i.getAttribute('src'))).toEqual(['https://i.ytimg.com/vi/a/hq.jpg']);
+    expect(document.querySelectorAll('.thumb-empty')).toHaveLength(2);
+  });
+
+  it('labels a live result (durationMs 0) LIVE instead of 0:00', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify([{ ...song, durationMs: 0 }]), { status: 200 })) as unknown as typeof fetch;
+    render(<SearchPanel session={fakeSession()} online fetchImpl={fetchImpl} />);
+    fireEvent.input(screen.getByLabelText('Cari lagu'), { target: { value: 'rick' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cari' }));
+    expect(await screen.findByText('Rick Astley · LIVE')).toBeTruthy();
+    expect(screen.queryByText(/0:00/)).toBeNull();
   });
 
   it('explains rate limiting', async () => {

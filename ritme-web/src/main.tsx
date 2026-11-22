@@ -21,4 +21,7 @@ const session = new Session({
     }),
 });
 
+// The session notices device sleep on wake (stale clock) and asks the player to re-sync.
+document.addEventListener('visibilitychange', () => session.visibilityChanged(document.visibilityState === 'visible'));
+
 render(<App session={session} prefs={prefs} tabStore={tabStore} />, document.getElementById('app')!);

@@ -50,10 +50,12 @@ describe('ListenPanel', () => {
     expect(screen.getByText('Mode remote: kontrol saja, tanpa suara di perangkat ini.')).toBeTruthy();
   });
 
-  it('reports mode changes', () => {
+  it('reports mode changes from aria-pressed toggle buttons', () => {
     const onModeChange = vi.fn();
     render(<ListenPanel session={fakeSession()} room={room()} unplayable={{}} mode="listen" onModeChange={onModeChange} pageIsHttps />);
-    fireEvent.click(screen.getByRole('radio', { name: 'Mode remote' }));
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Mode dengar', pressed: true })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Mode remote', pressed: false }));
     expect(onModeChange).toHaveBeenCalledWith('remote');
   });
 });
@@ -64,8 +66,15 @@ describe('RoomScreen', () => {
   it('stores the chosen mode in ritme.mode', () => {
     const prefs = memoryStore();
     render(<RoomScreen session={fakeSession(state)} state={state} prefs={prefs} />);
-    fireEvent.click(screen.getByRole('radio', { name: 'Mode remote' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mode remote' }));
     expect(prefs.get(MODE_KEY)).toBe('remote');
+    expect(screen.getByRole('button', { name: 'Mode remote', pressed: true })).toBeTruthy();
+  });
+
+  it('has a single End room button for the host (in the members panel) and Leave in the footer', () => {
+    render(<RoomScreen session={fakeSession(state)} state={state} prefs={memoryStore()} />);
+    expect(screen.getAllByRole('button', { name: /^Akhiri/ }).map((b) => b.textContent)).toEqual(['Akhiri Ritme untuk semua']);
+    expect(screen.getByRole('button', { name: 'Keluar Ritme' })).toBeTruthy();
   });
 
   it('shows the reconnecting banner while offline', () => {
@@ -93,31 +102,40 @@ describe('ListenPanel after the tap gate', () => {
     view.rerender(panel(s, r, 'remote'));
     expect(mocks.log.at(-1)).toBe('destroy');
     view.rerender(panel(s, r, 'listen'));
+    // Back in listen mode the gate is shown again; the player needs a new tap.
+    expect(mocks.log.filter((l) => l === 'new')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Ketuk untuk ikut dengar' }));
+    await Promise.resolve();
     expect(mocks.log.filter((l) => l === 'new')).toHaveLength(2);
     cleanup();
     expect(mocks.log.at(-1)).toBe('destroy');
   });
 
-  it('adds and removes the same visibilitychange listener and resyncs only when visible', async () => {
-    const add = vi.spyOn(document, 'addEventListener');
-    const rem = vi.spyOn(document, 'removeEventListener');
+  it('shows the tap gate again after listen -> remote -> listen', async () => {
     const s = fakeSession();
-    render(panel(s, playing(), 'listen'));
+    const r = playing();
+    const view = render(panel(s, r, 'listen'));
     fireEvent.click(screen.getByRole('button', { name: 'Ketuk untuk ikut dengar' }));
     await Promise.resolve();
-    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
-    document.dispatchEvent(new Event('visibilitychange'));
-    expect(mocks.log).not.toContain('resync');
-    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
-    document.dispatchEvent(new Event('visibilitychange'));
+    expect(document.querySelector('.player')).toBeTruthy();
+    view.rerender(panel(s, r, 'remote'));
+    await Promise.resolve();
+    view.rerender(panel(s, r, 'listen'));
+    expect(screen.getByRole('button', { name: 'Ketuk untuk ikut dengar' })).toBeTruthy();
+    expect(document.querySelector('.player')).toBeNull();
+  });
+
+  it('resyncs the controller when the session asks for it, and unsubscribes on unmount', async () => {
+    const s = fakeSession();
+    render(panel(s, playing(), 'listen'));
+    expect(s.resyncListeners.size).toBe(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Ketuk untuk ikut dengar' }));
+    await Promise.resolve();
+    expect(s.resyncListeners.size).toBe(1);
+    for (const l of s.resyncListeners) l();
     expect(mocks.log.filter((l) => l === 'resync')).toHaveLength(1);
     cleanup();
-    const added = add.mock.calls.filter((c) => c[0] === 'visibilitychange').map((c) => c[1]);
-    const removed = rem.mock.calls.filter((c) => c[0] === 'visibilitychange').map((c) => c[1]);
-    expect(added.length).toBeGreaterThan(0);
-    expect(added.every((f) => removed.includes(f))).toBe(true);
-    add.mockRestore();
-    rem.mockRestore();
+    expect(s.resyncListeners.size).toBe(0);
   });
 
   it('marks the entry unplayable on the session and hides the player', async () => {

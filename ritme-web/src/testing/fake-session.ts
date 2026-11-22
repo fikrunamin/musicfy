@@ -4,10 +4,15 @@ import type { SessionApi } from '../session/session';
 
 /** A SessionApi whose actions are spies, for component tests. */
 export function fakeSession(state: SessionState = initialSession) {
-  return {
+  const resyncListeners = new Set<() => void>();
+  const api = {
     getState: () => state,
     subscribe: () => () => {},
     serverNow: () => 0,
+    onResync: (listener: () => void) => {
+      resyncListeners.add(listener);
+      return () => resyncListeners.delete(listener);
+    },
     create: vi.fn(),
     join: vi.fn(),
     leave: vi.fn(),
@@ -28,4 +33,6 @@ export function fakeSession(state: SessionState = initialSession) {
     markUnplayable: vi.fn(),
     notify: vi.fn(),
   } satisfies SessionApi;
+  /** resyncListeners: test handle on the listeners registered through onResync. */
+  return { ...api, resyncListeners };
 }

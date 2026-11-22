@@ -56,6 +56,7 @@ export const t = {
 
   listenMode: 'Mode dengar',
   remoteMode: 'Mode remote',
+  modeGroup: 'Mode perangkat ini',
   modeHint: 'Mode remote: kontrol saja, tanpa suara di perangkat ini.',
   tapToListen: 'Ketuk untuk ikut dengar',
   tapPlayer: 'Ketuk pemutar untuk mulai',
@@ -75,7 +76,6 @@ export const t = {
   kick: 'Keluarkan',
   guestsCanControl: 'Anggota boleh kontrol',
   leave: 'Keluar Ritme',
-  end: 'Akhiri',
   confirmEnd: 'Akhiri Ritme untuk semua anggota?',
   endRoom: 'Akhiri Ritme untuk semua',
   confirmKick: (name: string) => `Keluarkan ${name} dari Ritme?`,

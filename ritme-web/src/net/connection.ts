@@ -64,6 +64,14 @@ export const JOIN_TIMEOUT_MS = 10_000;
 export const PING_BURST = 5;
 export const PING_BURST_GAP_MS = 200;
 export const PING_INTERVAL_MS = 30_000;
+/**
+ * Liveness watchdog: a half-open TCP connection (e.g. after a mobile network switch) may never
+ * fire onclose. A Ping with no Pong this long after it, or no inbound frame at all for
+ * IDLE_TIMEOUT_MS (Pings every 30 s keep a healthy socket well inside it), drops the socket into
+ * the normal backoff and resume path.
+ */
+export const PONG_TIMEOUT_MS = 10_000;
+export const IDLE_TIMEOUT_MS = 75_000;
 
 const WS_OPEN = 1;
 
@@ -83,6 +91,9 @@ export class RitmeConnection {
   /** Latest token in memory; sessionStorage is only the reload fallback (it can be blocked). */
   private resume: ResumeInfo | null = null;
   private nextReqId = 1;
+  /** Local time of the last frame / last Pong on the current socket (watchdog). */
+  private lastInboundAt = 0;
+  private lastPongAt = Number.NEGATIVE_INFINITY;
   private readonly socketTimers = new Set<ReturnType<typeof setTimeout>>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -101,6 +112,15 @@ export class RitmeConnection {
     const reqId = `r${this.nextReqId++}`;
     this.send({ type: 'Command', reqId, cmd });
     return reqId;
+  }
+
+  /**
+   * Another 5-ping burst, so the clock gets a fresh window quickly (after Welcome, and after the
+   * device slept). Nothing while not joined: every Welcome starts its own burst.
+   */
+  pingBurst(): void {
+    if (!this.joined) return;
+    for (let i = 0; i < PING_BURST; i++) this.later(i * PING_BURST_GAP_MS, () => this.ping());
   }
 
   leave(): void {
@@ -125,11 +145,11 @@ export class RitmeConnection {
       this.later(JOIN_TIMEOUT_MS, () => {
         if (!this.joined) this.drop(socket);
       });
-      for (let i = 0; i < PING_BURST; i++) this.later(i * PING_BURST_GAP_MS, () => this.ping());
-      this.later(PING_INTERVAL_MS, () => this.pingLoop());
     };
     socket.onmessage = (ev) => {
-      if (this.socket !== socket || typeof ev.data !== 'string') return;
+      if (this.socket !== socket) return;
+      this.lastInboundAt = this.opts.now();
+      if (typeof ev.data !== 'string') return;
       const message = parseServerMessage(ev.data);
       if (message) this.handle(message);
     };
@@ -151,7 +171,8 @@ export class RitmeConnection {
         startPositionMs: 0,
       };
     }
-    // A reload resume that hits RATE_LIMITED before any Welcome ends as rejected (not retried): intentional.
+    // A reload resume that hits RATE_LIMITED before any Welcome ends as rejected (not retried):
+    // intentional. The token is kept, so trying again later still resumes.
     const resume = this.resume ?? readResume(this.opts.storage);
     return {
       type: 'Join',
@@ -173,12 +194,24 @@ export class RitmeConnection {
         this.intent = { kind: 'join', code: message.state.code, name: this.intent!.name };
         this.resume = { code: message.state.code, token: message.resumeToken };
         writeResume(this.opts.storage, { code: message.state.code, token: message.resumeToken });
-        // finally: a throwing listener must not skip the Ack, or the server withholds every newer snapshot.
+        const socket = this.socket!;
+        // finally: a throwing welcome listener must not leave the UI offline, nor skip the Ack (the
+        // server withholds every newer snapshot) or the pings; the exception still propagates.
         try {
           this.emit({ type: 'welcome', welcome: message, receivedAt: this.opts.now() });
-          this.emit({ type: 'status', status: 'online' });
         } finally {
-          this.ack(message.state.version);
+          try {
+            this.emit({ type: 'status', status: 'online' });
+          } finally {
+            this.ack(message.state.version);
+            // After the welcome event, so the session has reset its clock before the first Pong;
+            // not if a listener already left (no timers outliving the socket).
+            if (this.socket === socket) {
+              this.pingBurst();
+              this.later(PING_INTERVAL_MS, () => this.pingLoop());
+              this.watchIdle(socket);
+            }
+          }
         }
         return;
       }
@@ -194,6 +227,7 @@ export class RitmeConnection {
         }
         return;
       case 'Pong':
+        this.lastPongAt = this.opts.now();
         this.emit({
           type: 'pong',
           clientTime: message.clientTime,
@@ -248,7 +282,9 @@ export class RitmeConnection {
   private finish(reason: EndReason): void {
     if (this.ended) return;
     this.ended = true;
-    if (reason.kind !== 'unreachable') {
+    // Transient failures keep ritme.resume so a retry (or reload) can still resume the member.
+    const transient = reason.kind === 'unreachable' || (reason.kind === 'rejected' && reason.code === 'RATE_LIMITED');
+    if (!transient) {
       this.resume = null;
       this.opts.storage.remove(RESUME_KEY);
     }
@@ -277,8 +313,25 @@ export class RitmeConnection {
     this.send({ type: 'Ack', version });
   }
 
+  /** Sends a Ping on the open socket and drops that socket if no Pong arrives in time. */
   private ping(): void {
-    this.send({ type: 'Ping', clientTime: Math.floor(this.opts.now()) });
+    const socket = this.socket;
+    if (!socket || socket.readyState !== WS_OPEN) return;
+    const sentAt = this.opts.now();
+    socket.send(encodeClientMessage({ type: 'Ping', clientTime: Math.floor(sentAt) }));
+    this.later(PONG_TIMEOUT_MS, () => {
+      if (this.lastPongAt < sentAt) this.drop(socket);
+    });
+  }
+
+  /** Drops the socket once nothing at all has arrived for IDLE_TIMEOUT_MS. */
+  private watchIdle(socket: SocketLike): void {
+    const check = () => {
+      const left = this.lastInboundAt + IDLE_TIMEOUT_MS - this.opts.now();
+      if (left <= 0) this.drop(socket);
+      else this.later(left, check);
+    };
+    this.later(IDLE_TIMEOUT_MS, check);
   }
 
   private pingLoop(): void {
