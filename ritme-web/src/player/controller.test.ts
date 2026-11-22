@@ -288,6 +288,43 @@ describe('PlaybackController', () => {
       expect(t.player().calls.slice(before)).toEqual(['play']);
     });
 
+    it('does not treat a natural track end (paused before ended) as a stall', () => {
+      const t = setup();
+      const url = entry('u', { kind: 'URL', videoId: '', url: 'https://cdn.example/v.mp4', durationMs: 10_000 });
+      t.controller.update(room({ queue: [url], currentEntryId: 'u', playback: { isPlaying: true, positionMs: 0, anchorServerTimeMs: 100_000 } }), {});
+      t.player().position = 0;
+      t.player().emit({ type: 'playing', gen: t.player().lastGen });
+      serverNow = 110_200;
+      t.player().position = 10_000;
+      t.player().emit({ type: 'paused', gen: t.player().lastGen });
+      const before = t.player().calls.length;
+      vi.advanceTimersByTime(10_000);
+      expect(t.needsTap).toEqual([]);
+      expect(t.player().calls.slice(before)).toEqual([]);
+    });
+
+    it('ended stops retries and seeks until the next load', () => {
+      const t = setup();
+      const queue = [single('a'), single('b')];
+      t.controller.update(at(queue, 'a', 100_000), {});
+      const p = t.player();
+      p.position = 0;
+      p.emit({ type: 'playing', gen: p.lastGen });
+      p.emit({ type: 'ended', gen: p.lastGen });
+      serverNow = 120_000;
+      p.position = 1_000; // far off, mid-track
+      const before = p.calls.length;
+      vi.advanceTimersByTime(10_000);
+      expect(p.calls.slice(before)).toEqual([]);
+      expect(t.needsTap).toEqual([]);
+      t.controller.update(at(queue, 'b', 120_000, { version: 2 }), {});
+      p.position = 0;
+      p.emit({ type: 'playing', gen: p.lastGen });
+      p.emit({ type: 'paused', gen: p.lastGen });
+      vi.advanceTimersByTime(4_000);
+      expect(t.needsTap.at(-1)).toBe(true);
+    });
+
     it('destroy() stops timers, destroys the player and ignores later input', () => {
       const t = setup();
       t.controller.update(playing(0, 100_000), {});

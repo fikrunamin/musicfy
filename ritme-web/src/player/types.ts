@@ -6,8 +6,10 @@ export type PlayerKind = PlayableSource['kind'];
 /**
  * `gen` is the value passed to the load() this event belongs to, captured when that load was
  * issued (not the latest one). The controller drops events from earlier loads.
+ * 'ended' is the natural end of the media (<video> `ended`, YouTube STATE_ENDED); a <video> fires
+ * 'paused' just before it, which must not be mistaken for a stall.
  */
-export type PlayerEvent = ({ type: 'playing' } | { type: 'paused' } | { type: 'unplayable' }) & { gen: number };
+export type PlayerEvent = ({ type: 'playing' } | { type: 'paused' } | { type: 'ended' } | { type: 'unplayable' }) & { gen: number };
 
 /**
  * A media player adapter (YouTube IFrame or HTML5 <video>). Calls made before the underlying

@@ -42,6 +42,8 @@ export class PlaybackController {
   private pendingForce = false;
   /** play() was requested a while ago and the player still is not playing. */
   private stalled = false;
+  /** The media ended on its own; no play() retries or unforced seeks until a load or forced apply. */
+  private ended = false;
   private tapShown = false;
   private lastPlayRetryAt: number | null = null;
   private readonly driftTimer: ReturnType<typeof setInterval>;
@@ -80,6 +82,7 @@ export class PlaybackController {
       this.pendingForce = false;
       this.playerPlaying = false;
       this.stalled = false;
+      this.ended = false;
       const gen = ++this.loadGen;
       const start = isLive(entry) ? null : this.expectedAt(room!, entry, this.opts.serverNow());
       this.player!.load(verdict.source, start, gen);
@@ -114,6 +117,7 @@ export class PlaybackController {
   /** force: playback changed, the anchor was reached, or the tab came back (skips the 5 s rule). */
   private apply(force: boolean): void {
     this.clearStart();
+    if (force) this.ended = false;
     const room = this.room;
     const player = this.player;
     if (!room || !player || !this.entry) return;
@@ -144,7 +148,9 @@ export class PlaybackController {
   }
 
   private tick(): void {
+    if (this.ended) return;
     if (this.stalled && this.wantPlaying) {
+      if (this.nearEnd()) return;
       // Not playing although asked to: seeking would not help. Retry play(), rate-limited.
       const now = this.opts.serverNow();
       if (this.lastPlayRetryAt === null || now - this.lastPlayRetryAt >= MIN_SEEK_INTERVAL_MS) {
@@ -156,12 +162,20 @@ export class PlaybackController {
     this.correct(false);
   }
 
+  /** Non-live entry whose expected position is at (or within 1.5 s of) its end. */
+  private nearEnd(): boolean {
+    const { room, entry } = this;
+    if (!room || !entry || isLive(entry)) return false;
+    return this.expectedAt(room, entry, this.opts.serverNow()) >= entry.durationMs - 1_500;
+  }
+
   /** Paused, or waiting for the anchor: correct toward the room position, playing or not. */
   private correct(force: boolean): void {
     const room = this.room;
     const player = this.player;
     const entry = this.entry;
     if (!room || !player || !entry || isLive(entry)) return;
+    if (this.ended && !force) return;
     if (force) this.pendingForce = true;
     if (!this.pendingForce && !this.wantPlaying) return;
     const actual = player.currentMs();
@@ -186,7 +200,6 @@ export class PlaybackController {
     switch (event.type) {
       case 'playing':
         this.playerPlaying = true;
-        this.clearTap();
         this.hideTap();
         // Back from an ad or buffering: check right away instead of at the next tick. Not forced,
         // so a slow network cannot loop seek -> buffer -> playing -> seek faster than every 5 s.
@@ -196,7 +209,12 @@ export class PlaybackController {
       case 'paused':
         this.playerPlaying = false;
         // Paused by the browser or the user while the room plays: recover via the stall path.
-        if (this.wantPlaying) this.armTap();
+        if (this.wantPlaying && !this.ended && !this.nearEnd()) this.armTap();
+        return;
+      case 'ended':
+        this.playerPlaying = false;
+        this.ended = true;
+        this.hideTap();
         return;
       case 'unplayable':
         if (this.loadedEntryId) this.opts.onUnplayable(this.loadedEntryId);
