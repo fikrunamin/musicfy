@@ -62,6 +62,11 @@ The limits are sized so their worst cases fit the ~1056 MB heap (see `Limits.kt`
 
 At most 650 rooms, of which at most 480 can be full (120 MB / 256 KB).
 
+Caveat: in one stress run with 570 colluding connections (ack without reading) live heap peaked
+at 883 MB (~1.35 MB per connection; another run peaked at 418 MB). The theoretical bound is
+~1.5 MB per connection, so a full server under that attack can exceed the heap; the JVM then
+exits and Docker restarts it. A per-snapshot ack token (planned) removes this case.
+
 The app's server URL setting must be `https://<RITME_DOMAIN>`.
 
 ## Endpoints

@@ -18,6 +18,11 @@ package com.example.musicfy.ritme.server
  * 1 MiB, outside our accounting). Acks are predictable when one connection drives a room, so
  * colluding clients that ack without reading can fill that buffer: measured ~0.8 MB per connection,
  * budgeted as ~0.9 MB. Ktor's ping timeout and the stall/ack timers still drop such clients.
+ * Caveat: probe12 (30 rooms x 19 colluding peers) peaked between 418 and 883 MB live heap across
+ * runs, i.e. up to ~1.35 MB per connection; the theoretical bound is ~1.5 MB (Ktor's 1 MiB buffer
+ * plus the frame in the outgoing slot plus the frame being written). At that worst case 650
+ * connections exceed the heap; ExitOnOutOfMemoryError then restarts the container. A per-snapshot
+ * unpredictable ack token (planned) brings the bound back to one snapshot per connection.
  * Room objects take 0.9-1.3x their encoded size in heap (measured: ASCII-heavy maximal entries
  * 1.10, 3-byte characters 0.88, typical YouTube entries 1.27), hence the 1.3 factor.
  * Rooms: at most [MAX_ROOMS]; at most [MAX_ROOM_STATE_BYTES_TOTAL] / [MAX_STATE_BYTES] = 480 of
