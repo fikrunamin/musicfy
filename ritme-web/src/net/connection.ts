@@ -173,16 +173,24 @@ export class RitmeConnection {
         this.intent = { kind: 'join', code: message.state.code, name: this.intent!.name };
         this.resume = { code: message.state.code, token: message.resumeToken };
         writeResume(this.opts.storage, { code: message.state.code, token: message.resumeToken });
-        this.emit({ type: 'welcome', welcome: message, receivedAt: this.opts.now() });
-        this.emit({ type: 'status', status: 'online' });
-        this.ack(message.state.version);
+        // finally: a throwing listener must not skip the Ack, or the server withholds every newer snapshot.
+        try {
+          this.emit({ type: 'welcome', welcome: message, receivedAt: this.opts.now() });
+          this.emit({ type: 'status', status: 'online' });
+        } finally {
+          this.ack(message.state.version);
+        }
         return;
       }
       case 'State':
         if (this.joined) {
-          this.emit({ type: 'state', state: message.state });
-          // Acked even when the reducer drops it as stale: the server gates on the exact version it sent.
-          this.ack(message.state.version);
+          // Acked even when the reducer drops it as stale (the server gates on the exact version it
+          // sent) and even when a listener throws; the exception still propagates.
+          try {
+            this.emit({ type: 'state', state: message.state });
+          } finally {
+            this.ack(message.state.version);
+          }
         }
         return;
       case 'Pong':

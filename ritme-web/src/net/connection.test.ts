@@ -382,37 +382,70 @@ describe('RitmeConnection: snapshot acks', () => {
     expect(acks(t.last()).map((a) => a.version)).toEqual([1, 5, 3]);
   });
 
-  it('does not ack Pong, Error or a State before the Welcome', () => {
+  it('does not ack Pong or Error', () => {
     const t = setup();
-    t.conn.start({ kind: 'join', code: 'K7M2QX', name: 'Sari' });
-    t.last().open();
-    t.last().receive({ type: 'State', state: room({ version: 2 }) });
-    expect(acks(t.last())).toEqual([]);
-    t.last().receive(welcome());
+    joinIn(t);
     t.last().receive({ type: 'Pong', clientTime: 1, serverTime: 2 });
     t.last().receive({ type: 'Error', reqId: 'r1', code: 'FORBIDDEN' });
     expect(acks(t.last())).toHaveLength(1);
   });
 
-  it('sends the Ack after the event is dispatched', () => {
-    const t = setup();
-    const order: string[] = [];
-    t.conn.start({ kind: 'join', code: 'K7M2QX', name: 'Sari' });
-    t.last().open();
-    const sock = t.last();
+  it('sends the Ack after dispatching the Welcome and State events', () => {
+    const log: string[] = [];
+    const sock = new FakeSocket('ws://x');
+    const conn = new RitmeConnection({
+      url: 'ws://x',
+      socketFactory: () => sock,
+      storage: memoryStore(),
+      now: () => Date.now(),
+      onEvent: (e) => log.push(`event:${e.type}`),
+    });
     const send = sock.send.bind(sock);
     sock.send = (d: string) => {
-      order.push(`send:${JSON.parse(d).type}`);
+      log.push(`send:${JSON.parse(d).type}`);
       send(d);
     };
-    const events = t.events;
-    events.push = (...e: ConnectionEvent[]) => {
-      order.push(...e.map((x) => `event:${x.type}`));
-      return Array.prototype.push.apply(events, e);
-    };
-    sock.receive({ type: 'State', state: room({ version: 2 }) });
+    conn.start({ kind: 'join', code: 'K7M2QX', name: 'Sari' });
+    sock.open();
+    log.length = 0;
     sock.receive(welcome());
-    expect(order.indexOf('event:welcome')).toBeLessThan(order.indexOf('send:Ack', order.indexOf('event:welcome')));
+    sock.receive({ type: 'State', state: room({ version: 2 }) });
+    expect(log).toEqual(['event:welcome', 'event:status', 'send:Ack', 'event:state', 'send:Ack']);
+  });
+
+  it('still acks a State when the listener throws, and the error surfaces', () => {
+    const sock = new FakeSocket('ws://x');
+    const conn = new RitmeConnection({
+      url: 'ws://x',
+      socketFactory: () => sock,
+      storage: memoryStore(),
+      now: () => Date.now(),
+      onEvent: (e) => {
+        if (e.type === 'state') throw new Error('boom');
+      },
+    });
+    conn.start({ kind: 'join', code: 'K7M2QX', name: 'Sari' });
+    sock.open();
+    sock.receive(welcome());
+    expect(() => sock.receive({ type: 'State', state: room({ version: 6 }) })).toThrow('boom');
+    expect(sock.sent.filter((m) => m.type === 'Ack').map((m) => m.version)).toEqual([1, 6]);
+  });
+
+  it('still acks a Welcome when the listener throws', () => {
+    const sock = new FakeSocket('ws://x');
+    const conn = new RitmeConnection({
+      url: 'ws://x',
+      socketFactory: () => sock,
+      storage: memoryStore(),
+      now: () => Date.now(),
+      onEvent: (e) => {
+        if (e.type === 'welcome') throw new Error('boom');
+      },
+    });
+    conn.start({ kind: 'join', code: 'K7M2QX', name: 'Sari' });
+    sock.open();
+    expect(() => sock.receive({ ...welcome(), state: room({ version: 8 }) })).toThrow('boom');
+    expect(sock.sent.filter((m) => m.type === 'Ack')).toEqual([{ type: 'Ack', version: 8 }]);
   });
 
   it('sends no Ack after leave, and none on a replaced socket', () => {
