@@ -7,6 +7,7 @@ import com.example.musicfy.ritme.protocol.NewEntry
 import com.example.musicfy.ritme.protocol.RoomState
 import com.example.musicfy.ritme.protocol.PROTOCOL_VERSION
 import com.example.musicfy.ritme.protocol.ServerMessage
+import com.example.musicfy.ritme.protocol.decodeServerMessage
 import com.example.musicfy.ritme.protocol.encode
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
@@ -14,6 +15,8 @@ import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
+import io.ktor.websocket.Frame
+import io.ktor.websocket.readText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -293,7 +296,12 @@ class RealTcpTest {
                         while (stats.aborted.get() < silent) {
                             host.sendClient(ClientMessage.Send("s$k", Command.Seek(k++ * 1_000L)))
                             delay(150)
-                            while (host.incoming.tryReceive().getOrNull() != null) Unit
+                            // The host is a compliant client: it acks what it receives.
+                            while (true) {
+                                val frame = host.incoming.tryReceive().getOrNull() ?: break
+                                val message = (frame as? Frame.Text)?.let { decodeServerMessage(it.readText()) }
+                                if (message is ServerMessage.State) host.sendClient(ClientMessage.Ack(message.state.version))
+                            }
                         }
                     }
                     val droppedAfterMs = (System.nanoTime() - start) / 1_000_000
