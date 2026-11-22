@@ -39,6 +39,7 @@ include(":modules:monochrome")
 
 // shared core: plain JVM, used by the Android app and the desktop app
 include(":core:platform")
+include(":core:settings")
 
 // local newpipe extractor
 //includeBuild("../NewPipeExtractor") {
