@@ -243,7 +243,8 @@ class AbuseLimitsTest {
         wsClient().ritme("15.0.0.1") {
             sendClient(ClientMessage.Create(PROTOCOL_VERSION, "Budi"))
             receiveServer() // Welcome (its Ack is free)
-            repeat(10) { sendClient(ClientMessage.Ack(999)) }
+            // The server may close the socket mid-burst; a send on the cancelled channel then throws.
+            for (i in 1..10) if (runCatching { sendClient(ClientMessage.Ack(999)) }.isFailure) break
             assertTrue(closedByServer())
         }
     }
