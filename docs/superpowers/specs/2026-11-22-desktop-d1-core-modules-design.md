@@ -38,6 +38,42 @@ dan `PlayerConnection` tidak dipindah di D1.
 
 Setiap sub-proyek punya spec dan rencana implementasi sendiri.
 
+## Revisi setelah pemetaan kode (2026-11-22)
+
+Temuan saat menyusun rencana implementasi yang mengubah sebagian desain di bawah. **Bagian ini
+menang kalau bertentangan dengan bagian lain.**
+
+1. **Modul JVM murni, bukan KMP, untuk logika inti.** Kotlin tidak resmi mendukung API JDK
+   (`java.time`, `java.io.File`, dll., yang dipakai luas di kode ini) di `commonMain` untuk
+   kombinasi target JVM + Android. Karena desktop juga JVM, modul inti yang tidak butuh kode khusus
+   platform dibuat sebagai modul `kotlin("jvm")` (pola yang sudah dipakai `providers:canvas` dan
+   `modules:api`). Android mengonsumsinya langsung. Implementasi khusus platform (Context, WebView)
+   tinggal di `app/` dan `desktopApp/` di balik interface. KMP hanya dipakai untuk bagian yang harus
+   di-compile per platform (UI Compose, dan Room kalau prototipe D1b membuktikannya perlu).
+   Konsekuensinya:
+   - `core:platform` dan `core:settings` adalah modul JVM. `AndroidAppDirs`/`TimberLogger` ada di `app/`.
+   - Task `checkModuleBoundaries` tidak diperlukan untuk modul JVM, karena modul JVM memang tidak
+     bisa meng-compile `android.*` atau bergantung pada `:app`.
+   - `build-logic/` ditunda sampai ada beberapa modul KMP (D1b/D3). Konfigurasi modul JVM hanya 6 baris.
+2. **D1 dipecah menjadi D1a dan D1b.**
+   - D1a: providers → JVM, `core:platform`, `core:settings`, CI.
+   - D1b: `core:model` + `core:database`, `core:resolver`, `core:designsystem`, `desktopApp`.
+   - Rencana D1b ditulis setelah D1a selesai.
+3. **`core:model` ikut D1b.** `MediaMetadata.toSongEntity()` dan `PersistQueue` bergantung pada
+   entity database, jadi model tidak bisa dipisah dari database lebih dulu.
+4. **Schema DB belum pernah diekspor** (`exportSchema = false`, `app/schemas/` kosong). D1b harus
+   lebih dulu mengaktifkan ekspor di kode lama untuk menghasilkan baseline `39.json` sebelum
+   memindahkan apa pun.
+5. **`PreferencesCache`/`rememberPreference` tetap di `app/` di D1a.** Keduanya memakai state
+   Compose. Yang pindah ke `core:settings` adalah key dan enum di `PreferenceKeys.kt`, ditambah factory
+   DataStore desktop. `DefaultPlayerCoverStyle` (memakai `Build.VERSION`) tetap di `app/`.
+6. **`paxsenixlyrics` butuh versi aplikasi, bukan `cacheDir`.** `Paxsenix.init(context)` diganti
+   `Paxsenix.init(appVersion: String)`, dan Timber diganti `java.util.logging`.
+7. **Composable `ArtistVideo` di `providers:artistvideo` tidak dipakai di mana pun** (hanya
+   `ArtistVideoCanvasProvider` yang dipakai `ArtistViewModel`), jadi dihapus, bukan dipindah.
+8. `AndroidAppDirsTest` (Robolectric) diganti review: `AndroidAppDirs.from(context)` hanya satu
+   baris pemetaan ke `filesDir`/`cacheDir`/`filesDir/download`. Logika per OS (`DesktopAppDirs`) tetap di-unit-test.
+
 ## Non-goals D1
 
 - Memindahkan layar, ViewModel, `MusicService`, `PlayerConnection`, atau komponen UI yang memakai
