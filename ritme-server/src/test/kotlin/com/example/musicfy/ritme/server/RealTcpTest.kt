@@ -63,17 +63,41 @@ class RealTcpTest {
             out.write(ByteArray(payload.size) { (payload[it].toInt() xor mask[it % 4].toInt()).toByte() })
         }
 
-        /** Reads one server frame (servers never mask) and returns its payload as text. */
-        fun readText(): String {
+        /** Reads one server frame (servers never mask): opcode and payload. */
+        fun readFrame(): Pair<Int, ByteArray> {
             val input = socket.getInputStream()
             fun byte() = input.read().also { if (it < 0) throw IOException("closed") }
-            byte()
+            val opcode = byte() and 0x0f
             val len = when (val n = byte() and 0x7f) {
                 126 -> (byte() shl 8) or byte()
                 127 -> (0 until 8).fold(0L) { acc, _ -> (acc shl 8) or byte().toLong() }.toInt()
                 else -> n
             }
-            return String(input.readNBytes(len))
+            return opcode to input.readNBytes(len)
+        }
+
+        /** Payload of the next text frame (skipping pings). */
+        fun readText(): String {
+            while (true) {
+                val (opcode, payload) = readFrame()
+                if (opcode == 1) return String(payload)
+                if (opcode == 8) throw IOException("closed by server")
+            }
+        }
+
+        /** Text payloads the server sent until it hung up (pings and the Close frame skipped). */
+        fun readTextUntilClosed(timeoutMs: Int): List<String> {
+            socket.soTimeout = timeoutMs
+            val texts = mutableListOf<String>()
+            try {
+                while (true) {
+                    val (opcode, payload) = readFrame()
+                    if (opcode == 1) texts += String(payload)
+                }
+            } catch (_: IOException) {
+                // EOF or reset: the server hung up (SocketTimeoutException is an IOException too).
+            }
+            return texts
         }
 
         /** Reads (and discards) until the server closes the TCP connection; ms waited, or null on timeout. */
@@ -230,6 +254,56 @@ class RealTcpTest {
                     withTimeout(5_000) { while (stats.pendingBytes.get() > 0) delay(50) }
                 } finally {
                     clients.forEach { it.close() }
+                }
+            }
+        } finally {
+            client.close()
+            server.stop(0, 0)
+        }
+    }
+
+    @Test
+    fun silentPeersThatNeverAckGetNoFurtherSnapshotsAndAreDroppedAfterTheStallWindow() = runBlocking {
+        val silent = 8
+        val stats = PeerStats()
+        val deps = testDeps(socketLimits = SocketLimits(sendStallMs = 1_500), peerStats = stats)
+        val server = embeddedServer(Netty, port = 0) { ritmeModule(deps) }.start()
+        val port = server.engine.resolvedConnectors().first().port
+        val client = HttpClient(OkHttp) { install(WebSockets) }
+        fun big(i: Int) = NewEntry(
+            "", "x".repeat(300), "y".repeat(300), "https://cdn.example/" + "t".repeat(480), 600_000,
+            MediaKind.URL, "https://cdn.example/$i/" + "u".repeat(2_000),
+        )
+        try {
+            client.webSocket("ws://127.0.0.1:$port/ritme") {
+                val host = this
+                host.sendClient(ClientMessage.Create(PROTOCOL_VERSION, "Budi", List(40) { big(it) })) // ~135 KB
+                val code = (host.receiveServer() as ServerMessage.Welcome).state.code
+                val peers = List(silent) { i ->
+                    DeafClient(port).also {
+                        it.send(ClientMessage.Join(PROTOCOL_VERSION, code, "S$i"))
+                        check(it.readText().contains("\"Welcome\"")) // read the Welcome, then go silent
+                    }
+                }
+                try {
+                    val start = System.nanoTime()
+                    // Snapshots keep coming (~6/s); none may reach the silent peers.
+                    withTimeout(15_000) {
+                        var k = 0
+                        while (stats.aborted.get() < silent) {
+                            host.sendClient(ClientMessage.Send("s$k", Command.Seek(k++ * 1_000L)))
+                            delay(150)
+                            while (host.incoming.tryReceive().getOrNull() != null) Unit
+                        }
+                    }
+                    val droppedAfterMs = (System.nanoTime() - start) / 1_000_000
+                    assertTrue("dropped after $droppedAfterMs ms", droppedAfterMs >= 1_000)
+                    peers.forEach { peer ->
+                        val after = peer.readTextUntilClosed(timeoutMs = 5_000)
+                        assertTrue("a silent peer got $after", after.none { it.contains("\"State\"") })
+                    }
+                } finally {
+                    peers.forEach { it.close() }
                 }
             }
         } finally {

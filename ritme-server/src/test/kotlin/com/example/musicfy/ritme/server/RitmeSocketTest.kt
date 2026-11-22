@@ -11,8 +11,10 @@ import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.server.testing.testApplication
 import io.ktor.websocket.Frame
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -104,6 +106,33 @@ class RitmeSocketTest {
                 assertEquals(ServerMessage.Kicked, guest.receiveServer())
                 assertTrue(guest.closedByServer())
                 assertEquals(listOf("Budi"), (host.receiveServer() as ServerMessage.State).state.members.map { it.name })
+            }
+        }
+    }
+
+    @Test
+    fun snapshotsAreHeldUntilTheClientAcksAndThenOnlyTheLatestIsSent() = testApplication {
+        application { ritmeModule(testDeps()) }
+        val client = createClient { install(WebSockets) }
+        client.ritme("10.0.1.1") {
+            val host = this
+            host.sendClient(ClientMessage.Create(PROTOCOL_VERSION, "Budi", listOf(NewEntry("dQw4w9WgXcQ", "Song", "Artist", null, 200_000))))
+            val welcome = host.receiveServer(ack = false) as ServerMessage.Welcome
+            client.ritme("10.0.1.2") {
+                val guest = this
+                guest.sendClient(ClientMessage.Join(PROTOCOL_VERSION, welcome.state.code, "Sari"))
+                guest.receiveServer() // Welcome (acked)
+                listOf(1_000L, 2_000L, 3_000L).forEach {
+                    guest.sendClient(ClientMessage.Send("s$it", Command.Seek(it)))
+                    assertEquals(it, (guest.receiveServer() as ServerMessage.State).state.playback.positionMs)
+                }
+                host.sendClient(ClientMessage.Ping(9)) // not gated
+                assertEquals(9L, (host.receiveServer(ack = false) as ServerMessage.Pong).clientTime)
+                host.sendClient(ClientMessage.Ack(welcome.state.version))
+                val latest = host.receiveServer(ack = false) as ServerMessage.State
+                assertEquals(3_000L, latest.state.playback.positionMs) // join + 3 seeks coalesced into one
+                assertEquals(2, latest.state.members.size)
+                assertNull(withTimeoutOrNull(300) { host.incoming.receive() })
             }
         }
     }

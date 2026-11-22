@@ -1,17 +1,22 @@
 package com.example.musicfy.ritme.server
 
 /**
- * Heap budget. The container has `mem_limit: 768m` and the JVM `-XX:MaxRAMPercentage=75`, so the
- * heap is ~576 MB. The limits below are chosen so that their worst cases add up:
+ * Heap budget. The container has `mem_limit: 1408m` and the JVM `-XX:MaxRAMPercentage=75`, so the
+ * heap is ~1056 MB (and `-XX:+ExitOnOutOfMemoryError` restarts it should it ever run out). The
+ * limits below are chosen so that their worst cases add up:
  *
  * | Part | Bound | Worst case in heap |
  * |---|---|---|
  * | Baseline (JVM, Ktor, Netty, caches) | measured | ~80 MB |
- * | Idle sockets | [MAX_CONNECTIONS] x ~60 KB | ~90 MB |
- * | Unsent outbound bytes | [MAX_PENDING_BYTES_TOTAL] | 96 MB |
+ * | Connections | [MAX_CONNECTIONS] x ~340 KB | ~500 MB |
+ * | Unsent outbound bytes (our outboxes) | [MAX_PENDING_BYTES_TOTAL] | 96 MB |
  * | Rooms at rest | [MAX_ROOM_STATE_BYTES_TOTAL] (120 MB encoded) x 1.3 | ~156 MB |
- * | Headroom (GC, in-flight encodes) | rest | >= 150 MB |
+ * | Headroom (GC, in-flight encodes) | rest | >= 220 MB |
  *
+ * Per connection: ~60 KB socket/session overhead, plus what sits in Ktor's per-connection output
+ * buffer (up to 1 MiB, outside our accounting). Ack flow control keeps that to one unacknowledged
+ * snapshot (<= [MAX_STATE_BYTES], 256 KB) plus small messages (bounded by the inbound frame limit
+ * over the stall window, ~24 KB): ~340 KB.
  * Room objects take 0.9-1.3x their encoded size in heap (measured: ASCII-heavy maximal entries
  * 1.10, 3-byte characters 0.88, typical YouTube entries 1.27), hence the 1.3 factor.
  * Rooms: at most [MAX_ROOMS]; at most [MAX_ROOM_STATE_BYTES_TOTAL] / [MAX_STATE_BYTES] = 480 of
@@ -81,11 +86,7 @@ object Limits {
 
     /** Generous for shared addresses (a household, a campus, carrier NAT). */
     const val MAX_CONNECTIONS_PER_IP = 48
-    /**
-     * Sized to memory (512 MB container, ~384 MB heap): an idle socket costs ~60 KB (Netty
-     * buffers, Ktor session, coroutines) -> ~90 MB at the cap. Buffered outbound bytes are bounded
-     * separately by [MAX_PENDING_BYTES_TOTAL], room state by [MAX_ROOM_STATE_BYTES_TOTAL].
-     */
+    /** Sized to the heap budget above: ~340 KB worst case per connection. */
     const val MAX_CONNECTIONS = 1_500
 
     /** A room lives only while someone is (or was, < 60 s ago) connected: one room per connection. */

@@ -90,4 +90,40 @@ class PeerOutboxTest {
         stats.drop(shared)
         assertEquals(0, stats.pendingBytes.get())
     }
+
+    private fun welcome(version: Long) =
+        Outgoing(ServerMessage.Welcome("m1", "t", roomState().copy(version = version), 0))
+
+    @Test
+    fun snapshotsWaitForTheAckWhileOtherMessagesPassAndNewerSnapshotsCoalesce() {
+        val outbox = PeerOutbox()
+        val w = welcome(5)
+        outbox.add(w)
+        assertSame(w, outbox.take())
+        assertTrue(outbox.awaitingAck)
+        assertEquals(5, outbox.lastSentVersion)
+
+        val s6 = state(6)
+        val s7 = state(7)
+        val err = error("x")
+        outbox.add(s6)
+        assertNull(outbox.take()) // gated
+        assertFalse(outbox.hasSendable)
+        outbox.add(err)
+        assertSame(err, outbox.take()) // small messages are not gated
+        assertSame(s6, outbox.add(s7)) // coalesced: s6 replaced
+        assertNull(outbox.take())
+
+        assertFalse(outbox.ack(4)) // stale
+        assertFalse(outbox.ack(Long.MAX_VALUE)) // never sent: no blind acks
+        assertTrue(outbox.awaitingAck)
+        assertTrue(outbox.ack(5))
+        assertTrue(outbox.hasSendable)
+        assertSame(s7, outbox.take())
+        assertTrue(outbox.awaitingAck)
+        assertEquals(7, outbox.lastSentVersion)
+        assertTrue(outbox.ack(7)) // the right Ack opens the gate again
+        assertNull(outbox.take())
+        assertEquals(0, outbox.pendingBytes)
+    }
 }

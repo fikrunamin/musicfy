@@ -5,10 +5,14 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * What one client has not been sent yet. Snapshots coalesce: a new [ServerMessage.State] replaces
- * a pending one (latest wins, placed after everything queued so far), so a slow reader holds at
- * most one snapshot. Bytes are bounded too: [add] returns false once the pending bytes exceed
- * [maxBytes] or [maxMessages] are waiting, and the caller drops the client.
+ * What one client has not been sent yet.
+ *
+ * Snapshots (Welcome, State) are flow-controlled: after one is taken for sending, the next waits
+ * until the client acknowledges it ([ack] with exactly that version), and meanwhile a new State
+ * replaces the pending one (latest wins, placed after everything queued so far). So a client has
+ * at most one unacknowledged snapshot in flight and one pending. Other messages (Error, Pong,
+ * Kicked, RoomClosed) are small and never wait. Bytes are bounded too: once [overBudget] (more
+ * than [maxBytes] or [maxMessages] waiting) the caller drops the client.
  * Not thread-safe: the caller synchronizes.
  */
 class PeerOutbox(
@@ -22,7 +26,18 @@ class PeerOutbox(
 
     val size: Int get() = queue.size
 
+    /** A snapshot was sent and its Ack has not arrived yet. */
+    var awaitingAck: Boolean = false
+        private set
+
+    /** Version of the last snapshot taken for sending. */
+    var lastSentVersion: Long = -1
+        private set
+
     val overBudget: Boolean get() = pendingBytes > maxBytes || queue.size > maxMessages
+
+    /** True when [take] would return something. */
+    val hasSendable: Boolean get() = queue.any { !awaitingAck || it.snapshotVersion == null }
 
     /** Queues [message]; returns the pending snapshot it replaced, if any. */
     fun add(message: Outgoing): Outgoing? {
@@ -36,7 +51,29 @@ class PeerOutbox(
         return replaced
     }
 
-    fun take(): Outgoing? = queue.removeFirstOrNull()?.also { pendingBytes -= it.size }
+    /** The next message that may be sent now (snapshots only when nothing is awaiting an Ack). */
+    fun take(): Outgoing? {
+        val index = queue.indexOfFirst { !awaitingAck || it.snapshotVersion == null }
+        if (index < 0) return null
+        val message = queue.removeAt(index)
+        pendingBytes -= message.size
+        message.snapshotVersion?.let {
+            awaitingAck = true
+            lastSentVersion = it
+        }
+        return message
+    }
+
+    /**
+     * The client applied snapshot [version]. Only the version actually sent counts, so a client
+     * cannot acknowledge blindly (e.g. Long.MAX_VALUE) without reading. Returns true if it was the
+     * awaited Ack.
+     */
+    fun ack(version: Long): Boolean {
+        if (!awaitingAck || version != lastSentVersion) return false
+        awaitingAck = false
+        return true
+    }
 
     /** Empties the outbox; returns what it held. */
     fun clear(): List<Outgoing> = queue.toList().also {
@@ -44,6 +81,14 @@ class PeerOutbox(
         pendingBytes = 0
     }
 }
+
+/** Version of a snapshot message (Welcome, State); null for everything else. */
+val Outgoing.snapshotVersion: Long?
+    get() = when (val m = message) {
+        is ServerMessage.State -> m.state.version
+        is ServerMessage.Welcome -> m.state.version
+        else -> null
+    }
 
 /**
  * Server-wide outbound buffering. Above [budget], clients that are behind are dropped and no new

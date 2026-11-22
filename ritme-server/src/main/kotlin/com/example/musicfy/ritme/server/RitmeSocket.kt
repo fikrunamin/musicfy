@@ -23,16 +23,18 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 /**
- * Never suspends on the network: messages go into this client's [PeerOutbox] (snapshots coalesce,
- * bytes are bounded) and a pump coroutine hands them to Ktor one frame at a time, so a slow client
+ * Never suspends on the network: messages go into this client's [PeerOutbox] (snapshots wait for
+ * the client's Ack and coalesce, bytes are bounded) and a pump coroutine hands them to Ktor one
+ * frame at a time, so a slow client
  * cannot hold the room lock or grow memory. Every frame shares the broadcast's encoded bytes. The
  * client is cut off at once (session cancelled; the room sees a disconnect and starts the grace
  * period; it can resume with its token for fresh state) when its outbox goes over budget, when a
- * frame is not written within [stallMs], or when it is behind while the server as a whole is over
- * [PeerStats.budget].
+ * frame is not written or a snapshot not acknowledged within [stallMs], or when it is behind while
+ * the server as a whole is over [PeerStats.budget].
  */
 class WebSocketPeer(
     private val session: DefaultWebSocketServerSession,
@@ -47,19 +49,31 @@ class WebSocketPeer(
 
     private var inFlight = 0 // bytes of the frame being written
 
+    /** When the awaited snapshot Ack is overdue (null: not waiting for one). */
+    private var ackDeadline: TimeMark? = null
+
     private val pump = session.launch {
         try {
             while (true) {
                 val next = synchronized(lock) { outbox.take()?.also { inFlight = it.size } }
                 if (next == null) {
-                    if (synchronized(lock) { closed }) break
-                    wake.receiveCatching()
+                    val (done, deadline) = synchronized(lock) { (closed && !outbox.hasSendable) to ackDeadline }
+                    if (done) break // closing: what is left is a snapshot nobody needs any more
+                    if (deadline == null) {
+                        wake.receiveCatching()
+                    } else if (deadline.hasPassedNow()) {
+                        abort() // no Ack within the stall window: treated like a stalled socket
+                        break
+                    } else {
+                        withTimeoutOrNull(-deadline.elapsedNow()) { wake.receiveCatching() }
+                    }
                     continue
                 }
-                // flush() returns once the frame is written to the socket: a client that stops
-                // reading is noticed even when nothing else is queued for it.
-                // Note: stallMs measures the write into the local socket, which in production is the
-                // connection to Caddy (its kernel buffer), not delivery to the end client. It
+                if (next.snapshotVersion != null) synchronized(lock) { ackDeadline = TimeSource.Monotonic.markNow() + stallMs.milliseconds }
+                // flush() returns once the frame is in Ktor's per-connection buffer (up to 1 MiB),
+                // not on the wire; the Ack gating above is what keeps that buffer to about one
+                // snapshot. stallMs measures the write into the local socket, which in production
+                // is the connection to Caddy (its kernel buffer), not delivery to the end client. It
                 // detects a stuck connection; it is not a client timeout and must not be tuned as one.
                 val written = try {
                     withTimeoutOrNull(stallMs) {
@@ -83,6 +97,14 @@ class WebSocketPeer(
                 outbox.clear()
             }.forEach(stats::drop)
         }
+    }
+
+    /** The client applied snapshot [version]: the next pending snapshot may go out. */
+    fun ack(version: Long) {
+        val acked = synchronized(lock) {
+            outbox.ack(version).also { if (it) ackDeadline = null }
+        }
+        if (acked) wake.trySend(Unit)
     }
 
     override suspend fun send(message: Outgoing) {
@@ -275,6 +297,7 @@ suspend fun DefaultWebSocketServerSession.ritmeSession(
                     close(CloseReason(CloseReason.Codes.NORMAL, "left"))
                     return
                 }
+                is ClientMessage.Ack -> peer.ack(message.version)
                 is ClientMessage.Create, is ClientMessage.Join -> peer.send(ServerMessage.Error(code = ErrorCode.INVALID))
                 is ClientMessage.Ping -> Unit
             }

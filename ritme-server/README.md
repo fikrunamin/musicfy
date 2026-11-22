@@ -42,21 +42,23 @@ Update: `git pull && docker compose up -d --build`. Logs: `docker compose logs -
 Rooms live only in memory, so every deploy or restart ends all rooms; clients get disconnected
 and have to create a new room. Deploy when nobody is listening.
 
-Container logs are rotated (json-file, 10 MB x 3 per service); the server runs with a 768 MB
-memory limit (heap: 75 % of it, ~576 MB). Every 10 minutes it logs counts only: rooms, room-state
-bytes, connections, unsent bytes and dropped clients.
+Container logs are rotated (json-file, 10 MB x 3 per service); the server runs with a 1408 MB
+memory limit (heap: 75 % of it, ~1056 MB) and `-XX:+ExitOnOutOfMemoryError`, so should it ever run
+out of heap it exits and Docker restarts it (`restart: unless-stopped`) instead of limping on.
+Every 10 minutes it logs counts only: rooms, room-state bytes, connections, unsent bytes and
+dropped clients.
 
 ### Heap budget
 
-The limits are sized so their worst cases fit the ~576 MB heap (see `Limits.kt`):
+The limits are sized so their worst cases fit the ~1056 MB heap (see `Limits.kt`):
 
 | Part | Bound | Worst case in heap |
 |---|---|---|
 | Baseline (JVM, Ktor, Netty, caches) | measured | ~80 MB |
-| Idle sockets | 1500 connections x ~60 KB | ~90 MB |
-| Unsent outbound bytes | server-wide budget | 96 MB |
+| Connections | 1500 x ~340 KB (60 KB overhead + one unacknowledged 256 KB snapshot in Ktor's output buffer + small messages) | ~500 MB |
+| Unsent outbound bytes (our outboxes) | server-wide budget | 96 MB |
 | Rooms at rest | 120 MB of encoded snapshots x 1.3 (measured heap/encoded: 0.88-1.27) | ~156 MB |
-| Headroom (GC, in-flight encodes) | rest | >= 150 MB |
+| Headroom (GC, in-flight encodes) | rest | >= 220 MB |
 
 At most 1500 rooms, of which at most 480 can be full (120 MB / 256 KB).
 
@@ -84,6 +86,12 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
   bidi embeddings/overrides/isolates, zero-width space, BOM and line/paragraph separators are
   removed. ZWJ/ZWNJ, variation selectors, tag characters and code points newer than the server's
   Unicode tables are kept, so new emoji, emoji sequences and subdivision flags survive.
+- **Flow control: clients must send `Ack(version)` after applying each `Welcome`/`State`** (the
+  `state.version` they applied). The server sends the next snapshot only after that Ack; newer
+  ones are coalesced meanwhile, so a slow client simply gets the latest state when it is ready.
+  An Ack for a version that was not sent is ignored. A client that has not acknowledged a
+  snapshot within 20 s is disconnected (it can resume with its token). `Error`, `Pong`, `Kicked`
+  and `RoomClosed` are not gated.
 - Clients decode with `decodeServerMessageOrNull` (unknown message types: skip), and must handle
   `MediaKind.UNKNOWN` (skip the entry) and `ErrorCode.UNKNOWN` (generic failure).
 - The server accepts protocol versions `MIN_SUPPORTED_PROTOCOL_VERSION..PROTOCOL_VERSION`;
@@ -104,7 +112,7 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
 | Inbound frames | 20/s per socket, burst 40 (pings and garbage included) | closed, no message |
 | Commands + TrackEnded | 10/s per member and 20/s per room | `Error(RATE_LIMITED)` (TrackEnded: ignored) |
 | Unsent messages per client | snapshots coalesce (only the latest `State` waits); at most 2 MB or 64 messages | disconnected; resume with the token for fresh state |
-| Stalled client | a frame not written to the socket within 20 s | disconnected |
+| Stalled client | a frame not written to the socket, or a snapshot not acknowledged, within 20 s | disconnected |
 | Server-wide unsent bytes | 96 MB | clients that are behind are disconnected; `Create`/`Join` get `RATE_LIMITED` until it drains |
 
 A client that ignores the server's Close frame is hung up on after at most 3 s.

@@ -102,6 +102,14 @@ sealed interface ClientMessage {
 
     @Serializable @SerialName("TrackEnded")
     data class TrackEnded(val entryId: String) : ClientMessage
+
+    /**
+     * Flow control: send after applying each Welcome/State, with its `state.version`. The server
+     * sends the next snapshot only after this Ack (newer ones are coalesced meanwhile) and drops a
+     * client that has not acknowledged a snapshot within 20 s. Other messages are not gated.
+     */
+    @Serializable @SerialName("Ack")
+    data class Ack(val version: Long) : ClientMessage
 }
 
 @Serializable
