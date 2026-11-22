@@ -14,6 +14,7 @@ data class SocketLimits(
     val framesPerSecond: Int = Limits.FRAMES_PER_SECOND,
     val frameBurst: Int = Limits.FRAME_BURST,
     val sendStallMs: Long = Limits.SEND_STALL_MS,
+    val ackDeadlineMs: Long = Limits.ACK_DEADLINE_MS,
 )
 
 /**

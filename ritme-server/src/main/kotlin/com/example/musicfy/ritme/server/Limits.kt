@@ -8,15 +8,16 @@ package com.example.musicfy.ritme.server
  * | Part | Bound | Worst case in heap |
  * |---|---|---|
  * | Baseline (JVM, Ktor, Netty, caches) | measured | ~80 MB |
- * | Connections | [MAX_CONNECTIONS] x ~340 KB | ~500 MB |
+ * | Connections | [MAX_CONNECTIONS] (650) x ~0.9 MB | ~585 MB |
  * | Unsent outbound bytes (our outboxes) | [MAX_PENDING_BYTES_TOTAL] | 96 MB |
  * | Rooms at rest | [MAX_ROOM_STATE_BYTES_TOTAL] (120 MB encoded) x 1.3 | ~156 MB |
- * | Headroom (GC, in-flight encodes) | rest | >= 220 MB |
+ * | Headroom (GC, in-flight encodes) | rest | >= 130 MB |
  *
- * Per connection: ~60 KB socket/session overhead, plus what sits in Ktor's per-connection output
- * buffer (up to 1 MiB, outside our accounting). Ack flow control keeps that to one unacknowledged
- * snapshot (<= [MAX_STATE_BYTES], 256 KB) plus small messages (bounded by the inbound frame limit
- * over the stall window, ~24 KB): ~340 KB.
+ * Per connection: an honest client holds ~60 KB of socket/session overhead plus at most one
+ * unacknowledged snapshot (<= [MAX_STATE_BYTES]) in Ktor's per-connection output buffer (up to
+ * 1 MiB, outside our accounting). Acks are predictable when one connection drives a room, so
+ * colluding clients that ack without reading can fill that buffer: measured ~0.8 MB per connection,
+ * budgeted as ~0.9 MB. Ktor's ping timeout and the stall/ack timers still drop such clients.
  * Room objects take 0.9-1.3x their encoded size in heap (measured: ASCII-heavy maximal entries
  * 1.10, 3-byte characters 0.88, typical YouTube entries 1.27), hence the 1.3 factor.
  * Rooms: at most [MAX_ROOMS]; at most [MAX_ROOM_STATE_BYTES_TOTAL] / [MAX_STATE_BYTES] = 480 of
@@ -86,8 +87,8 @@ object Limits {
 
     /** Generous for shared addresses (a household, a campus, carrier NAT). */
     const val MAX_CONNECTIONS_PER_IP = 48
-    /** Sized to the heap budget above: ~340 KB worst case per connection. */
-    const val MAX_CONNECTIONS = 1_500
+    /** Sized to the heap budget above: ~0.9 MB worst case per connection (colluding Acks). */
+    const val MAX_CONNECTIONS = 650
 
     /** Live rooms per creator IP (IPv6: per /64), held until the room is deleted; beyond it RATE_LIMITED. */
     const val MAX_ROOMS_PER_IP = 10
@@ -114,6 +115,12 @@ object Limits {
 
     /** A frame the client has not accepted within this long means it stopped reading: dropped. */
     const val SEND_STALL_MS = 20_000L
+
+    /**
+     * A snapshot not acknowledged within this long drops the client. Longer than [SEND_STALL_MS]:
+     * a 256 KB snapshot over a slow mobile link (2G) can take well over 20 s to arrive.
+     */
+    const val ACK_DEADLINE_MS = 45_000L
 
     const val METRICS_INTERVAL_MS = 10 * 60_000L
 

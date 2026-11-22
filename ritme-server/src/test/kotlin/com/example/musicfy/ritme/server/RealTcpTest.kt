@@ -202,7 +202,7 @@ class RealTcpTest {
     fun silentPeersInARoomWithALargeStateAreDroppedAndBufferingStaysBounded() = runBlocking {
         val silent = 6
         val stats = PeerStats()
-        val deps = testDeps(socketLimits = SocketLimits(sendStallMs = 1_000), peerStats = stats)
+        val deps = testDeps(socketLimits = SocketLimits(sendStallMs = 1_000, ackDeadlineMs = 1_000), peerStats = stats)
         val server = embeddedServer(Netty, port = 0) { ritmeModule(deps) }.start()
         val port = server.engine.resolvedConnectors().first().port
         val client = HttpClient(OkHttp) { install(WebSockets) }
@@ -266,7 +266,7 @@ class RealTcpTest {
     fun silentPeersThatNeverAckGetNoFurtherSnapshotsAndAreDroppedAfterTheStallWindow() = runBlocking {
         val silent = 8
         val stats = PeerStats()
-        val deps = testDeps(socketLimits = SocketLimits(sendStallMs = 1_500), peerStats = stats)
+        val deps = testDeps(socketLimits = SocketLimits(sendStallMs = 1_500, ackDeadlineMs = 1_500), peerStats = stats)
         val server = embeddedServer(Netty, port = 0) { ritmeModule(deps) }.start()
         val port = server.engine.resolvedConnectors().first().port
         val client = HttpClient(OkHttp) { install(WebSockets) }

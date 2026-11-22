@@ -1,7 +1,9 @@
 package com.example.musicfy.ritme.server
 
 import com.example.musicfy.ritme.protocol.ClientMessage
+import com.example.musicfy.ritme.protocol.Command
 import com.example.musicfy.ritme.protocol.ErrorCode
+import com.example.musicfy.ritme.protocol.NewEntry
 import com.example.musicfy.ritme.protocol.PROTOCOL_VERSION
 import com.example.musicfy.ritme.protocol.ServerMessage
 import io.ktor.client.HttpClient
@@ -207,6 +209,42 @@ class AbuseLimitsTest {
         wsClient().ritme("12.0.0.2") {
             sendClient(ClientMessage.Create(PROTOCOL_VERSION, "Budi"))
             assertTrue(receiveServer() is ServerMessage.Welcome)
+        }
+    }
+
+    @Test
+    fun membersWhoAckPromptlyAreNotClosedWhenSomeoneElseSpamsCommands() = testApplication {
+        // Burst 6, almost no refill: without the Ack exemption the guest's Join + 6 Acks would be 7 frames.
+        application { ritmeModule(testDeps(socketLimits = SocketLimits(framesPerSecond = 1, frameBurst = 6))) }
+        val client = wsClient()
+        client.ritme("14.0.0.1") {
+            val host = this
+            host.sendClient(ClientMessage.Create(PROTOCOL_VERSION, "Budi", listOf(NewEntry("dQw4w9WgXcQ", "Song", "Artist", null, 200_000))))
+            val code = (host.receiveServer() as ServerMessage.Welcome).state.code
+            client.ritme("14.0.0.2") {
+                val guest = this
+                guest.sendClient(ClientMessage.Join(PROTOCOL_VERSION, code, "Sari"))
+                guest.receiveServer() // Welcome, acked
+                host.receiveServer() // Sari joined, acked
+                repeat(5) {
+                    host.sendClient(ClientMessage.Send("s$it", Command.Seek(it * 1_000L)))
+                    host.receiveServer()
+                    assertEquals(it * 1_000L, (guest.receiveServer() as ServerMessage.State).state.playback.positionMs)
+                }
+                guest.sendClient(ClientMessage.Ping(5)) // still connected, still has budget
+                assertEquals(5L, (guest.receiveServer() as ServerMessage.Pong).clientTime)
+            }
+        }
+    }
+
+    @Test
+    fun acksForOtherVersionsStillCountAgainstTheFrameLimiter() = testApplication {
+        application { ritmeModule(testDeps(socketLimits = SocketLimits(framesPerSecond = 1, frameBurst = 5))) }
+        wsClient().ritme("15.0.0.1") {
+            sendClient(ClientMessage.Create(PROTOCOL_VERSION, "Budi"))
+            receiveServer() // Welcome (its Ack is free)
+            repeat(10) { sendClient(ClientMessage.Ack(999)) }
+            assertTrue(closedByServer())
         }
     }
 }

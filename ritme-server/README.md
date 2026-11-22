@@ -55,12 +55,12 @@ The limits are sized so their worst cases fit the ~1056 MB heap (see `Limits.kt`
 | Part | Bound | Worst case in heap |
 |---|---|---|
 | Baseline (JVM, Ktor, Netty, caches) | measured | ~80 MB |
-| Connections | 1500 x ~340 KB (60 KB overhead + one unacknowledged 256 KB snapshot in Ktor's output buffer + small messages) | ~500 MB |
+| Connections | 650 x ~0.9 MB worst case (colluding Acks: clients that ack predictable versions without reading can fill Ktor's 1 MiB output buffer; an honest client holds ~60 KB + one unacknowledged 256 KB snapshot) | ~585 MB |
 | Unsent outbound bytes (our outboxes) | server-wide budget | 96 MB |
 | Rooms at rest | 120 MB of encoded snapshots x 1.3 (measured heap/encoded: 0.88-1.27) | ~156 MB |
-| Headroom (GC, in-flight encodes) | rest | >= 220 MB |
+| Headroom (GC, in-flight encodes) | rest | >= 130 MB |
 
-At most 1500 rooms, of which at most 480 can be full (120 MB / 256 KB).
+At most 650 rooms, of which at most 480 can be full (120 MB / 256 KB).
 
 The app's server URL setting must be `https://<RITME_DOMAIN>`.
 
@@ -90,7 +90,7 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
   `state.version` they applied). The server sends the next snapshot only after that Ack; newer
   ones are coalesced meanwhile, so a slow client simply gets the latest state when it is ready.
   An Ack for a version that was not sent is ignored. A client that has not acknowledged a
-  snapshot within 20 s is disconnected (it can resume with its token). `Error`, `Pong`, `Kicked`
+  snapshot within 45 s is disconnected (it can resume with its token). `Error`, `Pong`, `Kicked`
   and `RoomClosed` are not gated.
 - Clients decode with `decodeServerMessageOrNull` (unknown message types: skip), and must handle
   `MediaKind.UNKNOWN` (skip the entry) and `ErrorCode.UNKNOWN` (generic failure).
@@ -107,13 +107,13 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
 |---|---|---|
 | Join deadline | a socket must have joined a room within 10 s | closed (policy violation), no message |
 | Join limiter | per IP (IPv6: per /64): burst 30, refilled 10/min; charged for every `Create` and for failed Joins (`ROOM_NOT_FOUND`, `ROOM_FULL`, `UPGRADE_REQUIRED`); successful joins and resumes are free but need a non-empty bucket | `Error(RATE_LIMITED)`, closed |
-| Concurrent sockets | 48 per IP, 1500 total (~60 KB per idle socket, ~90 MB at the cap) | `Error(RATE_LIMITED)`, closed (1013 try again later), hung up within 0.5 s |
-| Rooms | 1500 total; 120 MB of snapshots in total | `Error(ROOM_FULL)` on Create, closed |
+| Concurrent sockets | 48 per IP, 650 total (sized to the heap budget above) | `Error(RATE_LIMITED)`, closed (1013 try again later), hung up within 0.5 s |
+| Rooms | 650 total; 120 MB of snapshots in total | `Error(ROOM_FULL)` on Create, closed |
 | Live rooms per creator | 10 per IP (IPv6: per /64), until the room is deleted | `Error(RATE_LIMITED)` on Create, closed |
-| Inbound frames | 20/s per socket, burst 40 (pings and garbage included) | closed, no message |
+| Inbound frames | 20/s per socket, burst 40 (pings and garbage included; an `Ack` for the snapshot the client is awaiting is free) | closed, no message |
 | Commands + TrackEnded | 10/s per member and 20/s per room | `Error(RATE_LIMITED)` (TrackEnded: ignored) |
 | Unsent messages per client | snapshots coalesce (only the latest `State` waits); at most 2 MB or 64 messages | disconnected; resume with the token for fresh state |
-| Stalled client | a frame not written to the socket, or a snapshot not acknowledged, within 20 s | disconnected |
+| Stalled client | a frame not written to the socket within 20 s, or a snapshot not acknowledged within 45 s | disconnected |
 | Server-wide unsent bytes | 96 MB | clients that are behind are disconnected; `Create`/`Join` get `RATE_LIMITED` until it drains |
 
 A client that ignores the server's Close frame is hung up on after at most 3 s.
