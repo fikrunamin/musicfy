@@ -51,6 +51,20 @@ function setup(loadHls?: () => Promise<HlsConstructor>) {
   return { player, video, events, container };
 }
 
+function setReady(video: HTMLVideoElement, readyState = 1) {
+  Object.defineProperty(video, 'readyState', { value: readyState, configurable: true });
+}
+
+function setError(video: HTMLVideoElement, error: unknown) {
+  Object.defineProperty(video, 'error', { value: error, configurable: true });
+}
+
+/** Loads and positions (no start seek), as a real source reaching HAVE_METADATA does. */
+function position(video: HTMLVideoElement) {
+  setReady(video);
+  video.dispatchEvent(new Event('loadedmetadata'));
+}
+
 function setTime(video: HTMLVideoElement, seconds: number) {
   Object.defineProperty(video, 'currentTime', { value: seconds, writable: true, configurable: true });
 }
@@ -63,7 +77,7 @@ describe('createVideoPlayer', () => {
     expect(video.playsInline).toBe(true);
     expect(player.currentMs()).toBeNull();
     setTime(video, 0);
-    video.dispatchEvent(new Event('loadedmetadata'));
+    position(video);
     expect(video.currentTime).toBe(5); // initial seek applied
     expect(player.currentMs()).toBeNull(); // still waiting for 'seeked'
     video.dispatchEvent(new Event('seeked'));
@@ -73,7 +87,7 @@ describe('createVideoPlayer', () => {
   it('is positioned right after loadedmetadata when no start seek is needed', () => {
     const { player, video } = setup();
     player.load(MP4, null, 1);
-    video.dispatchEvent(new Event('loadedmetadata'));
+    position(video);
     setTime(video, 12);
     expect(player.currentMs()).toBe(12_000);
   });
@@ -81,7 +95,7 @@ describe('createVideoPlayer', () => {
   it('currentMs is null again after a new load, never the previous source position', () => {
     const { player, video } = setup();
     player.load(MP4, null, 1);
-    video.dispatchEvent(new Event('loadedmetadata'));
+    position(video);
     setTime(video, 42);
     expect(player.currentMs()).toBe(42_000);
     player.load({ ...MP4, url: 'https://cdn.example/other.mp4' }, null, 2);
@@ -91,9 +105,11 @@ describe('createVideoPlayer', () => {
   it('echoes the gen of its own load and does not double-report through old listeners', () => {
     const { player, video, events } = setup();
     player.load(MP4, null, 7);
+    position(video);
     video.dispatchEvent(new Event('playing'));
     expect(events).toEqual([{ type: 'playing', gen: 7 }]);
     player.load({ ...MP4, url: 'https://cdn.example/other.mp4' }, null, 8);
+    position(video);
     video.dispatchEvent(new Event('playing'));
     expect(events).toEqual([
       { type: 'playing', gen: 7 },
@@ -104,8 +120,10 @@ describe('createVideoPlayer', () => {
   it('maps media element events, with the gen', () => {
     const { player, video, events } = setup();
     player.load(MP4, null, 3);
+    position(video);
     video.dispatchEvent(new Event('playing'));
     video.dispatchEvent(new Event('pause'));
+    setError(video, { code: 4 });
     video.dispatchEvent(new Event('error'));
     expect(events).toEqual([
       { type: 'playing', gen: 3 },
@@ -117,6 +135,7 @@ describe('createVideoPlayer', () => {
   it('natural end: the pause before ended is not reported as paused; ended is', () => {
     const { player, video, events } = setup();
     player.load(MP4, null, 4);
+    position(video);
     Object.defineProperty(video, 'duration', { value: 100, configurable: true });
     setTime(video, 100);
     video.dispatchEvent(new Event('pause'));
@@ -137,7 +156,7 @@ describe('createVideoPlayer', () => {
     player.load(MP4, 2_000, 1);
     player.play();
     expect(playSpy).not.toHaveBeenCalled();
-    video.dispatchEvent(new Event('loadedmetadata'));
+    position(video);
     expect(playSpy).not.toHaveBeenCalled(); // wait for the start seek
     video.dispatchEvent(new Event('seeked'));
     expect(playSpy).toHaveBeenCalledTimes(1);
@@ -147,7 +166,7 @@ describe('createVideoPlayer', () => {
     const { player, video } = setup();
     player.load(MP4, 1_000, 1);
     player.seek(9_000);
-    video.dispatchEvent(new Event('loadedmetadata'));
+    position(video);
     expect(video.currentTime).toBe(9);
     video.dispatchEvent(new Event('seeked'));
     expect(player.currentMs()).toBe(9_000);
@@ -159,7 +178,7 @@ describe('createVideoPlayer', () => {
   it('a seek between loadedmetadata and seeked re-applies the start', () => {
     const { player, video } = setup();
     player.load(MP4, 1_000, 1);
-    video.dispatchEvent(new Event('loadedmetadata'));
+    position(video);
     player.seek(6_000);
     expect(video.currentTime).toBe(6);
     expect(player.currentMs()).toBeNull();
@@ -244,5 +263,53 @@ describe('createVideoPlayer', () => {
     player.destroy();
     await flush();
     expect(instances).toHaveLength(0);
+  });
+
+  it('V1: a pause queued by the previous source does not report paused under the new gen', () => {
+    const { player, video, events } = setup();
+    player.load(MP4, null, 1);
+    position(video);
+    player.play();
+    video.dispatchEvent(new Event('playing'));
+    events.length = 0;
+    player.load({ ...MP4, url: 'https://cdn.example/b.mp4' }, 0, 2);
+    video.dispatchEvent(new Event('pause'));
+    expect(events).toEqual([]);
+  });
+
+  it('V2: stale ended / error (video.error reset by load) after a new load emit nothing', () => {
+    const { player, video, events } = setup();
+    player.load(MP4, null, 1);
+    position(video);
+    events.length = 0;
+    player.load({ ...MP4, url: 'https://cdn.example/b.mp4' }, 0, 2);
+    setError(video, null);
+    video.dispatchEvent(new Event('ended'));
+    video.dispatchEvent(new Event('error'));
+    video.dispatchEvent(new Event('pause'));
+    expect(events).toEqual([]);
+    // real ones after positioning still work
+    setReady(video);
+    video.dispatchEvent(new Event('loadedmetadata'));
+    video.dispatchEvent(new Event('seeked'));
+    video.dispatchEvent(new Event('ended'));
+    setError(video, { code: 3 });
+    video.dispatchEvent(new Event('error'));
+    expect(events).toEqual([
+      { type: 'ended', gen: 2 },
+      { type: 'unplayable', gen: 2 },
+    ]);
+  });
+
+  it('V3: a stale loadedmetadata (readyState 0) does not position the new load', () => {
+    const { player, video } = setup();
+    player.load(MP4, null, 1);
+    player.load({ ...MP4, url: 'https://cdn.example/live.m3u8' }, null, 2);
+    setReady(video, 0);
+    video.dispatchEvent(new Event('loadedmetadata'));
+    expect(player.currentMs()).toBeNull();
+    setReady(video, 1);
+    video.dispatchEvent(new Event('loadedmetadata'));
+    expect(player.currentMs()).not.toBeNull();
   });
 });

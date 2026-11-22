@@ -76,8 +76,7 @@ export function createVideoPlayer(
     abort = null;
     hls?.destroy();
     hls = null;
-    video.pause();
-    video.removeAttribute('src');
+    video.removeAttribute('src'); // no video.pause(): its queued 'pause' event would leak into the next load
     try {
       video.load();
     } catch {
@@ -102,15 +101,17 @@ export function createVideoPlayer(
       awaitingSeeked = false;
       positioned = false;
 
-      video.addEventListener('playing', () => emit('playing'), { signal });
+      video.addEventListener('playing', () => positioned && emit('playing'), { signal });
       video.addEventListener('pause', () => {
+        if (!positioned) return;
         const d = video.duration;
         const atEnd = video.ended || (Number.isFinite(d) && d > 0 && video.currentTime >= d - END_EPSILON_S);
         if (!atEnd && !video.seeking) emit('paused');
       }, { signal });
-      video.addEventListener('ended', () => emit('ended'), { signal });
-      video.addEventListener('error', () => emit('unplayable'), { signal });
+      video.addEventListener('ended', () => positioned && emit('ended'), { signal });
+      video.addEventListener('error', () => video.error && emit('unplayable'), { signal });
       video.addEventListener('loadedmetadata', () => {
+        if (video.readyState < 1) return; // stale event of the previous source
         metadataLoaded = true;
         applyStart();
       }, { signal });
@@ -120,7 +121,7 @@ export function createVideoPlayer(
 
       const page = container.ownerDocument.location;
       if (page?.protocol === 'https:' && /^http:/i.test(source.url)) {
-        emit('unplayable'); // mixed content would be blocked anyway
+        queueMicrotask(() => emit('unplayable')); // async: never inside the caller's update(); mixed content would be blocked anyway
         return;
       }
 

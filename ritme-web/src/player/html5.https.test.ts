@@ -5,7 +5,7 @@ import { createVideoPlayer } from './html5';
 import type { PlayerEvent } from './types';
 
 describe('createVideoPlayer on an https page', () => {
-  it('http URL is unplayable without setting src; https is loaded', () => {
+  it('http URL is unplayable (async) without setting src; https is loaded', async () => {
     vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
     vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
     const events: PlayerEvent[] = [];
@@ -13,6 +13,8 @@ describe('createVideoPlayer on an https page', () => {
     const player = createVideoPlayer(container, (e) => events.push(e));
     const video = container.querySelector('video')!;
     player.load({ kind: 'video', url: 'http://cdn.example/v.mp4', hls: false }, null, 5);
+    expect(events).toEqual([]); // deferred, not inside load()
+    await Promise.resolve();
     expect(events).toEqual([{ type: 'unplayable', gen: 5 }]);
     expect(video.hasAttribute('src')).toBe(false);
     player.load({ kind: 'video', url: 'https://cdn.example/v.mp4', hls: false }, null, 6);
