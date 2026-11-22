@@ -969,3 +969,7 @@ val DonatePromptSlotsKey = stringPreferencesKey("donatePromptSlots")
 // one-off lyrics cache clears (App.kt). raise LyricsCacheWipeGeneration to clear it again in a later release
 val LyricsCacheWipeKey = intPreferencesKey("lyricsCacheWipe")
 const val LyricsCacheWipeGeneration = 1
+
+// Ritme (listen together): server URL override (blank = the official server) and display name
+val RitmeServerUrlKey = stringPreferencesKey("ritmeServerUrl")
+val RitmeDisplayNameKey = stringPreferencesKey("ritmeDisplayName")

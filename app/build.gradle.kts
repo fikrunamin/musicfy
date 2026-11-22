@@ -1,6 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import com.android.build.api.dsl.ApplicationExtension
 import java.util.Properties
+import java.net.URI
 import java.net.URL
 
 val localProperties = Properties()
@@ -55,6 +56,14 @@ extensions.configure<ApplicationExtension> {
             }.standardOutput.asText.get().trim().toLong() * 1000L
         }.getOrDefault(0L)
         buildConfigField("long", "BUILD_TIME_MILLIS", "${buildTimeMillis}L")
+
+        // Ritme (listen together): the official relay; users can point the app at their own in Settings.
+        val ritmeServerUrl = "https://ritme.dubeli.id"
+        buildConfigField("String", "RITME_SERVER_URL", "\"$ritmeServerUrl\"")
+        // Kill switch: false hides every Ritme entry point and keeps RitmeGate closed.
+        buildConfigField("Boolean", "RITME_ENABLED", "true")
+        // Host for the https://<host>/r/{code} deep link in AndroidManifest.xml.
+        manifestPlaceholders["ritmeHost"] = URI(ritmeServerUrl).host
     }
     
 
@@ -393,6 +402,7 @@ dependencies {
     implementation(project(":modules:monochrome"))
     implementation(project(":core:platform"))
     implementation(project(":core:settings"))
+    implementation(project(":modules:ritme-protocol"))
 
 
     implementation(libs.ktor.client.core)
