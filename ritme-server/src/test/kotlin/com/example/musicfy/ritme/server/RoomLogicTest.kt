@@ -350,4 +350,52 @@ class RoomLogicTest {
         // Invisible padding does not count towards the length.
         assertEquals("a".repeat(Limits.MAX_NAME_LENGTH), RoomLogic.cleanName("a".repeat(Limits.MAX_NAME_LENGTH) + "\u200B".repeat(10)))
     }
+
+    private fun maximal(i: Int) = NewEntry(
+        "", "\u0001".repeat(150) + "T".repeat(150), "A".repeat(300), "https://cdn.example/" + "t".repeat(480), 600_000,
+        MediaKind.URL, "https://cdn.example/$i/" + "u".repeat(2_000),
+    )
+
+    @Test
+    fun titlesAndArtistsAreCleanedOfInvisibleCharacters() {
+        val e = newEntry().copy(title = " \u202ESo\u0001ng\n", artist = "Ar\u200Btist\u0000")
+        val added = ok(apply(playingA, HOST, Command.Add(listOf(e)))).queue.last()
+        assertEquals("Song", added.title)
+        assertEquals("Artist", added.artist)
+        assertEquals(ErrorCode.INVALID, rejected(apply(playingA, HOST, Command.Add(listOf(e.copy(title = "\u0001\u200B \u0000"))))))
+    }
+
+    @Test
+    fun addIsRefusedOnceTheSnapshotWouldPassTheStateCap() {
+        var state = roomState()
+        var added = 0
+        while (true) {
+            when (val outcome = apply(state, HOST, Command.Add(List(20) { maximal(added + it) }))) {
+                is Outcome.Ok -> {
+                    state = outcome.state
+                    added += 20
+                }
+                is Outcome.Rejected -> {
+                    assertEquals(ErrorCode.QUEUE_FULL, outcome.code)
+                    break
+                }
+            }
+        }
+        assertTrue("only $added entries", added in 100 until Limits.MAX_QUEUE)
+        assertTrue(RoomLogic.stateBytes(state) <= Limits.MAX_STATE_BYTES)
+        // Smaller entries still fit until the cap.
+        ok(apply(state, HOST, Command.Add(listOf(newEntry("small")))))
+    }
+
+    @Test
+    fun anOversizedCreateKeepsTheEntriesThatFit() {
+        val create = ClientMessage.Create(PROTOCOL_VERSION, "Host", List(Limits.MAX_QUEUE) { maximal(it) })
+        val room = RoomLogic.newRoom("ABCDEF", HOST, "Host", create, now, ids)
+        assertTrue(room.queue.size in 100 until Limits.MAX_QUEUE)
+        assertTrue(RoomLogic.stateBytes(room) <= Limits.MAX_STATE_BYTES)
+        assertEquals(room.queue.first().entryId, room.currentEntryId)
+        // A normal full queue is far below the cap.
+        val normal = ClientMessage.Create(PROTOCOL_VERSION, "Host", List(Limits.MAX_QUEUE) { newEntry("v$it") })
+        assertEquals(Limits.MAX_QUEUE, RoomLogic.newRoom("ABCDEF", HOST, "Host", normal, now, ids).queue.size)
+    }
 }

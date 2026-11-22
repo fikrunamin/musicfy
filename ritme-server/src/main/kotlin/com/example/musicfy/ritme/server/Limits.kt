@@ -4,12 +4,15 @@ object Limits {
     const val MAX_MEMBERS = 20
     const val MAX_QUEUE = 500
     const val COMMANDS_PER_SECOND = 10
-    /**
-     * Largest inbound frame. Safe because every field has its own cap; outbound frames are not
-     * limited (a 500-entry snapshot is ~200 KB, ~3 MB with every field at its cap): clients must
-     * accept >= 1 MB (4 MB recommended).
-     */
+    /** Largest inbound frame. Safe because every field has its own cap. */
     const val MAX_FRAME_BYTES = 256L * 1024
+
+    /**
+     * Largest room snapshot (UTF-8 JSON): Add beyond it gets QUEUE_FULL, an over-large Create keeps
+     * the entries that fit. A typical 500-entry queue is ~200 KB. Server frames (Welcome/State)
+     * therefore stay below ~520 KB; clients must accept inbound frames of at least 1 MB.
+     */
+    const val MAX_STATE_BYTES = 512 * 1024
     const val MAX_NAME_LENGTH = 32
     const val MAX_VIDEO_ID_LENGTH = 64
     const val MAX_TEXT_LENGTH = 300

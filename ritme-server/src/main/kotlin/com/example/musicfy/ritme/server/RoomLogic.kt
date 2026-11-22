@@ -8,6 +8,7 @@ import com.example.musicfy.ritme.protocol.Member
 import com.example.musicfy.ritme.protocol.NewEntry
 import com.example.musicfy.ritme.protocol.Playback
 import com.example.musicfy.ritme.protocol.QueueEntry
+import com.example.musicfy.ritme.protocol.RitmeJson
 import com.example.musicfy.ritme.protocol.RoomState
 import com.example.musicfy.ritme.protocol.currentEntry
 import com.example.musicfy.ritme.protocol.isLive
@@ -60,17 +61,26 @@ object RoomLogic {
     }
 
     fun newRoom(code: String, hostId: String, hostName: String, create: ClientMessage.Create, now: Long, ids: IdGen): RoomState {
-        val queue = create.initialQueue
-            .filter { it.isValid() }
-            .take(Limits.MAX_QUEUE)
-            .map { it.toQueueEntry(ids.entryId(), hostId) }
-        val base = RoomState(
+        val empty = RoomState(
             code = code,
             version = 1,
             hostId = hostId,
             members = listOf(Member(hostId, hostName, isHost = true, connected = true, joinedAt = now)),
-            queue = queue,
         )
+        // Keep initial entries while the snapshot fits MAX_STATE_BYTES (the rest is dropped, like
+        // invalid ones); STATE_SLACK covers currentEntryId and playback.
+        var budget = Limits.MAX_STATE_BYTES - jsonBytes(empty) - STATE_SLACK
+        val queue = create.initialQueue
+            .asSequence()
+            .filter { it.isValid() }
+            .take(Limits.MAX_QUEUE)
+            .map { it.toQueueEntry(ids.entryId(), hostId) }
+            .takeWhile { entry ->
+                budget -= jsonBytes(entry) + 1
+                budget >= 0
+            }
+            .toList()
+        val base = empty.copy(queue = queue)
         val start = queue.getOrNull(create.startIndex) ?: queue.firstOrNull() ?: return base
         val startAt = clampPosition(start, create.startPositionMs)
         return base.copy(
@@ -103,12 +113,40 @@ object RoomLogic {
      * marks: everything in \p{C}) or line/paragraph separators, trimmed, 1..32 chars.
      */
     fun cleanName(raw: String): String? =
-        Normalizer.normalize(raw, Normalizer.Form.NFC)
-            .replace(INVISIBLE, "")
-            .trim()
-            .takeIf { it.isNotEmpty() && it.length <= Limits.MAX_NAME_LENGTH }
+        cleanText(raw).takeIf { it.isNotEmpty() && it.length <= Limits.MAX_NAME_LENGTH }
+
+    /** NFC, without \p{C} / line and paragraph separators, trimmed. Used for names, titles, artists. */
+    fun cleanText(raw: String): String = Normalizer.normalize(raw, Normalizer.Form.NFC).replace(INVISIBLE, "").trim()
 
     private val INVISIBLE = Regex("[\\p{C}\\p{Zl}\\p{Zp}]")
+
+    /** Bytes of the snapshot as sent (UTF-8 JSON). */
+    fun stateBytes(state: RoomState): Int = jsonBytes(state)
+
+    private const val STATE_SLACK = 256
+
+    private fun jsonBytes(state: RoomState): Int = utf8Length(RitmeJson.encodeToString(RoomState.serializer(), state))
+
+    private fun jsonBytes(entry: QueueEntry): Int = utf8Length(RitmeJson.encodeToString(QueueEntry.serializer(), entry))
+
+    private fun utf8Length(text: String): Int {
+        var bytes = 0
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            bytes += when {
+                c.code < 0x80 -> 1
+                c.code < 0x800 -> 2
+                Character.isHighSurrogate(c) && i + 1 < text.length && Character.isLowSurrogate(text[i + 1]) -> {
+                    i++
+                    4
+                }
+                else -> 3
+            }
+            i++
+        }
+        return bytes
+    }
 
     fun nextHost(state: RoomState, excluding: String): String? =
         state.members.filter { it.connected && it.id != excluding }.minByOrNull { it.joinedAt }?.id
@@ -182,7 +220,9 @@ object RoomLogic {
             state.queue + added
         }
         val withQueue = state.copy(queue = queue)
-        return changed(if (state.currentEntryId == null) startEntry(withQueue, added.first().entryId, now) else withQueue)
+        val next = if (state.currentEntryId == null) startEntry(withQueue, added.first().entryId, now) else withQueue
+        if (jsonBytes(next) > Limits.MAX_STATE_BYTES) return Outcome.Rejected(ErrorCode.QUEUE_FULL)
+        return changed(next)
     }
 
     private fun remove(state: RoomState, by: String, canControl: Boolean, entryId: String, now: Long): Outcome {
@@ -248,7 +288,7 @@ object RoomLogic {
             MediaKind.UNKNOWN -> false
         }
         return source &&
-            title.isNotBlank() && title.length <= Limits.MAX_TEXT_LENGTH &&
+            title.length <= Limits.MAX_TEXT_LENGTH && cleanText(title).isNotEmpty() &&
             artist.length <= Limits.MAX_TEXT_LENGTH &&
             isValidThumbnail(thumbnailUrl, youtube = kind == MediaKind.YOUTUBE_MUSIC || kind == MediaKind.YOUTUBE_VIDEO) &&
             durationMs in 0..Limits.MAX_DURATION_MS
@@ -263,5 +303,5 @@ object RoomLogic {
     }
 
     private fun NewEntry.toQueueEntry(entryId: String, addedBy: String) =
-        QueueEntry(entryId, videoId, title.trim(), artist.trim(), thumbnailUrl, durationMs, addedBy, kind, url?.trim())
+        QueueEntry(entryId, videoId, cleanText(title), cleanText(artist), thumbnailUrl, durationMs, addedBy, kind, url?.trim())
 }

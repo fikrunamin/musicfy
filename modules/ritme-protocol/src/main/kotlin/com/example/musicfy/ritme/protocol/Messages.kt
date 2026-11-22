@@ -70,7 +70,8 @@ sealed interface Command {
 sealed interface ClientMessage {
     /**
      * Inbound frames are limited to 256 KB. Send at most 200 [initialQueue] entries here and the
-     * rest as [Command.Add] batches of at most 200 after Welcome.
+     * rest as [Command.Add] batches of at most 200 after Welcome. Entries beyond the 512 KB room
+     * state cap are dropped here and rejected with QUEUE_FULL in Add.
      */
     @Serializable @SerialName("Create")
     data class Create(
@@ -116,10 +117,9 @@ sealed interface ServerMessage {
     ) : ServerMessage
 
     /**
-     * A full snapshot. Server-to-client frames are not size-limited and can exceed 256 KB (a
-     * 500-entry queue is ~200 KB), so clients must accept inbound frames of at least 1 MB; 4 MB is
-     * recommended, since with every field at its cap a full queue can reach ~3 MB. The same holds
-     * for [Welcome].
+     * A full snapshot. The server caps a room's state at 512 KB of JSON (a typical 500-entry queue
+     * is ~200 KB), so Welcome/State frames stay below ~520 KB, above the 256 KB inbound limit:
+     * clients must accept inbound frames of at least 1 MB. The same holds for [Welcome].
      */
     @Serializable @SerialName("State")
     data class State(val state: RoomState) : ServerMessage
