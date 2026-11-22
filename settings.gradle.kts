@@ -45,6 +45,9 @@ include(":core:database")
 include(":core:resolver")
 include(":core:designsystem")
 
+// desktop app (Compose Desktop + Koin)
+include(":desktopApp")
+
 // local newpipe extractor
 //includeBuild("../NewPipeExtractor") {
 //    dependencySubstitution {

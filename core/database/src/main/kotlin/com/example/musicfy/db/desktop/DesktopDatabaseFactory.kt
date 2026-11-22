@@ -1,6 +1,7 @@
 package com.example.musicfy.db.desktop
 
 import androidx.room.Room
+import androidx.room.RoomDatabase
 import androidx.sqlite.SQLiteDriver
 import kotlinx.coroutines.Dispatchers
 import java.io.File
@@ -22,5 +23,7 @@ fun createDesktopDatabase(
     return Room.databaseBuilder<DesktopMusicDatabase>(name = file.absolutePath)
         .setDriver(driver)
         .setQueryCoroutineContext(queryContext)
+        // Explicit rather than AUTOMATIC: the desktop DB is always a file, and readers must not block the writer.
+        .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
         .build()
 }
