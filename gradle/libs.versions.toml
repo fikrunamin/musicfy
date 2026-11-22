@@ -11,6 +11,7 @@ media3 = "1.7.1"
 mediarouter = "1.8.1"
 castFramework = "22.2.0"
 room = "2.8.4"
+sqlite = "2.6.2"
 hilt = "2.59.1"
 ktor = "3.4.0"
 ksp = "2.3.5"
@@ -102,6 +103,7 @@ room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-common = { module = "androidx.room:room-common", version.ref = "room" }
+sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "sqlite" }
 compose-runtime-annotation = { module = "androidx.compose.runtime:runtime-annotation", version.ref = "compose" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 

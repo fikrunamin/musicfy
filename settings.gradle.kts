@@ -41,6 +41,7 @@ include(":modules:monochrome")
 include(":core:platform")
 include(":core:settings")
 include(":core:model")
+include(":core:database")
 
 // local newpipe extractor
 //includeBuild("../NewPipeExtractor") {
