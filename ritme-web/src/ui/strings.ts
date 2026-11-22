@@ -75,7 +75,6 @@ export const t = {
   kick: 'Keluarkan',
   guestsCanControl: 'Anggota boleh kontrol',
   leave: 'Keluar Ritme',
-  end: 'Akhiri',
   confirmEnd: 'Akhiri Ritme untuk semua anggota?',
   endRoom: 'Akhiri Ritme untuk semua',
   confirmKick: (name: string) => `Keluarkan ${name} dari Ritme?`,

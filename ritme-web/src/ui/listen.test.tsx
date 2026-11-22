@@ -68,6 +68,12 @@ describe('RoomScreen', () => {
     expect(prefs.get(MODE_KEY)).toBe('remote');
   });
 
+  it('has a single End room button for the host (in the members panel) and Leave in the footer', () => {
+    render(<RoomScreen session={fakeSession(state)} state={state} prefs={memoryStore()} />);
+    expect(screen.getAllByRole('button', { name: /^Akhiri/ }).map((b) => b.textContent)).toEqual(['Akhiri Ritme untuk semua']);
+    expect(screen.getByRole('button', { name: 'Keluar Ritme' })).toBeTruthy();
+  });
+
   it('shows the reconnecting banner while offline', () => {
     const off = { ...state, connection: 'reconnecting' as const };
     render(<RoomScreen session={fakeSession(off)} state={off} prefs={memoryStore()} />);
