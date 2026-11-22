@@ -312,8 +312,9 @@ private class Sections(val recents: List<Playlist>, val rest: List<Playlist>, va
 /** A playlist as the mock draws it: a rounded square cover, its name, and under it the song count. */
 @Composable
 private fun PlaylistPickRow(playlist: Playlist, onClick: () -> Unit) {
-    val count = if (playlist.songCount == 0 && playlist.playlist.remoteSongCount != null) {
-        playlist.playlist.remoteSongCount
+    val remoteSongCount = playlist.playlist.remoteSongCount
+    val count = if (playlist.songCount == 0 && remoteSongCount != null) {
+        remoteSongCount
     } else {
         playlist.songCount
     }

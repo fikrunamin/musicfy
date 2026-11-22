@@ -36,12 +36,20 @@ data class MediaMetadata(
     data class Artist(
         val id: String?,
         val name: String,
-    ) : Serializable
+    ) : Serializable {
+        private companion object {
+            private const val serialVersionUID: Long = 3603964663152823270L
+        }
+    }
 
     data class Album(
         val id: String,
         val title: String,
-    ) : Serializable
+    ) : Serializable {
+        private companion object {
+            private const val serialVersionUID: Long = -6959882536619904332L
+        }
+    }
 
     fun toSongEntity() =
         SongEntity(
@@ -60,6 +68,11 @@ data class MediaMetadata(
             isVideo = isVideoSong,
             localUri = localUri
         )
+
+    // The value MediaMetadata had inside app/ (see PersistQueue.kt). Never change it.
+    private companion object {
+        private const val serialVersionUID: Long = 1600211136871289501L
+    }
 }
 
 fun Song.toMediaMetadata() =

@@ -58,7 +58,7 @@ app/persistent-debug.keystore
 .cxx/
 *.so
 *.bin
-!app/src/test/resources/serialization/*.bin
+!core/model/src/test/resources/serialization/*.bin
 
 # Scratch files in the repo root (not part of the build)
 /test_*
