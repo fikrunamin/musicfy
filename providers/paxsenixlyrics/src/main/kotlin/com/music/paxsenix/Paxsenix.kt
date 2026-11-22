@@ -2,7 +2,6 @@
 
 package com.music.paxsenix
 
-import android.content.Context
 import com.music.paxsenix.models.LyricsResponse
 import com.music.paxsenix.models.SearchResponse
 import com.music.paxsenix.models.SearchResult
@@ -23,7 +22,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.selects.select
 import kotlinx.serialization.json.Json
-import timber.log.Timber
 import java.util.Locale
 import kotlin.math.abs
 
@@ -32,21 +30,17 @@ object Paxsenix {
     private var client: HttpClient? = null
     private var appVersion: String = "Unknown"
 
-    fun init(context: Context) {
+    internal val userAgent: String
+        get() = "Musicfy/$appVersion"
+
+    fun init(appVersion: String) {
         if (client != null) return
 
         synchronized(this) {
             if (client != null) return
 
-            appVersion = try {
-                context.packageManager.getPackageInfo(context.packageName, 0).versionName
-                    ?: "Unknown"
-            } catch (e: Exception) {
-                Timber.e(e, "Failed to get app version")
-                "Unknown"
-            }
-
-            Timber.d("Initializing Paxsenix with version: $appVersion")
+            this.appVersion = appVersion.ifBlank { "Unknown" }
+            PaxLog.d("Initializing Paxsenix with version: ${this.appVersion}")
 
             client = HttpClient(CIO) {
                 install(HttpTimeout) {
@@ -64,13 +58,13 @@ object Paxsenix {
 
                 defaultRequest {
                     url("https://lyrics.paxsenix.org")
-                    header("User-Agent", "Musicfy/$appVersion")
+                    header("User-Agent", userAgent)
                 }
 
                 expectSuccess = true
             }
 
-            Timber.d("Paxsenix HTTP client initialized")
+            PaxLog.d("Paxsenix HTTP client initialized")
         }
     }
 
@@ -112,15 +106,15 @@ object Paxsenix {
     }
 
     private suspend fun search(query: String): List<SearchResult> = runCatching {
-        Timber.d("Searching for: $query")
+        PaxLog.d("Searching for: $query")
         val response = httpClient.get("/apple-music/search") {
             parameter("q", query)
         }.body<SearchResponse>()
 
-        Timber.d("Search results count: ${response.size}")
+        PaxLog.d("Search results count: ${response.size}")
         response
     }.getOrElse { e ->
-        Timber.e(e, "Search error: ${e.message}")
+        PaxLog.e(e, "Search error: ${e.message}")
         emptyList()
     }
 
@@ -133,7 +127,7 @@ object Paxsenix {
         val cleanedTitle = cleanTitle(title)
         val cleanedArtist = cleanArtist(artist)
 
-        Timber.d("getLyrics: title='$title', artist='$artist', duration=$duration")
+        PaxLog.d("getLyrics: title='$title', artist='$artist', duration=$duration")
 
         val searchQueries = buildList {
             add("$cleanedTitle $cleanedArtist")
@@ -155,7 +149,7 @@ object Paxsenix {
         }
 
         if (allResults.isEmpty()) {
-            Timber.w("No tracks found for any query")
+            PaxLog.w("No tracks found for any query")
             throw IllegalStateException("No tracks found on Paxsenix")
         }
 
@@ -163,7 +157,7 @@ object Paxsenix {
         val scope = CoroutineScope(Dispatchers.IO)
         val jobs = candidates.map { (result, score) ->
             scope.async {
-                Timber.d("Fetching (parallel): ${result.displayName} (ID: ${result.id}, score: $score)")
+                PaxLog.d("Fetching (parallel): ${result.displayName} (ID: ${result.id}, score: $score)")
                 result to runCatching { fetchLyricsForTrackWithType(result.id) }.getOrDefault("" to false)
             }
         }
@@ -190,10 +184,10 @@ object Paxsenix {
         }
 
         plainFallback?.let {
-            Timber.d("Using Paxsenix lyrics without word-level sync")
+            PaxLog.d("Using Paxsenix lyrics without word-level sync")
             return Result.success(it)
         }
-        Timber.w("No lyrics content from Paxsenix for matched tracks")
+        PaxLog.w("No lyrics content from Paxsenix for matched tracks")
         return Result.failure(IllegalStateException("No lyrics available from Paxsenix"))
     }
 
@@ -260,33 +254,33 @@ object Paxsenix {
     }
 
     private suspend fun fetchLyricsForTrack(id: String): Result<String> = runCatching {
-        Timber.d("Fetching lyrics for track ID: $id")
+        PaxLog.d("Fetching lyrics for track ID: $id")
 
         val response = httpClient.get("/apple-music/lyrics") {
             parameter("id", id)
         }.body<LyricsResponse>()
 
         val lyricsType = response.type
-        Timber.d("Lyrics response: type=$lyricsType")
+        PaxLog.d("Lyrics response: type=$lyricsType")
 
         if (!response.ttmlContent.isNullOrBlank()) {
             val lrc = convertTTMLToAppFormat(response.ttmlContent)
             if (lrc.isNotEmpty()) {
-                Timber.d("Generated LRC from ttmlContent using TTMLParser")
+                PaxLog.d("Generated LRC from ttmlContent using TTMLParser")
                 return@runCatching lrc
             }
         }
 
         if (!response.elrcMultiPerson.isNullOrBlank()) {
-            Timber.d("Using elrcMultiPerson as fallback")
+            PaxLog.d("Using elrcMultiPerson as fallback")
             return@runCatching response.elrcMultiPerson
         }
         if (!response.elrc.isNullOrBlank()) {
-            Timber.d("Using elrc as fallback")
+            PaxLog.d("Using elrc as fallback")
             return@runCatching response.elrc
         }
         if (!response.plain.isNullOrBlank()) {
-            Timber.d("Using plain lyrics field")
+            PaxLog.d("Using plain lyrics field")
             return@runCatching response.plain
         }
 
@@ -295,7 +289,7 @@ object Paxsenix {
         }
 
         val hasWordLevel = lyricsType == "Syllable"
-        Timber.d("Using content array as source, hasWordLevel=$hasWordLevel")
+        PaxLog.d("Using content array as source, hasWordLevel=$hasWordLevel")
 
         if (!hasWordLevel) {
             // "Line" lyrics still carry a start time per line. Dropping it turned line-synced
@@ -378,7 +372,7 @@ object Paxsenix {
         val scope = CoroutineScope(Dispatchers.IO)
         val jobs = candidates.map { (result, _) ->
             scope.async {
-                Timber.d("Fetching (parallel/all): ${result.displayName}")
+                PaxLog.d("Fetching (parallel/all): ${result.displayName}")
                 runCatching { fetchLyricsForTrackWithType(result.id) }.getOrDefault("" to false)
             }
         }
@@ -403,7 +397,7 @@ object Paxsenix {
         }
 
         plainFallback?.let {
-            Timber.d("Offering plain/non-synced lyrics as fallback")
+            PaxLog.d("Offering plain/non-synced lyrics as fallback")
             callback(it)
         }
     }
@@ -413,7 +407,7 @@ object Paxsenix {
             val parsedLines = TTMLParser.parseTTML(ttml)
             TTMLParser.toLRC(parsedLines)
         } catch (e: Exception) {
-            Timber.e(e, "TTML conversion failed: ${e.message}")
+            PaxLog.e(e, "TTML conversion failed: ${e.message}")
             ""
         }
     }

@@ -3,6 +3,7 @@
 package com.example.musicfy.lyrics
 
 import android.content.Context
+import com.example.musicfy.BuildConfig
 import com.music.paxsenix.Paxsenix
 import com.example.musicfy.constants.EnablePaxsenixKey
 import com.example.musicfy.utils.dataStore
@@ -18,7 +19,7 @@ object PaxSenixLyricsProvider : LyricsProvider {
 
         val enabled = context.dataStore[EnablePaxsenixKey] ?: true
         if (enabled) {
-            Paxsenix.init(context)
+            Paxsenix.init(BuildConfig.VERSION_NAME)
         }
         return enabled
     }
