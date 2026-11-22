@@ -50,10 +50,12 @@ describe('ListenPanel', () => {
     expect(screen.getByText('Mode remote: kontrol saja, tanpa suara di perangkat ini.')).toBeTruthy();
   });
 
-  it('reports mode changes', () => {
+  it('reports mode changes from aria-pressed toggle buttons', () => {
     const onModeChange = vi.fn();
     render(<ListenPanel session={fakeSession()} room={room()} unplayable={{}} mode="listen" onModeChange={onModeChange} pageIsHttps />);
-    fireEvent.click(screen.getByRole('radio', { name: 'Mode remote' }));
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Mode dengar', pressed: true })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Mode remote', pressed: false }));
     expect(onModeChange).toHaveBeenCalledWith('remote');
   });
 });
@@ -64,8 +66,9 @@ describe('RoomScreen', () => {
   it('stores the chosen mode in ritme.mode', () => {
     const prefs = memoryStore();
     render(<RoomScreen session={fakeSession(state)} state={state} prefs={prefs} />);
-    fireEvent.click(screen.getByRole('radio', { name: 'Mode remote' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mode remote' }));
     expect(prefs.get(MODE_KEY)).toBe('remote');
+    expect(screen.getByRole('button', { name: 'Mode remote', pressed: true })).toBeTruthy();
   });
 
   it('has a single End room button for the host (in the members panel) and Leave in the footer', () => {

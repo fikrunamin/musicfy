@@ -77,11 +77,11 @@ export function ListenPanel({ session, room, unplayable, mode, onModeChange, pag
 
   return (
     <section class="card listen" aria-label={t.listenMode}>
-      <div class="segmented" role="radiogroup" aria-label={t.listenMode}>
-        <button type="button" role="radio" aria-checked={mode === 'listen'} onClick={() => onModeChange('listen')}>
+      <div class="segmented" role="group" aria-label={t.modeGroup}>
+        <button type="button" aria-pressed={mode === 'listen'} onClick={() => onModeChange('listen')}>
           {t.listenMode}
         </button>
-        <button type="button" role="radio" aria-checked={mode === 'remote'} onClick={() => onModeChange('remote')}>
+        <button type="button" aria-pressed={mode === 'remote'} onClick={() => onModeChange('remote')}>
           {t.remoteMode}
         </button>
       </div>

@@ -72,7 +72,7 @@ export function SearchPanel({ session, online, fetchImpl }: Props) {
               <div class="queue-text">
                 <span class="title">{r.title}</span>
                 <span class="muted small">
-                  {r.artist} · {formatMs(r.durationMs)}
+                  {r.artist} · {r.durationMs > 0 ? formatMs(r.durationMs) : t.live}
                 </span>
               </div>
               <div class="queue-actions">

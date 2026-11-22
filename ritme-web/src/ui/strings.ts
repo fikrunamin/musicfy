@@ -56,6 +56,7 @@ export const t = {
 
   listenMode: 'Mode dengar',
   remoteMode: 'Mode remote',
+  modeGroup: 'Mode perangkat ini',
   modeHint: 'Mode remote: kontrol saja, tanpa suara di perangkat ini.',
   tapToListen: 'Ketuk untuk ikut dengar',
   tapPlayer: 'Ketuk pemutar untuk mulai',

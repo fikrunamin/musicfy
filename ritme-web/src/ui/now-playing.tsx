@@ -59,6 +59,7 @@ export function NowPlaying({ session, room, memberId, unplayable, online, pageIs
           <input
             type="range"
             aria-label={t.seek}
+            aria-valuetext={formatMs(position)}
             min={0}
             max={entry.durationMs}
             step={1000}
