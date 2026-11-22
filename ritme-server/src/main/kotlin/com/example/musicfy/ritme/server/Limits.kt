@@ -1,5 +1,22 @@
 package com.example.musicfy.ritme.server
 
+/**
+ * Heap budget. The container has `mem_limit: 768m` and the JVM `-XX:MaxRAMPercentage=75`, so the
+ * heap is ~576 MB. The limits below are chosen so that their worst cases add up:
+ *
+ * | Part | Bound | Worst case in heap |
+ * |---|---|---|
+ * | Baseline (JVM, Ktor, Netty, caches) | measured | ~80 MB |
+ * | Idle sockets | [MAX_CONNECTIONS] x ~60 KB | ~90 MB |
+ * | Unsent outbound bytes | [MAX_PENDING_BYTES_TOTAL] | 96 MB |
+ * | Rooms at rest | [MAX_ROOM_STATE_BYTES_TOTAL] (120 MB encoded) x 1.3 | ~156 MB |
+ * | Headroom (GC, in-flight encodes) | rest | >= 150 MB |
+ *
+ * Room objects take 0.9-1.3x their encoded size in heap (measured: ASCII-heavy maximal entries
+ * 1.10, 3-byte characters 0.88, typical YouTube entries 1.27), hence the 1.3 factor.
+ * Rooms: at most [MAX_ROOMS]; at most [MAX_ROOM_STATE_BYTES_TOTAL] / [MAX_STATE_BYTES] = 480 of
+ * them can be full, the rest stay small (~1-2 KB each).
+ */
 object Limits {
     const val MAX_MEMBERS = 20
     const val MAX_QUEUE = 500
@@ -10,9 +27,12 @@ object Limits {
     /**
      * Largest room snapshot (UTF-8 JSON): Add beyond it gets QUEUE_FULL, an over-large Create keeps
      * the entries that fit. A typical 500-entry queue is ~200 KB. Server frames (Welcome/State)
-     * therefore stay below ~520 KB; clients must accept inbound frames of at least 1 MB.
+     * therefore stay below ~260 KB; clients must accept inbound frames of at least 1 MB.
      */
-    const val MAX_STATE_BYTES = 512 * 1024
+    const val MAX_STATE_BYTES = 256 * 1024
+
+    /** All rooms' snapshots together (see the heap budget above and StateBudget). */
+    const val MAX_ROOM_STATE_BYTES_TOTAL = 120L * 1024 * 1024
     const val MAX_NAME_LENGTH = 32
     const val MAX_VIDEO_ID_LENGTH = 64
     const val MAX_TEXT_LENGTH = 300
@@ -61,10 +81,12 @@ object Limits {
     /**
      * Sized to memory (512 MB container, ~384 MB heap): an idle socket costs ~60 KB (Netty
      * buffers, Ktor session, coroutines) -> ~90 MB at the cap. Buffered outbound bytes are bounded
-     * separately by [MAX_PENDING_BYTES_TOTAL] (128 MB), rooms by [MAX_ROOMS] x MAX_STATE_BYTES.
+     * separately by [MAX_PENDING_BYTES_TOTAL], room state by [MAX_ROOM_STATE_BYTES_TOTAL].
      */
     const val MAX_CONNECTIONS = 1_500
-    const val MAX_ROOMS = 2_000
+
+    /** A room lives only while someone is (or was, < 60 s ago) connected: one room per connection. */
+    const val MAX_ROOMS = MAX_CONNECTIONS
 
     /** Every inbound frame (pings and garbage included) per connection; beyond this the socket is closed. */
     const val FRAMES_PER_SECOND = 20
@@ -81,7 +103,7 @@ object Limits {
     const val MAX_PENDING_MESSAGES_PER_PEER = 64
 
     /** All clients together (see PeerStats); bounds outbound buffering whatever the connection count. */
-    const val MAX_PENDING_BYTES_TOTAL = 128L * 1024 * 1024
+    const val MAX_PENDING_BYTES_TOTAL = 96L * 1024 * 1024
 
     /** A frame the client has not accepted within this long means it stopped reading: dropped. */
     const val SEND_STALL_MS = 20_000L

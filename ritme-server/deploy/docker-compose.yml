@@ -6,7 +6,7 @@ services:
       dockerfile: ritme-server/Dockerfile
     image: ritme-server:latest
     restart: unless-stopped
-    mem_limit: 512m
+    mem_limit: 768m
     logging: &logging
       driver: json-file
       options:

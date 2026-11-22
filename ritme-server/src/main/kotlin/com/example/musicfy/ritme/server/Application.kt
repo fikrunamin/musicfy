@@ -35,10 +35,11 @@ class ServerDeps(
     val search: SearchService = SearchService(InnerTubeSearchBackend(defaultHttpClient()), clock),
     val socketLimits: SocketLimits = SocketLimits(),
     val peerStats: PeerStats = PeerStats(),
+    val stateBudget: StateBudget = StateBudget(),
 )
 
 fun Application.ritmeModule(deps: ServerDeps) {
-    val registry = RoomRegistry(deps.clock, deps.ids, deps.socketLimits.maxRooms)
+    val registry = RoomRegistry(deps.clock, deps.ids, deps.socketLimits.maxRooms, deps.stateBudget)
     val guard = ConnectionGuard(deps.socketLimits, deps.clock)
     val searchLimiter = IpRateLimiter(deps.clock)
 
@@ -80,8 +81,9 @@ fun Application.ritmeModule(deps: ServerDeps) {
         while (isActive) {
             delay(Limits.METRICS_INTERVAL_MS)
             log.info(
-                "rooms={} connections={} pendingBytes={} dropped={}",
+                "rooms={} roomStateBytes={} connections={} pendingBytes={} dropped={}",
                 registry.size,
+                deps.stateBudget.usedBytes,
                 guard.connections,
                 deps.peerStats.pendingBytes.get(),
                 deps.peerStats.aborted.get(),

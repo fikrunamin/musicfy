@@ -182,7 +182,7 @@ class RealTcpTest {
         val server = embeddedServer(Netty, port = 0) { ritmeModule(deps) }.start()
         val port = server.engine.resolvedConnectors().first().port
         val client = HttpClient(OkHttp) { install(WebSockets) }
-        // ~3.4 KB per entry: 110 of them make a ~370 KB snapshot.
+        // ~3.4 KB per entry: 70 of them make a ~240 KB snapshot (just under the 256 KB cap).
         fun big(i: Int) = NewEntry(
             "", "x".repeat(300), "y".repeat(300), "https://cdn.example/" + "t".repeat(480), 600_000,
             MediaKind.URL, "https://cdn.example/$i/" + "u".repeat(2_000),
@@ -195,21 +195,24 @@ class RealTcpTest {
                     while (message !is ServerMessage.State) message = host.receiveServer()
                     return message.state
                 }
-                host.sendClient(ClientMessage.Create(PROTOCOL_VERSION, "Budi", List(55) { big(it) }))
+                host.sendClient(ClientMessage.Create(PROTOCOL_VERSION, "Budi", List(40) { big(it) }))
                 val code = (host.receiveServer() as ServerMessage.Welcome).state.code
-                host.sendClient(ClientMessage.Send("add", Command.Add(List(55) { big(100 + it) })))
+                host.sendClient(ClientMessage.Send("add", Command.Add(List(30) { big(100 + it) })))
                 val full = nextState()
-                assertEquals(110, full.queue.size)
+                assertEquals(70, full.queue.size)
 
                 val clients = List(silent) { i ->
                     DeafClient(port).also { it.send(ClientMessage.Join(PROTOCOL_VERSION, code, "S$i")) }
                 }
                 try {
-                    // Keep snapshots coming while the silent members sit on theirs.
-                    repeat(10) { host.sendClient(ClientMessage.Send("s$it", Command.Seek(it * 1_000L))) }
-                    val settled = withTimeout(20_000) {
+                    // Keep snapshots coming (~6/s) until every silent member has been dropped. (Once the
+                    // kernel's socket buffers are full, the next snapshot stalls and the client goes.)
+                    val settled = withTimeout(30_000) {
                         var state = nextState()
+                        var k = 0
                         while (state.members.size < silent + 1 || state.members.any { it.name.startsWith("S") && it.connected }) {
+                            host.sendClient(ClientMessage.Send("s$k", Command.Seek(k++ * 1_000L)))
+                            delay(150)
                             state = nextState()
                         }
                         state
@@ -223,7 +226,7 @@ class RealTcpTest {
                         stats.peakPendingBytes.get() <= perPeer * (silent + 1),
                     )
                     host.sendClient(ClientMessage.Send("p", Command.Pause))
-                    assertFalse(nextState().playback.isPlaying)
+                    withTimeout(5_000) { while (nextState().playback.isPlaying) Unit } // after earlier seeks
                     withTimeout(5_000) { while (stats.pendingBytes.get() > 0) delay(50) }
                 } finally {
                     clients.forEach { it.close() }

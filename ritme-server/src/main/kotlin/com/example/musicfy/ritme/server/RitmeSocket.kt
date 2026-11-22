@@ -228,7 +228,13 @@ suspend fun DefaultWebSocketServerSession.ritmeSession(
             }
             if (!frames.tryAcquire()) return closeQuietly()
             if (frame !is Frame.Text) continue
-            val message = runCatching { decodeClientMessage(frame.readText()) }.getOrNull()
+            // Only decoding failures (SerializationException is an IllegalArgumentException); an
+            // Error such as OutOfMemoryError must not be reported to the client as INVALID.
+            val message = try {
+                decodeClientMessage(frame.readText())
+            } catch (_: IllegalArgumentException) {
+                null
+            }
             if (message == null) {
                 peer.send(ServerMessage.Error(code = ErrorCode.INVALID))
                 continue

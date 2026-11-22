@@ -35,8 +35,26 @@ suspend fun Peer.send(message: ServerMessage) = send(Outgoing(message))
  * Live room: applies [RoomLogic] under a mutex, tracks connections, resume tokens and grace
  * periods, and fans state out to every connected peer.
  */
-class Room(initial: RoomState, private val clock: Clock, private val ids: IdGen) {
+class Room(
+    initial: RoomState,
+    private val clock: Clock,
+    private val ids: IdGen,
+    private val budget: StateBudget = StateBudget(Long.MAX_VALUE),
+) {
     private val mutex = Mutex()
+
+    /**
+     * Size of the last encoded snapshot: lets Add check the caps by encoding only the new entries.
+     * Re-synced from every State broadcast; counted in [budget] until [dispose].
+     */
+    @Volatile
+    var snapshotBytes: Int = Outgoing(ServerMessage.State(initial)).size
+        private set
+    private var disposed = false
+
+    init {
+        budget.add(snapshotBytes.toLong())
+    }
     private val peers = HashMap<String, Peer>()
     private val tokens = HashMap<String, String>() // resumeToken -> memberId
     private val disconnectedAt = HashMap<String, Long>()
@@ -118,7 +136,8 @@ class Room(initial: RoomState, private val clock: Clock, private val ids: IdGen)
             sender.send(ServerMessage.Error(reqId, ErrorCode.RATE_LIMITED))
             return@withLock
         }
-        when (val outcome = RoomLogic.apply(state, memberId, cmd, clock.now(), ids)) {
+        val size = SizeContext(currentBytes = snapshotBytes, budgetLeft = budget.remaining())
+        when (val outcome = RoomLogic.apply(state, memberId, cmd, clock.now(), ids, size)) {
             is Outcome.Rejected -> sender.send(ServerMessage.Error(reqId, outcome.code))
             is Outcome.Ok -> {
                 val changed = outcome.state !== state
@@ -212,9 +231,26 @@ class Room(initial: RoomState, private val clock: Clock, private val ids: IdGen)
         tokens.clear()
     }
 
+    /** Gives the room's bytes back to the server-wide budget; called once the room is gone. */
+    fun dispose() {
+        synchronized(this) {
+            if (disposed) return
+            disposed = true
+            budget.add(-snapshotBytes.toLong())
+        }
+    }
+
     private suspend fun broadcast(message: ServerMessage, except: String? = null) {
         val outgoing = Outgoing(message)
+        if (message is ServerMessage.State) resync(outgoing.size)
         peers.forEach { (id, peer) -> if (id != except) runCatching { peer.send(outgoing) } }
+    }
+
+    private fun resync(bytes: Int) {
+        synchronized(this) {
+            if (!disposed) budget.add((bytes - snapshotBytes).toLong())
+            snapshotBytes = bytes
+        }
     }
 }
 

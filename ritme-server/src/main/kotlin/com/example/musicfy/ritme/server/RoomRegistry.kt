@@ -13,7 +13,12 @@ sealed interface JoinResult {
     data class Rejected(val code: ErrorCode) : JoinResult
 }
 
-class RoomRegistry(private val clock: Clock, private val ids: IdGen, private val maxRooms: Int = Limits.MAX_ROOMS) {
+class RoomRegistry(
+    private val clock: Clock,
+    private val ids: IdGen,
+    private val maxRooms: Int = Limits.MAX_ROOMS,
+    val stateBudget: StateBudget = StateBudget(),
+) {
     private val rooms = ConcurrentHashMap<String, Room>()
 
     val size: Int get() = rooms.size
@@ -25,17 +30,24 @@ class RoomRegistry(private val clock: Clock, private val ids: IdGen, private val
         val name = RoomLogic.cleanName(msg.name) ?: return JoinResult.Rejected(ErrorCode.INVALID)
         // Server-wide room cap; reported as ROOM_FULL ("no room for a new room right now").
         if (rooms.size >= maxRooms) return JoinResult.Rejected(ErrorCode.ROOM_FULL)
+        // Near the server-wide room-state budget the initial queue is trimmed; with almost nothing
+        // left, no new room.
+        val left = stateBudget.remaining()
+        if (left < MIN_ROOM_BYTES) return JoinResult.Rejected(ErrorCode.ROOM_FULL)
+        val maxBytes = minOf(Limits.MAX_STATE_BYTES.toLong(), left).toInt()
         val hostId = ids.memberId()
         repeat(CODE_ATTEMPTS) {
             val code = ids.roomCode()
-            val room = Room(RoomLogic.newRoom(code, hostId, name, msg, clock.now(), ids), clock, ids)
+            val room = Room(RoomLogic.newRoom(code, hostId, name, msg, clock.now(), ids, maxBytes), clock, ids, stateBudget)
             if (rooms.putIfAbsent(code, room) == null) {
                 if (!room.attachCreator(hostId, peer)) {
                     rooms.remove(code, room)
+                    room.dispose()
                     return JoinResult.Rejected(ErrorCode.INVALID)
                 }
                 return JoinResult.Joined(room, hostId, peer)
             }
+            room.dispose()
         }
         // Practically unreachable (32^6 codes); treated like a full server.
         return JoinResult.Rejected(ErrorCode.ROOM_FULL)
@@ -50,7 +62,7 @@ class RoomRegistry(private val clock: Clock, private val ids: IdGen, private val
 
     suspend fun sweep() {
         for (room in rooms.values) {
-            if (room.sweep()) rooms.remove(room.code, room)
+            if (room.sweep() && rooms.remove(room.code, room)) room.dispose()
         }
     }
 
@@ -58,6 +70,9 @@ class RoomRegistry(private val clock: Clock, private val ids: IdGen, private val
 
     private companion object {
         const val CODE_ATTEMPTS = 20
+
+        /** Below this much room-state budget left, Create is refused (an empty room is ~0.3 KB). */
+        const val MIN_ROOM_BYTES = 4 * 1024L
         val SUPPORTED_VERSIONS = MIN_SUPPORTED_PROTOCOL_VERSION..PROTOCOL_VERSION
     }
 }

@@ -381,7 +381,7 @@ class RoomLogicTest {
                 }
             }
         }
-        assertTrue("only $added entries", added in 100 until Limits.MAX_QUEUE)
+        assertTrue("only $added entries", added in 40 until Limits.MAX_QUEUE)
         assertTrue(RoomLogic.stateBytes(state) <= Limits.MAX_STATE_BYTES)
         // Smaller entries still fit until the cap.
         ok(apply(state, HOST, Command.Add(listOf(newEntry("small")))))
@@ -391,11 +391,34 @@ class RoomLogicTest {
     fun anOversizedCreateKeepsTheEntriesThatFit() {
         val create = ClientMessage.Create(PROTOCOL_VERSION, "Host", List(Limits.MAX_QUEUE) { maximal(it) })
         val room = RoomLogic.newRoom("ABCDEF", HOST, "Host", create, now, ids)
-        assertTrue(room.queue.size in 100 until Limits.MAX_QUEUE)
+        assertTrue(room.queue.size in 40 until Limits.MAX_QUEUE)
         assertTrue(RoomLogic.stateBytes(room) <= Limits.MAX_STATE_BYTES)
         assertEquals(room.queue.first().entryId, room.currentEntryId)
         // A normal full queue is far below the cap.
         val normal = ClientMessage.Create(PROTOCOL_VERSION, "Host", List(Limits.MAX_QUEUE) { newEntry("v$it") })
         assertEquals(Limits.MAX_QUEUE, RoomLogic.newRoom("ABCDEF", HOST, "Host", normal, now, ids).queue.size)
+    }
+
+    @Test
+    fun addChecksTheCachedSnapshotSizeAndTheServerWideBudget() {
+        val add = Command.Add(listOf(newEntry("n")))
+        ok(RoomLogic.apply(playingA, HOST, add, now, ids, SizeContext(currentBytes = 1_000, budgetLeft = 10_000)))
+        // The cached size is trusted (no re-encode of the whole state): near the cap means full.
+        assertEquals(
+            ErrorCode.QUEUE_FULL,
+            rejected(RoomLogic.apply(playingA, HOST, add, now, ids, SizeContext(currentBytes = Limits.MAX_STATE_BYTES - 10))),
+        )
+        // The server-wide budget left is smaller than the new entry.
+        assertEquals(ErrorCode.QUEUE_FULL, rejected(RoomLogic.apply(playingA, HOST, add, now, ids, SizeContext(budgetLeft = 10))))
+        // Other commands are not affected by either.
+        ok(RoomLogic.apply(playingA, HOST, Command.Pause, now, ids, SizeContext(currentBytes = Limits.MAX_STATE_BYTES, budgetLeft = 0)))
+    }
+
+    @Test
+    fun newRoomRespectsASmallerByteLimit() {
+        val create = ClientMessage.Create(PROTOCOL_VERSION, "Host", List(100) { maximal(it) })
+        val room = RoomLogic.newRoom("ABCDEF", HOST, "Host", create, now, ids, maxBytes = 20_000)
+        assertTrue(room.queue.size in 1..6)
+        assertTrue(RoomLogic.stateBytes(room) <= 20_000)
     }
 }

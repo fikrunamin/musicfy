@@ -42,8 +42,23 @@ Update: `git pull && docker compose up -d --build`. Logs: `docker compose logs -
 Rooms live only in memory, so every deploy or restart ends all rooms; clients get disconnected
 and have to create a new room. Deploy when nobody is listening.
 
-Container logs are rotated (json-file, 10 MB x 3 per service); the server runs with a 512 MB
-memory limit (heap: 75 % of it). Every 10 minutes it logs the room and connection counts.
+Container logs are rotated (json-file, 10 MB x 3 per service); the server runs with a 768 MB
+memory limit (heap: 75 % of it, ~576 MB). Every 10 minutes it logs counts only: rooms, room-state
+bytes, connections, unsent bytes and dropped clients.
+
+### Heap budget
+
+The limits are sized so their worst cases fit the ~576 MB heap (see `Limits.kt`):
+
+| Part | Bound | Worst case in heap |
+|---|---|---|
+| Baseline (JVM, Ktor, Netty, caches) | measured | ~80 MB |
+| Idle sockets | 1500 connections x ~60 KB | ~90 MB |
+| Unsent outbound bytes | server-wide budget | 96 MB |
+| Rooms at rest | 120 MB of encoded snapshots x 1.3 (measured heap/encoded: 0.88-1.27) | ~156 MB |
+| Headroom (GC, in-flight encodes) | rest | >= 150 MB |
+
+At most 1500 rooms, of which at most 480 can be full (120 MB / 256 KB).
 
 The app's server URL setting must be `https://<RITME_DOMAIN>`.
 
@@ -60,10 +75,11 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
 
 - Inbound WebSocket frames are limited to 256 KB. Send `Create` with at most 200 initial entries
   and the rest as `Add` batches of at most 200.
-- A room's state is capped at 512 KB of JSON (a typical 500-entry queue is ~200 KB): `Add`
+- A room's state is capped at 256 KB of JSON (a typical 500-entry queue is ~200 KB): `Add`
   beyond it gets `QUEUE_FULL`, and an over-large `Create` keeps the initial entries that fit.
-  `Welcome`/`State` carry the full room, so server frames stay below ~520 KB, above the 256 KB
-  inbound limit: clients must accept inbound frames of at least 1 MB.
+  All rooms together are capped at 120 MB of snapshots: past that, `Add` gets `QUEUE_FULL` and
+  `Create` is trimmed or refused with `ROOM_FULL`. `Welcome`/`State` carry the full room, so
+  server frames stay below ~260 KB; clients must accept inbound frames of at least 1 MB.
 - Titles, artists and names are cleaned on the server (NFC; control, format and zero-width
   characters removed).
 - Clients decode with `decodeServerMessageOrNull` (unknown message types: skip), and must handle
@@ -82,12 +98,12 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
 | Join deadline | a socket must have joined a room within 10 s | closed (policy violation), no message |
 | Join limiter | per IP (IPv6: per /64): burst 30, refilled 10/min; charged for every `Create` and for failed Joins (`ROOM_NOT_FOUND`, `ROOM_FULL`, `UPGRADE_REQUIRED`); successful joins and resumes are free but need a non-empty bucket | `Error(RATE_LIMITED)`, closed |
 | Concurrent sockets | 48 per IP, 1500 total (~60 KB per idle socket, ~90 MB at the cap) | `Error(RATE_LIMITED)`, closed (1013 try again later), hung up within 0.5 s |
-| Rooms | 2000 total | `Error(ROOM_FULL)` on Create, closed |
+| Rooms | 1500 total; 120 MB of snapshots in total | `Error(ROOM_FULL)` on Create, closed |
 | Inbound frames | 20/s per socket, burst 40 (pings and garbage included) | closed, no message |
 | Commands + TrackEnded | 10/s per member | `Error(RATE_LIMITED)` (TrackEnded: ignored) |
 | Unsent messages per client | snapshots coalesce (only the latest `State` waits); at most 2 MB or 64 messages | disconnected; resume with the token for fresh state |
 | Stalled client | a frame not written to the socket within 20 s | disconnected |
-| Server-wide unsent bytes | 128 MB | clients that are behind are disconnected; `Create`/`Join` get `RATE_LIMITED` until it drains |
+| Server-wide unsent bytes | 96 MB | clients that are behind are disconnected; `Create`/`Join` get `RATE_LIMITED` until it drains |
 
 A client that ignores the server's Close frame is hung up on after at most 3 s.
 
