@@ -330,4 +330,11 @@ class RoomLogicTest {
         )
         assertEquals(listOf("ok"), RoomLogic.newRoom("ABCDEF", HOST, "Host", create, now, ids).queue.map { it.videoId })
     }
+
+    @Test
+    fun entriesOfAnUnknownKindAreRejected() {
+        val unknown = newEntry().copy(kind = MediaKind.UNKNOWN)
+        assertEquals(ErrorCode.INVALID, rejected(apply(playingA, HOST, Command.Add(listOf(unknown)))))
+        assertEquals(ErrorCode.INVALID, rejected(apply(playingA, HOST, Command.Add(listOf(unknown.copy(videoId = "", url = "https://x/v.mp4"))))))
+    }
 }

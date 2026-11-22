@@ -234,11 +234,12 @@ object RoomLogic {
             MediaKind.URL -> videoId.isEmpty() && url?.let { u ->
                 u.length <= Limits.MAX_URL_LENGTH && (u.startsWith("https://") || u.startsWith("http://"))
             } == true
+            MediaKind.UNKNOWN -> false
         }
         return source &&
             title.isNotBlank() && title.length <= Limits.MAX_TEXT_LENGTH &&
             artist.length <= Limits.MAX_TEXT_LENGTH &&
-            isValidThumbnail(thumbnailUrl, youtube = kind != MediaKind.URL) &&
+            isValidThumbnail(thumbnailUrl, youtube = kind == MediaKind.YOUTUBE_MUSIC || kind == MediaKind.YOUTUBE_VIDEO) &&
             durationMs in 0..Limits.MAX_DURATION_MS
     }
 

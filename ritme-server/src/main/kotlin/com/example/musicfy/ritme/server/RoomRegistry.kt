@@ -2,6 +2,7 @@ package com.example.musicfy.ritme.server
 
 import com.example.musicfy.ritme.protocol.ClientMessage
 import com.example.musicfy.ritme.protocol.ErrorCode
+import com.example.musicfy.ritme.protocol.MIN_SUPPORTED_PROTOCOL_VERSION
 import com.example.musicfy.ritme.protocol.PROTOCOL_VERSION
 import java.util.concurrent.ConcurrentHashMap
 
@@ -19,7 +20,7 @@ class RoomRegistry(private val clock: Clock, private val ids: IdGen, private val
     fun get(code: String): Room? = rooms[normalize(code)]
 
     suspend fun create(msg: ClientMessage.Create, peer: Peer): JoinResult {
-        if (msg.protocolVersion != PROTOCOL_VERSION) return JoinResult.Rejected(ErrorCode.UPGRADE_REQUIRED)
+        if (msg.protocolVersion !in SUPPORTED_VERSIONS) return JoinResult.Rejected(ErrorCode.UPGRADE_REQUIRED)
         val name = RoomLogic.cleanName(msg.name) ?: return JoinResult.Rejected(ErrorCode.INVALID)
         // Server-wide room cap; reported as ROOM_FULL ("no room for a new room right now").
         if (rooms.size >= maxRooms) return JoinResult.Rejected(ErrorCode.ROOM_FULL)
@@ -40,7 +41,7 @@ class RoomRegistry(private val clock: Clock, private val ids: IdGen, private val
     }
 
     suspend fun join(msg: ClientMessage.Join, peer: Peer): JoinResult {
-        if (msg.protocolVersion != PROTOCOL_VERSION) return JoinResult.Rejected(ErrorCode.UPGRADE_REQUIRED)
+        if (msg.protocolVersion !in SUPPORTED_VERSIONS) return JoinResult.Rejected(ErrorCode.UPGRADE_REQUIRED)
         val name = RoomLogic.cleanName(msg.name) ?: return JoinResult.Rejected(ErrorCode.INVALID)
         val room = get(msg.code) ?: return JoinResult.Rejected(ErrorCode.ROOM_NOT_FOUND)
         return room.join(name, msg.resumeToken, peer)
@@ -56,5 +57,6 @@ class RoomRegistry(private val clock: Clock, private val ids: IdGen, private val
 
     private companion object {
         const val CODE_ATTEMPTS = 20
+        val SUPPORTED_VERSIONS = MIN_SUPPORTED_PROTOCOL_VERSION..PROTOCOL_VERSION
     }
 }

@@ -45,5 +45,6 @@
             "anchorServerTimeMs": 1700000000000
         }
     },
-    "serverTime": 1700000000500
+    "serverTime": 1700000000500,
+    "protocolVersion": 1
 }

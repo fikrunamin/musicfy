@@ -3,6 +3,7 @@ package com.example.musicfy.ritme.server
 import com.example.musicfy.ritme.protocol.ClientMessage
 import com.example.musicfy.ritme.protocol.Command
 import com.example.musicfy.ritme.protocol.ErrorCode
+import com.example.musicfy.ritme.protocol.MIN_SUPPORTED_PROTOCOL_VERSION
 import com.example.musicfy.ritme.protocol.NewEntry
 import com.example.musicfy.ritme.protocol.PROTOCOL_VERSION
 import com.example.musicfy.ritme.protocol.ServerMessage
@@ -278,5 +279,25 @@ class RoomRegistryTest {
         val stuck = RoomRegistry(clock, sameCode)
         assertTrue(stuck.create(ClientMessage.Create(PROTOCOL_VERSION, "A"), FakePeer()) is JoinResult.Joined)
         assertEquals(JoinResult.Rejected(ErrorCode.ROOM_FULL), stuck.create(ClientMessage.Create(PROTOCOL_VERSION, "B"), FakePeer()))
+    }
+
+    @Test
+    fun everySupportedProtocolVersionIsAcceptedAndOthersMustUpgrade() = runBlocking {
+        val code = create().room.code
+        for (version in MIN_SUPPORTED_PROTOCOL_VERSION..PROTOCOL_VERSION) {
+            assertTrue(registry.create(ClientMessage.Create(version, "Host"), FakePeer()) is JoinResult.Joined)
+            assertTrue(registry.join(ClientMessage.Join(version, code, "G"), FakePeer()) is JoinResult.Joined)
+        }
+        for (version in listOf(MIN_SUPPORTED_PROTOCOL_VERSION - 1, PROTOCOL_VERSION + 1)) {
+            assertEquals(JoinResult.Rejected(ErrorCode.UPGRADE_REQUIRED), registry.create(ClientMessage.Create(version, "Host"), FakePeer()))
+            assertEquals(JoinResult.Rejected(ErrorCode.UPGRADE_REQUIRED), registry.join(ClientMessage.Join(version, code, "G"), FakePeer()))
+        }
+    }
+
+    @Test
+    fun welcomeCarriesTheServerProtocolVersion() = runBlocking {
+        val peer = FakePeer()
+        create(peer)
+        assertEquals(PROTOCOL_VERSION, peer.last<ServerMessage.Welcome>().protocolVersion)
     }
 }

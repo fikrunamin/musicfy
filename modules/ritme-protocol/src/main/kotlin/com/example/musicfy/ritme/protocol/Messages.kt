@@ -3,8 +3,25 @@ package com.example.musicfy.ritme.protocol
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-@Serializable
-enum class ErrorCode { ROOM_NOT_FOUND, ROOM_FULL, FORBIDDEN, RATE_LIMITED, UPGRADE_REQUIRED, INVALID, QUEUE_FULL }
+/**
+ * ROOM_FULL also means the server is at its room cap; RATE_LIMITED also means a connection cap
+ * was hit (try again later).
+ */
+@Serializable(with = ErrorCodeSerializer::class)
+enum class ErrorCode {
+    ROOM_NOT_FOUND,
+    ROOM_FULL,
+    FORBIDDEN,
+    RATE_LIMITED,
+    UPGRADE_REQUIRED,
+    INVALID,
+    QUEUE_FULL,
+
+    /** A code added by a newer protocol; treat it as a generic failure. */
+    UNKNOWN,
+}
+
+internal object ErrorCodeSerializer : LenientEnumSerializer<ErrorCode>("ErrorCode", ErrorCode.entries, ErrorCode.UNKNOWN)
 
 @Serializable
 sealed interface Command {
@@ -88,8 +105,15 @@ sealed interface ClientMessage {
 
 @Serializable
 sealed interface ServerMessage {
+    /** [protocolVersion] is the server's [PROTOCOL_VERSION]. */
     @Serializable @SerialName("Welcome")
-    data class Welcome(val memberId: String, val resumeToken: String, val state: RoomState, val serverTime: Long) : ServerMessage
+    data class Welcome(
+        val memberId: String,
+        val resumeToken: String,
+        val state: RoomState,
+        val serverTime: Long,
+        val protocolVersion: Int = PROTOCOL_VERSION,
+    ) : ServerMessage
 
     /**
      * A full snapshot. Server-to-client frames are not size-limited and can exceed 256 KB (a
