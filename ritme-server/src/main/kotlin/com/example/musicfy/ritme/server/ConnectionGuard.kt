@@ -12,6 +12,7 @@ data class SocketLimits(
     val maxRooms: Int = Limits.MAX_ROOMS,
     val framesPerSecond: Int = Limits.FRAMES_PER_SECOND,
     val frameBurst: Int = Limits.FRAME_BURST,
+    val sendStallMs: Long = Limits.SEND_STALL_MS,
 )
 
 /** Concurrent-connection caps (per IP key and global) and the per-IP Create/Join attempt limiter. */

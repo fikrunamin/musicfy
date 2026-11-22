@@ -26,30 +26,80 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 
 /**
- * Never suspends on the network: messages go into a small per-client queue that its own coroutine
- * drains into the socket, so a slow client cannot hold the room lock. A client that falls
- * [SEND_BUFFER] messages behind is cut off at once (its session is cancelled, so the room sees a
- * disconnect and starts the grace period); it can resume with its token and get fresh state.
+ * Never suspends on the network: messages go into this client's [PeerOutbox] (snapshots coalesce,
+ * bytes are bounded) and a pump coroutine hands them to Ktor one frame at a time, so a slow client
+ * cannot hold the room lock or grow memory. Every frame shares the broadcast's encoded bytes. The
+ * client is cut off at once (session cancelled; the room sees a disconnect and starts the grace
+ * period; it can resume with its token for fresh state) when its outbox goes over budget, when a
+ * frame is not written within [stallMs], or when it is behind while the server as a whole is over
+ * [PeerStats.budget].
  */
-class WebSocketPeer(private val session: DefaultWebSocketServerSession) : Peer {
-    private val queue = Channel<Outgoing>(capacity = SEND_BUFFER)
+class WebSocketPeer(
+    private val session: DefaultWebSocketServerSession,
+    private val stats: PeerStats = PeerStats(),
+    private val stallMs: Long = Limits.SEND_STALL_MS,
+) : Peer {
+    private val lock = Any()
+    private val outbox = PeerOutbox()
+    private var closed = false // no more messages accepted
+    private var aborted = false
+    private val wake = Channel<Unit>(Channel.CONFLATED)
+
+    private var inFlight = 0 // bytes of the frame being written
+
     private val pump = session.launch {
         try {
-            for (message in queue) session.outgoing.send(Frame.Text(message.text))
+            while (true) {
+                val next = synchronized(lock) { outbox.take()?.also { inFlight = it.size } }
+                if (next == null) {
+                    if (synchronized(lock) { closed }) break
+                    wake.receiveCatching()
+                    continue
+                }
+                // flush() returns once the frame is written to the socket: a client that stops
+                // reading is noticed even when nothing else is queued for it.
+                val written = try {
+                    withTimeoutOrNull(stallMs) {
+                        session.outgoing.send(Frame.Text(true, next.bytes))
+                        session.flush()
+                    }
+                } finally {
+                    synchronized(lock) { inFlight = 0 }
+                    stats.add(-next.size.toLong())
+                }
+                if (written == null) {
+                    abort() // the client stopped reading
+                    break
+                }
+            }
         } catch (_: ClosedSendChannelException) {
             // The socket is already gone; nothing left to deliver.
+        } finally {
+            stats.add(-synchronized(lock) {
+                closed = true
+                outbox.clear()
+            })
         }
-    }.also { job -> job.invokeOnCompletion { queue.close() } }
+    }
 
     override suspend fun send(message: Outgoing) {
-        val result = queue.trySend(message)
-        if (result.isClosed) throw ClosedSendChannelException("peer closed")
-        if (result.isFailure) abort()
+        val drop = synchronized(lock) {
+            if (closed) throw ClosedSendChannelException("peer closed")
+            val backlog = outbox.pendingBytes + inFlight
+            stats.add(outbox.add(message))
+            // Over the server-wide budget, clients that are already behind go first.
+            outbox.overBudget || (backlog > 0 && stats.overBudget)
+        }
+        if (drop) abort() else wake.trySend(Unit)
     }
 
     /** Delivers what is already queued (Kicked, RoomClosed, ...) and then closes the socket. */
     override suspend fun close() {
-        if (!queue.close()) return
+        synchronized(lock) {
+            if (closed) return
+            closed = true
+        }
+        wake.close()
         session.launch {
             withTimeoutOrNull(CLOSE_FLUSH_MS) {
                 pump.join()
@@ -60,13 +110,20 @@ class WebSocketPeer(private val session: DefaultWebSocketServerSession) : Peer {
     }
 
     private fun abort() {
-        queue.close()
+        val cleared = synchronized(lock) {
+            if (aborted) return
+            aborted = true
+            closed = true
+            outbox.clear()
+        }
+        stats.add(-cleared)
+        stats.aborted.incrementAndGet()
+        wake.close()
         pump.cancel()
         session.cancel()
     }
 
     companion object {
-        const val SEND_BUFFER = 64
         const val CLOSE_FLUSH_MS = 5_000L
     }
 }
@@ -89,20 +146,31 @@ suspend fun DefaultWebSocketServerSession.endConnection() {
 }
 
 const val CLOSE_HANDSHAKE_MS = 3_000L
+const val REFUSE_FLUSH_MS = 500L
 
 /**
  * `/ritme`: enforces the connection caps (a slot is held until the TCP connection has really
  * ended), then runs [ritmeSession].
  */
-suspend fun DefaultWebSocketServerSession.ritmeConnection(registry: RoomRegistry, clock: Clock, guard: ConnectionGuard) {
+suspend fun DefaultWebSocketServerSession.ritmeConnection(
+    registry: RoomRegistry,
+    clock: Clock,
+    guard: ConnectionGuard,
+    stats: PeerStats,
+) {
     val remoteHost = call.request.origin.remoteHost
     if (!guard.tryOpen(remoteHost)) {
-        refuse(ErrorCode.RATE_LIMITED, CloseReason.Codes.TRY_AGAIN_LATER)
-        endConnection()
+        // Not counted against any cap, so it must not linger: a short flush, then hang up.
+        withTimeoutOrNull(REFUSE_FLUSH_MS) {
+            outgoing.send(Frame.Text(ServerMessage.Error(code = ErrorCode.RATE_LIMITED).encode()))
+            outgoing.send(Frame.Close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "busy")))
+            flush()
+        }
+        cancel()
         return
     }
     try {
-        ritmeSession(registry, clock, guard, remoteHost)
+        ritmeSession(registry, clock, guard, remoteHost, stats)
     } finally {
         try {
             endConnection()
@@ -112,10 +180,7 @@ suspend fun DefaultWebSocketServerSession.ritmeConnection(registry: RoomRegistry
     }
 }
 
-/**
- * Refuses a socket before it gets a session: tells the client why, then closes. Used for the
- * connection caps (RATE_LIMITED) and for rejected Create/Join (the rejection's code).
- */
+/** Refuses a Create/Join: tells the client why, then closes (the slot is held until it is gone). */
 suspend fun DefaultWebSocketServerSession.refuse(code: ErrorCode, reason: CloseReason.Codes = CloseReason.Codes.NORMAL) {
     // Not under any room lock: send directly so it is flushed before we close.
     runCatching { outgoing.send(Frame.Text(ServerMessage.Error(code = code).encode())) }
@@ -126,8 +191,9 @@ suspend fun DefaultWebSocketServerSession.refuse(code: ErrorCode, reason: CloseR
  * Abuse (flooding, idling before join): no answer and no close handshake; the TCP connection is
  * dropped right after the Close frame, so a flood is not read any further.
  */
-private suspend fun DefaultWebSocketServerSession.closeQuietly() {
-    close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, ""))
+private fun DefaultWebSocketServerSession.closeQuietly() {
+    // trySend: never wait on a full outgoing channel (the client may not be reading at all).
+    outgoing.trySend(Frame.Close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "")))
     cancel()
 }
 
@@ -142,9 +208,10 @@ suspend fun DefaultWebSocketServerSession.ritmeSession(
     clock: Clock,
     guard: ConnectionGuard,
     remoteHost: String,
+    stats: PeerStats = PeerStats(),
 ) {
     val limits = guard.limits
-    val peer = WebSocketPeer(this)
+    val peer = WebSocketPeer(this, stats, limits.sendStallMs)
     val frames = RateLimiter(limits.frameBurst, limits.framesPerSecond.toDouble(), clock)
     val joinDeadline = TimeSource.Monotonic.markNow() + limits.joinDeadlineMs.milliseconds
     var session: JoinResult.Joined? = null
@@ -171,6 +238,8 @@ suspend fun DefaultWebSocketServerSession.ritmeSession(
             if (joined == null) {
                 val result = when (message) {
                     is ClientMessage.Create, is ClientMessage.Join -> when {
+                        // A Welcome can be up to a full snapshot: no new members while over budget.
+                        stats.overBudget -> JoinResult.Rejected(ErrorCode.RATE_LIMITED)
                         !guard.tryJoin(remoteHost) -> JoinResult.Rejected(ErrorCode.RATE_LIMITED)
                         message is ClientMessage.Create -> registry.create(message, peer)
                         else -> registry.join(message as ClientMessage.Join, peer)

@@ -49,15 +49,33 @@ object Limits {
     const val JOINS_PER_MINUTE = 10
 
     const val MAX_CONNECTIONS_PER_IP = 16
-    const val MAX_CONNECTIONS = 5_000
+    /**
+     * Sized to memory (512 MB container, ~384 MB heap): an idle socket costs ~60 KB (Netty
+     * buffers, Ktor session, coroutines) -> ~90 MB at the cap. Buffered outbound bytes are bounded
+     * separately by [MAX_PENDING_BYTES_TOTAL] (128 MB), rooms by [MAX_ROOMS] x MAX_STATE_BYTES.
+     */
+    const val MAX_CONNECTIONS = 1_500
     const val MAX_ROOMS = 2_000
 
     /** Every inbound frame (pings and garbage included) per connection; beyond this the socket is closed. */
     const val FRAMES_PER_SECOND = 20
     const val FRAME_BURST = 40
 
-    /** Ktor's per-socket inbound and outgoing frame channels (see WebSocketPeer.SEND_BUFFER for ours). */
-    const val WS_CHANNEL_CAPACITY = 8
+    /** Ktor's per-socket inbound frame channel. */
+    const val WS_INCOMING_CAPACITY = 8
+
+    /** Ktor's per-socket outgoing frame channel: one frame; everything else waits in our [PeerOutbox]. */
+    const val WS_OUTGOING_CAPACITY = 1
+
+    /** A client whose unsent messages exceed this is dropped (it can resume and get fresh state). */
+    const val MAX_PENDING_BYTES_PER_PEER = 2L * 1024 * 1024
+    const val MAX_PENDING_MESSAGES_PER_PEER = 64
+
+    /** All clients together (see PeerStats); bounds outbound buffering whatever the connection count. */
+    const val MAX_PENDING_BYTES_TOTAL = 128L * 1024 * 1024
+
+    /** A frame the client has not accepted within this long means it stopped reading: dropped. */
+    const val SEND_STALL_MS = 20_000L
 
     const val METRICS_INTERVAL_MS = 10 * 60_000L
 

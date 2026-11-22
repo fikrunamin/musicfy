@@ -154,4 +154,20 @@ class AbuseLimitsTest {
             }
         }
     }
+
+    @Test
+    fun noNewMembersWhileTheServerIsOverItsOutboundBudget() = testApplication {
+        val stats = PeerStats(budget = 1_000)
+        application { ritmeModule(testDeps(peerStats = stats)) }
+        stats.add(1_001) // as if stuck clients held this much
+        wsClient().ritme("12.0.0.1") {
+            sendClient(ClientMessage.Create(PROTOCOL_VERSION, "Budi"))
+            assertEquals(ServerMessage.Error(code = ErrorCode.RATE_LIMITED), receiveServer())
+        }
+        stats.add(-1_001)
+        wsClient().ritme("12.0.0.2") {
+            sendClient(ClientMessage.Create(PROTOCOL_VERSION, "Budi"))
+            assertTrue(receiveServer() is ServerMessage.Welcome)
+        }
+    }
 }

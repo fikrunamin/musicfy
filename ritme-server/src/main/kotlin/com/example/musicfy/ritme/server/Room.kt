@@ -10,11 +10,13 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * A server message together with its JSON, encoded exactly once however many peers receive it
- * (a full room snapshot can be hundreds of KB).
+ * A server message together with its UTF-8 JSON, encoded exactly once however many peers receive
+ * it (a full room snapshot can be hundreds of KB); every socket writes the same [bytes].
  */
 class Outgoing(val message: ServerMessage) {
-    val text: String = message.encode()
+    val bytes: ByteArray = message.encode().encodeToByteArray()
+    val text: String by lazy { bytes.decodeToString() }
+    val size: Int get() = bytes.size
 }
 
 /**

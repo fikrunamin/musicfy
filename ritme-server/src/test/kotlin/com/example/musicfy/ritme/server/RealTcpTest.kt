@@ -2,7 +2,9 @@ package com.example.musicfy.ritme.server
 
 import com.example.musicfy.ritme.protocol.ClientMessage
 import com.example.musicfy.ritme.protocol.Command
+import com.example.musicfy.ritme.protocol.MediaKind
 import com.example.musicfy.ritme.protocol.NewEntry
+import com.example.musicfy.ritme.protocol.RoomState
 import com.example.musicfy.ritme.protocol.PROTOCOL_VERSION
 import com.example.musicfy.ritme.protocol.ServerMessage
 import com.example.musicfy.ritme.protocol.encode
@@ -17,6 +19,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -163,6 +166,67 @@ class RealTcpTest {
                     host.sendClient(ClientMessage.Send("p", Command.Pause))
                     assertFalse((host.receiveServer() as ServerMessage.State).state.playback.isPlaying)
                     flood.cancel()
+                }
+            }
+        } finally {
+            client.close()
+            server.stop(0, 0)
+        }
+    }
+
+    @Test
+    fun silentPeersInARoomWithALargeStateAreDroppedAndBufferingStaysBounded() = runBlocking {
+        val silent = 6
+        val stats = PeerStats()
+        val deps = testDeps(socketLimits = SocketLimits(sendStallMs = 1_000), peerStats = stats)
+        val server = embeddedServer(Netty, port = 0) { ritmeModule(deps) }.start()
+        val port = server.engine.resolvedConnectors().first().port
+        val client = HttpClient(OkHttp) { install(WebSockets) }
+        // ~3.4 KB per entry: 110 of them make a ~370 KB snapshot.
+        fun big(i: Int) = NewEntry(
+            "", "x".repeat(300), "y".repeat(300), "https://cdn.example/" + "t".repeat(480), 600_000,
+            MediaKind.URL, "https://cdn.example/$i/" + "u".repeat(2_000),
+        )
+        try {
+            client.webSocket("ws://127.0.0.1:$port/ritme") {
+                val host = this
+                suspend fun nextState(): RoomState {
+                    var message = host.receiveServer()
+                    while (message !is ServerMessage.State) message = host.receiveServer()
+                    return message.state
+                }
+                host.sendClient(ClientMessage.Create(PROTOCOL_VERSION, "Budi", List(55) { big(it) }))
+                val code = (host.receiveServer() as ServerMessage.Welcome).state.code
+                host.sendClient(ClientMessage.Send("add", Command.Add(List(55) { big(100 + it) })))
+                val full = nextState()
+                assertEquals(110, full.queue.size)
+
+                val clients = List(silent) { i ->
+                    DeafClient(port).also { it.send(ClientMessage.Join(PROTOCOL_VERSION, code, "S$i")) }
+                }
+                try {
+                    // Keep snapshots coming while the silent members sit on theirs.
+                    repeat(10) { host.sendClient(ClientMessage.Send("s$it", Command.Seek(it * 1_000L))) }
+                    val settled = withTimeout(20_000) {
+                        var state = nextState()
+                        while (state.members.size < silent + 1 || state.members.any { it.name.startsWith("S") && it.connected }) {
+                            state = nextState()
+                        }
+                        state
+                    }
+                    assertTrue(settled.members.filter { it.name.startsWith("S") }.none { it.connected })
+                    assertTrue("aborted ${stats.aborted.get()}", stats.aborted.get() >= silent)
+                    // Coalescing keeps each stuck client at about one snapshot plus its Welcome.
+                    val perPeer = full.let { Outgoing(ServerMessage.State(it)).size } * 3L
+                    assertTrue(
+                        "peak ${stats.peakPendingBytes.get()} > ${perPeer * (silent + 1)}",
+                        stats.peakPendingBytes.get() <= perPeer * (silent + 1),
+                    )
+                    host.sendClient(ClientMessage.Send("p", Command.Pause))
+                    assertFalse(nextState().playback.isPlaying)
+                    withTimeout(5_000) { while (stats.pendingBytes.get() > 0) delay(50) }
+                } finally {
+                    clients.forEach { it.close() }
                 }
             }
         } finally {

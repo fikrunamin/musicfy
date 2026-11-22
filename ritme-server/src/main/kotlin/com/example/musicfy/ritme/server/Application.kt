@@ -34,6 +34,7 @@ class ServerDeps(
     val ids: IdGen = SecureIdGen(),
     val search: SearchService = SearchService(InnerTubeSearchBackend(defaultHttpClient()), clock),
     val socketLimits: SocketLimits = SocketLimits(),
+    val peerStats: PeerStats = PeerStats(),
 )
 
 fun Application.ritmeModule(deps: ServerDeps) {
@@ -51,12 +52,12 @@ fun Application.ritmeModule(deps: ServerDeps) {
         maxFrameSize = Limits.MAX_FRAME_BYTES
         masking = false
         // Ktor's default is UNLIMITED in both directions: a client that stops reading would grow
-        // the outgoing buffer forever (WebSocketPeer's send queue would never fill), and a flood
-        // would pile up inbound frames faster than the frame limiter sees them. Bounded + SUSPEND
-        // turns both into TCP backpressure.
+        // the outgoing buffer forever, and a flood would pile up inbound frames faster than the
+        // frame limiter sees them. Bounded + SUSPEND turns both into TCP backpressure; outgoing
+        // holds a single frame, everything else waits (coalesced, byte-bounded) in PeerOutbox.
         channels {
-            incoming = bounded(Limits.WS_CHANNEL_CAPACITY, ChannelOverflow.SUSPEND)
-            outgoing = bounded(Limits.WS_CHANNEL_CAPACITY, ChannelOverflow.SUSPEND)
+            incoming = bounded(Limits.WS_INCOMING_CAPACITY, ChannelOverflow.SUSPEND)
+            outgoing = bounded(Limits.WS_OUTGOING_CAPACITY, ChannelOverflow.SUSPEND)
         }
     }
 
@@ -77,13 +78,19 @@ fun Application.ritmeModule(deps: ServerDeps) {
     launch {
         while (isActive) {
             delay(Limits.METRICS_INTERVAL_MS)
-            log.info("rooms={} connections={}", registry.size, guard.connections)
+            log.info(
+                "rooms={} connections={} pendingBytes={} dropped={}",
+                registry.size,
+                guard.connections,
+                deps.peerStats.pendingBytes.get(),
+                deps.peerStats.aborted.get(),
+            )
         }
     }
 
     routing {
         get("/healthz") { call.respondText("ok") }
-        webSocket("/ritme") { ritmeConnection(registry, deps.clock, guard) }
+        webSocket("/ritme") { ritmeConnection(registry, deps.clock, guard, deps.peerStats) }
 
         get("/api/search") {
             val query = call.request.queryParameters["q"]?.trim().orEmpty()
