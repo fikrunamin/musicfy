@@ -13,6 +13,9 @@ From the repository root (JDK 21):
 ./gradlew -p ritme-server run           # http://localhost:8080
 ```
 
+The web client lives in `ritme-web/` (see its README). The Docker image builds it and serves it
+from `/app/web`.
+
 Protocol shapes live in `modules/ritme-protocol`. After an intentional protocol change, refresh
 the golden fixtures with `./gradlew -p ritme-server :ritme-protocol:test -PupdateGolden=true` and
 review `git diff modules/ritme-protocol/fixtures/`.
@@ -23,7 +26,7 @@ review `git diff modules/ritme-protocol/fixtures/`.
 |---|---|---|
 | `PORT` | `8080` | HTTP port |
 | `PUBLIC_URL` | `http://localhost:8080` | Reserved for share links; not used by the server yet |
-| `WEB_DIR` | `/app/web` | Built web client; without `index.html` a small landing page is served |
+| `WEB_DIR` | `/app/web` | Built web client (`ritme-web/dist`, included in the Docker image); without `index.html` a small landing page is served |
 
 ## Deploy on a VPS (Docker + Caddy)
 
@@ -76,7 +79,7 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
 | GET | `/healthz` | `ok` |
 | WS | `/ritme` | Room protocol (see `modules/ritme-protocol`) |
 | GET | `/api/search?q=` | Up to 20 songs `{videoId,title,artist,durationMs,thumbnailUrl}`; 30/min per IP (429), 300 uncached/min in total (503) |
-| GET | `/`, `/r/{code}` | Web client, or the landing page with a `musicfy://ritme/{code}` button |
+| GET | `/`, `/r/{code}` | Web client (`ritme-web`), or the landing page with a `musicfy://ritme/{code}` button when `WEB_DIR` has no `index.html` |
 
 ## Protocol notes
 

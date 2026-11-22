@@ -4,12 +4,14 @@ on:
   push:
     paths:
       - "ritme-server/**"
+      - "ritme-web/**"
       - "modules/ritme-protocol/**"
       - "gradle/libs.versions.toml"
       - ".github/workflows/ritme-server.yml"
   pull_request:
     paths:
       - "ritme-server/**"
+      - "ritme-web/**"
       - "modules/ritme-protocol/**"
       - "gradle/libs.versions.toml"
       - ".github/workflows/ritme-server.yml"
@@ -26,5 +28,37 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
       - name: Test protocol and server
         run: ./gradlew --console=plain -p ritme-server test :ritme-protocol:test
-      - name: Build image
+      - name: Build image (server + web)
         run: docker build -f ritme-server/Dockerfile -t ritme-server:ci .
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ritme-web
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ritme-web/package-lock.json
+      - name: Unit tests and build
+        run: npm ci && npm test && npm run build
+      # The smoke test starts the real server, so it needs the JDK too.
+      - uses: actions/setup-java@v5
+        with:
+          java-version: 21
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Smoke test (two tabs, one room)
+        run: npm run e2e
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ritme-web-playwright
+          path: ritme-web/test-results
+          retention-days: 7
