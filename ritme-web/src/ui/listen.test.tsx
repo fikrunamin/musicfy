@@ -93,9 +93,27 @@ describe('ListenPanel after the tap gate', () => {
     view.rerender(panel(s, r, 'remote'));
     expect(mocks.log.at(-1)).toBe('destroy');
     view.rerender(panel(s, r, 'listen'));
+    // Back in listen mode the gate is shown again; the player needs a new tap.
+    expect(mocks.log.filter((l) => l === 'new')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Ketuk untuk ikut dengar' }));
+    await Promise.resolve();
     expect(mocks.log.filter((l) => l === 'new')).toHaveLength(2);
     cleanup();
     expect(mocks.log.at(-1)).toBe('destroy');
+  });
+
+  it('shows the tap gate again after listen -> remote -> listen', async () => {
+    const s = fakeSession();
+    const r = playing();
+    const view = render(panel(s, r, 'listen'));
+    fireEvent.click(screen.getByRole('button', { name: 'Ketuk untuk ikut dengar' }));
+    await Promise.resolve();
+    expect(document.querySelector('.player')).toBeTruthy();
+    view.rerender(panel(s, r, 'remote'));
+    await Promise.resolve();
+    view.rerender(panel(s, r, 'listen'));
+    expect(screen.getByRole('button', { name: 'Ketuk untuk ikut dengar' })).toBeTruthy();
+    expect(document.querySelector('.player')).toBeNull();
   });
 
   it('resyncs the controller when the session asks for it, and unsubscribes on unmount', async () => {

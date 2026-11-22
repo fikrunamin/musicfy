@@ -68,9 +68,11 @@ function PlayerHost({ session, room, unplayable, pageIsHttps }: Omit<Props, 'mod
 export function ListenPanel({ session, room, unplayable, mode, onModeChange, pageIsHttps }: Props) {
   const [gateOpen, setGateOpen] = useState(false);
 
-  // Fetch the IFrame API early so the player appears quickly after the tap.
+  // Fetch the IFrame API early so the player appears quickly after the tap. Remote mode closes
+  // the gate, so coming back to listen asks for a new tap (the autoplay gate, spec 5.4).
   useEffect(() => {
     if (mode === 'listen') loadYouTubeApi().catch(() => {});
+    else setGateOpen(false);
   }, [mode]);
 
   return (
