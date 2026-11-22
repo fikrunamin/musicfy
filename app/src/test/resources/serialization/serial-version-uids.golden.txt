@@ -1,0 +1,13 @@
+com.example.musicfy.models.MediaMetadata=1600211136871289501
+com.example.musicfy.models.MediaMetadata$Artist=3603964663152823270
+com.example.musicfy.models.MediaMetadata$Album=-6959882536619904332
+com.example.musicfy.models.PersistQueue=6429623122233171446
+com.example.musicfy.models.QueueType=8325808744034862222
+com.example.musicfy.models.QueueType$LIST=1911115016473477586
+com.example.musicfy.models.QueueType$YOUTUBE=3755530007162349819
+com.example.musicfy.models.QueueType$YOUTUBE_ALBUM_RADIO=1392381929295877222
+com.example.musicfy.models.QueueType$LOCAL_ALBUM_RADIO=5328212382352355839
+com.example.musicfy.models.QueueData=-8582473634277206487
+com.example.musicfy.models.QueueData$YouTubeData=4769908787355566342
+com.example.musicfy.models.QueueData$YouTubeAlbumRadioData=-5168524426105764017
+com.example.musicfy.models.QueueData$LocalAlbumRadioData=-1023867307323175778

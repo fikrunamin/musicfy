@@ -415,3 +415,8 @@ dependencies {
 
     testImplementation(libs.junit)
 }
+
+tasks.withType<Test>().configureEach {
+    // ./gradlew :app:testUniversalFossDebugUnitTest -PupdateGolden=true rewrites golden files
+    systemProperty("updateGolden", providers.gradleProperty("updateGolden").getOrElse("false"))
+}
