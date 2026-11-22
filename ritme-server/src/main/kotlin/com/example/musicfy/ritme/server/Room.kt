@@ -8,13 +8,25 @@ import com.example.musicfy.ritme.protocol.ServerMessage
 import com.example.musicfy.ritme.protocol.encode
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * A server message together with its JSON, encoded exactly once however many peers receive it
- * (a full room snapshot can be hundreds of KB).
+ * A server message together with its UTF-8 JSON, encoded exactly once however many peers receive
+ * it (a full room snapshot can be hundreds of KB); every socket writes the same [bytes].
  */
 class Outgoing(val message: ServerMessage) {
-    val text: String = message.encode()
+    val bytes: ByteArray = message.encode().encodeToByteArray()
+    val text: String by lazy { bytes.decodeToString() }
+    val size: Int get() = bytes.size
+
+    /** Clients still holding this message (see PeerStats), so shared bytes are counted once. */
+    private val holders = AtomicInteger()
+
+    /** True for the first holder. */
+    fun retain(): Boolean = holders.getAndIncrement() == 0
+
+    /** True for the last holder. */
+    fun release(): Boolean = holders.decrementAndGet() == 0
 }
 
 /**
@@ -33,12 +45,35 @@ suspend fun Peer.send(message: ServerMessage) = send(Outgoing(message))
  * Live room: applies [RoomLogic] under a mutex, tracks connections, resume tokens and grace
  * periods, and fans state out to every connected peer.
  */
-class Room(initial: RoomState, private val clock: Clock, private val ids: IdGen) {
+class Room(
+    initial: RoomState,
+    private val clock: Clock,
+    private val ids: IdGen,
+    private val budget: StateBudget = StateBudget(Long.MAX_VALUE),
+    /** The creator's [ipKey], for the per-IP live-room cap (released with the room). */
+    val creatorKey: String = "",
+) {
     private val mutex = Mutex()
+
+    /**
+     * Size of the last encoded snapshot: lets Add check the caps by encoding only the new entries.
+     * Re-synced from every State broadcast; counted in [budget] until [dispose].
+     */
+    @Volatile
+    var snapshotBytes: Int = Outgoing(ServerMessage.State(initial)).size
+        private set
+    private var disposed = false
+
+    init {
+        budget.add(snapshotBytes.toLong())
+    }
     private val peers = HashMap<String, Peer>()
     private val tokens = HashMap<String, String>() // resumeToken -> memberId
     private val disconnectedAt = HashMap<String, Long>()
     private val limiters = HashMap<String, RateLimiter>()
+
+    /** Shared by all members on top of their own limit: bounds the CPU one room can use. */
+    private val roomLimiter = RateLimiter(Limits.ROOM_COMMANDS_PER_SECOND, Limits.ROOM_COMMANDS_PER_SECOND.toDouble(), clock)
     private var emptySince: Long? = null
 
     @Volatile
@@ -112,11 +147,12 @@ class Room(initial: RoomState, private val clock: Clock, private val ids: IdGen)
 
     suspend fun command(memberId: String, peer: Peer, reqId: String, cmd: Command) = mutex.withLock {
         val sender = peers[memberId]?.takeIf { it === peer } ?: return@withLock
-        if (!limiter(memberId).tryAcquire()) {
+        if (!limiter(memberId).tryAcquire() || !roomLimiter.tryAcquire()) {
             sender.send(ServerMessage.Error(reqId, ErrorCode.RATE_LIMITED))
             return@withLock
         }
-        when (val outcome = RoomLogic.apply(state, memberId, cmd, clock.now(), ids)) {
+        val size = SizeContext(currentBytes = snapshotBytes, budgetLeft = budget.remaining())
+        when (val outcome = RoomLogic.apply(state, memberId, cmd, clock.now(), ids, size)) {
             is Outcome.Rejected -> sender.send(ServerMessage.Error(reqId, outcome.code))
             is Outcome.Ok -> {
                 val changed = outcome.state !== state
@@ -144,7 +180,7 @@ class Room(initial: RoomState, private val clock: Clock, private val ids: IdGen)
     suspend fun trackEnded(memberId: String, peer: Peer, entryId: String) = mutex.withLock {
         if (peers[memberId] !== peer) return@withLock
         // Shares the command budget, so end reports cannot be used to spin the room.
-        if (!limiter(memberId).tryAcquire()) return@withLock
+        if (!limiter(memberId).tryAcquire() || !roomLimiter.tryAcquire()) return@withLock
         val next = RoomLogic.onTrackEnded(state, entryId, clock.now()) ?: return@withLock
         state = next
         broadcast(ServerMessage.State(next))
@@ -210,9 +246,27 @@ class Room(initial: RoomState, private val clock: Clock, private val ids: IdGen)
         tokens.clear()
     }
 
+    /** Gives the room's bytes back to the server-wide budget once the room is gone; true the first time. */
+    fun dispose(): Boolean {
+        synchronized(this) {
+            if (disposed) return false
+            disposed = true
+            budget.add(-snapshotBytes.toLong())
+            return true
+        }
+    }
+
     private suspend fun broadcast(message: ServerMessage, except: String? = null) {
         val outgoing = Outgoing(message)
+        if (message is ServerMessage.State) resync(outgoing.size)
         peers.forEach { (id, peer) -> if (id != except) runCatching { peer.send(outgoing) } }
+    }
+
+    private fun resync(bytes: Int) {
+        synchronized(this) {
+            if (!disposed) budget.add((bytes - snapshotBytes).toLong())
+            snapshotBytes = bytes
+        }
     }
 }
 

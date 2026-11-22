@@ -2,7 +2,9 @@ package com.example.musicfy.ritme.server
 
 import com.example.musicfy.ritme.protocol.ClientMessage
 import com.example.musicfy.ritme.protocol.Command
+import com.example.musicfy.ritme.protocol.MediaKind
 import com.example.musicfy.ritme.protocol.NewEntry
+import com.example.musicfy.ritme.protocol.RoomState
 import com.example.musicfy.ritme.protocol.PROTOCOL_VERSION
 import com.example.musicfy.ritme.protocol.ServerMessage
 import com.example.musicfy.ritme.protocol.encode
@@ -17,6 +19,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -60,17 +63,41 @@ class RealTcpTest {
             out.write(ByteArray(payload.size) { (payload[it].toInt() xor mask[it % 4].toInt()).toByte() })
         }
 
-        /** Reads one server frame (servers never mask) and returns its payload as text. */
-        fun readText(): String {
+        /** Reads one server frame (servers never mask): opcode and payload. */
+        fun readFrame(): Pair<Int, ByteArray> {
             val input = socket.getInputStream()
             fun byte() = input.read().also { if (it < 0) throw IOException("closed") }
-            byte()
+            val opcode = byte() and 0x0f
             val len = when (val n = byte() and 0x7f) {
                 126 -> (byte() shl 8) or byte()
                 127 -> (0 until 8).fold(0L) { acc, _ -> (acc shl 8) or byte().toLong() }.toInt()
                 else -> n
             }
-            return String(input.readNBytes(len))
+            return opcode to input.readNBytes(len)
+        }
+
+        /** Payload of the next text frame (skipping pings). */
+        fun readText(): String {
+            while (true) {
+                val (opcode, payload) = readFrame()
+                if (opcode == 1) return String(payload)
+                if (opcode == 8) throw IOException("closed by server")
+            }
+        }
+
+        /** Text payloads the server sent until it hung up (pings and the Close frame skipped). */
+        fun readTextUntilClosed(timeoutMs: Int): List<String> {
+            socket.soTimeout = timeoutMs
+            val texts = mutableListOf<String>()
+            try {
+                while (true) {
+                    val (opcode, payload) = readFrame()
+                    if (opcode == 1) texts += String(payload)
+                }
+            } catch (_: IOException) {
+                // EOF or reset: the server hung up (SocketTimeoutException is an IOException too).
+            }
+            return texts
         }
 
         /** Reads (and discards) until the server closes the TCP connection; ms waited, or null on timeout. */
@@ -163,6 +190,120 @@ class RealTcpTest {
                     host.sendClient(ClientMessage.Send("p", Command.Pause))
                     assertFalse((host.receiveServer() as ServerMessage.State).state.playback.isPlaying)
                     flood.cancel()
+                }
+            }
+        } finally {
+            client.close()
+            server.stop(0, 0)
+        }
+    }
+
+    @Test
+    fun silentPeersInARoomWithALargeStateAreDroppedAndBufferingStaysBounded() = runBlocking {
+        val silent = 6
+        val stats = PeerStats()
+        val deps = testDeps(socketLimits = SocketLimits(sendStallMs = 1_000, ackDeadlineMs = 1_000), peerStats = stats)
+        val server = embeddedServer(Netty, port = 0) { ritmeModule(deps) }.start()
+        val port = server.engine.resolvedConnectors().first().port
+        val client = HttpClient(OkHttp) { install(WebSockets) }
+        // ~3.4 KB per entry: 70 of them make a ~240 KB snapshot (just under the 256 KB cap).
+        fun big(i: Int) = NewEntry(
+            "", "x".repeat(300), "y".repeat(300), "https://cdn.example/" + "t".repeat(480), 600_000,
+            MediaKind.URL, "https://cdn.example/$i/" + "u".repeat(2_000),
+        )
+        try {
+            client.webSocket("ws://127.0.0.1:$port/ritme") {
+                val host = this
+                suspend fun nextState(): RoomState {
+                    var message = host.receiveServer()
+                    while (message !is ServerMessage.State) message = host.receiveServer()
+                    return message.state
+                }
+                host.sendClient(ClientMessage.Create(PROTOCOL_VERSION, "Budi", List(40) { big(it) }))
+                val code = (host.receiveServer() as ServerMessage.Welcome).state.code
+                host.sendClient(ClientMessage.Send("add", Command.Add(List(30) { big(100 + it) })))
+                val full = nextState()
+                assertEquals(70, full.queue.size)
+
+                val clients = List(silent) { i ->
+                    DeafClient(port).also { it.send(ClientMessage.Join(PROTOCOL_VERSION, code, "S$i")) }
+                }
+                try {
+                    // Keep snapshots coming (~6/s) until every silent member has been dropped. (Once the
+                    // kernel's socket buffers are full, the next snapshot stalls and the client goes.)
+                    val settled = withTimeout(30_000) {
+                        var state = nextState()
+                        var k = 0
+                        while (state.members.size < silent + 1 || state.members.any { it.name.startsWith("S") && it.connected }) {
+                            host.sendClient(ClientMessage.Send("s$k", Command.Seek(k++ * 1_000L)))
+                            delay(150)
+                            state = nextState()
+                        }
+                        state
+                    }
+                    assertTrue(settled.members.filter { it.name.startsWith("S") }.none { it.connected })
+                    assertTrue("aborted ${stats.aborted.get()}", stats.aborted.get() >= silent)
+                    // Coalescing keeps each stuck client at about one snapshot plus its Welcome.
+                    val perPeer = full.let { Outgoing(ServerMessage.State(it)).size } * 3L
+                    assertTrue(
+                        "peak ${stats.peakPendingBytes.get()} > ${perPeer * (silent + 1)}",
+                        stats.peakPendingBytes.get() <= perPeer * (silent + 1),
+                    )
+                    host.sendClient(ClientMessage.Send("p", Command.Pause))
+                    withTimeout(5_000) { while (nextState().playback.isPlaying) Unit } // after earlier seeks
+                    withTimeout(5_000) { while (stats.pendingBytes.get() > 0) delay(50) }
+                } finally {
+                    clients.forEach { it.close() }
+                }
+            }
+        } finally {
+            client.close()
+            server.stop(0, 0)
+        }
+    }
+
+    @Test
+    fun silentPeersThatNeverAckGetNoFurtherSnapshotsAndAreDroppedAfterTheStallWindow() = runBlocking {
+        val silent = 8
+        val stats = PeerStats()
+        val deps = testDeps(socketLimits = SocketLimits(sendStallMs = 1_500, ackDeadlineMs = 1_500), peerStats = stats)
+        val server = embeddedServer(Netty, port = 0) { ritmeModule(deps) }.start()
+        val port = server.engine.resolvedConnectors().first().port
+        val client = HttpClient(OkHttp) { install(WebSockets) }
+        fun big(i: Int) = NewEntry(
+            "", "x".repeat(300), "y".repeat(300), "https://cdn.example/" + "t".repeat(480), 600_000,
+            MediaKind.URL, "https://cdn.example/$i/" + "u".repeat(2_000),
+        )
+        try {
+            client.webSocket("ws://127.0.0.1:$port/ritme") {
+                val host = this
+                host.sendClient(ClientMessage.Create(PROTOCOL_VERSION, "Budi", List(40) { big(it) })) // ~135 KB
+                val code = (host.receiveServer() as ServerMessage.Welcome).state.code
+                val peers = List(silent) { i ->
+                    DeafClient(port).also {
+                        it.send(ClientMessage.Join(PROTOCOL_VERSION, code, "S$i"))
+                        check(it.readText().contains("\"Welcome\"")) // read the Welcome, then go silent
+                    }
+                }
+                try {
+                    val start = System.nanoTime()
+                    // Snapshots keep coming (~6/s); none may reach the silent peers.
+                    withTimeout(15_000) {
+                        var k = 0
+                        while (stats.aborted.get() < silent) {
+                            host.sendClient(ClientMessage.Send("s$k", Command.Seek(k++ * 1_000L)))
+                            delay(150)
+                            while (host.incoming.tryReceive().getOrNull() != null) Unit
+                        }
+                    }
+                    val droppedAfterMs = (System.nanoTime() - start) / 1_000_000
+                    assertTrue("dropped after $droppedAfterMs ms", droppedAfterMs >= 1_000)
+                    peers.forEach { peer ->
+                        val after = peer.readTextUntilClosed(timeoutMs = 5_000)
+                        assertTrue("a silent peer got $after", after.none { it.contains("\"State\"") })
+                    }
+                } finally {
+                    peers.forEach { it.close() }
                 }
             }
         } finally {

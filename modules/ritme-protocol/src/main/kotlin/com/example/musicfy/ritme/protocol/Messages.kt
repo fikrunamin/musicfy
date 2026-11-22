@@ -4,8 +4,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * ROOM_FULL also means the server is at its room cap; RATE_LIMITED also means a connection cap
- * was hit (try again later).
+ * ROOM_FULL also means the server is at its room cap or room-state budget; RATE_LIMITED also means
+ * a connection cap, the join limiter or the per-IP live-room cap was hit (try again later).
  */
 @Serializable(with = ErrorCodeSerializer::class)
 enum class ErrorCode {
@@ -70,7 +70,8 @@ sealed interface Command {
 sealed interface ClientMessage {
     /**
      * Inbound frames are limited to 256 KB. Send at most 200 [initialQueue] entries here and the
-     * rest as [Command.Add] batches of at most 200 after Welcome.
+     * rest as [Command.Add] batches of at most 200 after Welcome. Entries beyond the 256 KB room
+     * state cap are dropped here and rejected with QUEUE_FULL in Add.
      */
     @Serializable @SerialName("Create")
     data class Create(
@@ -101,6 +102,14 @@ sealed interface ClientMessage {
 
     @Serializable @SerialName("TrackEnded")
     data class TrackEnded(val entryId: String) : ClientMessage
+
+    /**
+     * Flow control: send after applying each Welcome/State, with its `state.version`. The server
+     * sends the next snapshot only after this Ack (newer ones are coalesced meanwhile) and drops a
+     * client that has not acknowledged a snapshot within 45 s. Other messages are not gated.
+     */
+    @Serializable @SerialName("Ack")
+    data class Ack(val version: Long) : ClientMessage
 }
 
 @Serializable
@@ -116,10 +125,9 @@ sealed interface ServerMessage {
     ) : ServerMessage
 
     /**
-     * A full snapshot. Server-to-client frames are not size-limited and can exceed 256 KB (a
-     * 500-entry queue is ~200 KB), so clients must accept inbound frames of at least 1 MB; 4 MB is
-     * recommended, since with every field at its cap a full queue can reach ~3 MB. The same holds
-     * for [Welcome].
+     * A full snapshot. The server caps a room's state at 256 KB of JSON (a typical 500-entry queue
+     * is ~200 KB), so Welcome/State frames stay below ~260 KB: clients must accept inbound frames
+     * of at least 1 MB. The same holds for [Welcome].
      */
     @Serializable @SerialName("State")
     data class State(val state: RoomState) : ServerMessage

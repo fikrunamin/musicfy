@@ -31,6 +31,7 @@ object Samples {
         "client-leave" to ClientMessage.Leave,
         "client-ping" to ClientMessage.Ping(123),
         "client-track-ended" to ClientMessage.TrackEnded("e1"),
+        "client-ack" to ClientMessage.Ack(3),
         "cmd-play" to send(Command.Play),
         "cmd-pause" to send(Command.Pause),
         "cmd-seek" to send(Command.Seek(42_000)),

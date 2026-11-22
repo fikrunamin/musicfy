@@ -14,10 +14,19 @@ import kotlinx.coroutines.withTimeout
 
 suspend fun DefaultClientWebSocketSession.sendClient(message: ClientMessage) = send(Frame.Text(message.encode()))
 
-suspend fun DefaultClientWebSocketSession.receiveServer(): ServerMessage = withTimeout(5_000) {
+/** Next server message; like a compliant client, acknowledges every Welcome/State unless [ack] is false. */
+suspend fun DefaultClientWebSocketSession.receiveServer(ack: Boolean = true): ServerMessage = withTimeout(5_000) {
     var frame = incoming.receive()
     while (frame !is Frame.Text) frame = incoming.receive()
-    decodeServerMessage((frame as Frame.Text).readText())
+    val message = decodeServerMessage((frame as Frame.Text).readText())
+    if (ack) {
+        when (message) {
+            is ServerMessage.Welcome -> sendClient(ClientMessage.Ack(message.state.version))
+            is ServerMessage.State -> sendClient(ClientMessage.Ack(message.state.version))
+            else -> Unit
+        }
+    }
+    message
 }
 
 /** True once the server has closed the socket (a Close frame or the channel ending); fails after 5 s. */

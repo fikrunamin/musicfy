@@ -201,4 +201,19 @@ class SearchTest {
         application { ritmeModule(depsWith { error("down") }) }
         assertEquals(HttpStatusCode.BadGateway, client.get("/api/search?q=rick").status)
     }
+
+    @Test
+    fun ipLimiterBurstAndRefillAreSeparateAndPeekingIsFree() {
+        val clock = FakeClock()
+        val limiter = IpRateLimiter(clock, perMinute = 10, burst = 30)
+        repeat(100) { assertTrue(limiter.hasToken("1.1.1.1")) }
+        repeat(30) { assertTrue(limiter.tryAcquire("1.1.1.1")) }
+        assertFalse(limiter.hasToken("1.1.1.1"))
+        clock.now += 6_000 // 10 per minute
+        assertTrue(limiter.tryAcquire("1.1.1.1"))
+        assertFalse(limiter.tryAcquire("1.1.1.1"))
+        clock.now += 150_000 // 2.5 min idle: still tracked, refilling (not reset early)
+        repeat(25) { assertTrue(limiter.tryAcquire("1.1.1.1")) }
+        assertFalse(limiter.tryAcquire("1.1.1.1"))
+    }
 }

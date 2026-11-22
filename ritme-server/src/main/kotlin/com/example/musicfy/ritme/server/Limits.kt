@@ -1,15 +1,52 @@
 package com.example.musicfy.ritme.server
 
+/**
+ * Heap budget. The container has `mem_limit: 1408m` and the JVM `-XX:MaxRAMPercentage=75`, so the
+ * heap is ~1056 MB (and `-XX:+ExitOnOutOfMemoryError` restarts it should it ever run out). The
+ * limits below are chosen so that their worst cases add up:
+ *
+ * | Part | Bound | Worst case in heap |
+ * |---|---|---|
+ * | Baseline (JVM, Ktor, Netty, caches) | measured | ~80 MB |
+ * | Connections | [MAX_CONNECTIONS] (650) x ~0.9 MB | ~585 MB |
+ * | Unsent outbound bytes (our outboxes) | [MAX_PENDING_BYTES_TOTAL] | 96 MB |
+ * | Rooms at rest | [MAX_ROOM_STATE_BYTES_TOTAL] (120 MB encoded) x 1.3 | ~156 MB |
+ * | Headroom (GC, in-flight encodes) | rest | >= 130 MB |
+ *
+ * Per connection: an honest client holds ~60 KB of socket/session overhead plus at most one
+ * unacknowledged snapshot (<= [MAX_STATE_BYTES]) in Ktor's per-connection output buffer (up to
+ * 1 MiB, outside our accounting). Acks are predictable when one connection drives a room, so
+ * colluding clients that ack without reading can fill that buffer: measured ~0.8 MB per connection,
+ * budgeted as ~0.9 MB. Ktor's ping timeout and the stall/ack timers still drop such clients.
+ * Caveat: probe12 (30 rooms x 19 colluding peers) peaked between 418 and 883 MB live heap across
+ * runs, i.e. up to ~1.35 MB per connection; the theoretical bound is ~1.5 MB (Ktor's 1 MiB buffer
+ * plus the frame in the outgoing slot plus the frame being written). At that worst case 650
+ * connections exceed the heap; ExitOnOutOfMemoryError then restarts the container. A per-snapshot
+ * unpredictable ack token (planned) brings the bound back to one snapshot per connection.
+ * Room objects take 0.9-1.3x their encoded size in heap (measured: ASCII-heavy maximal entries
+ * 1.10, 3-byte characters 0.88, typical YouTube entries 1.27), hence the 1.3 factor.
+ * Rooms: at most [MAX_ROOMS]; at most [MAX_ROOM_STATE_BYTES_TOTAL] / [MAX_STATE_BYTES] = 480 of
+ * them can be full, the rest stay small (~1-2 KB each).
+ */
 object Limits {
     const val MAX_MEMBERS = 20
     const val MAX_QUEUE = 500
     const val COMMANDS_PER_SECOND = 10
-    /**
-     * Largest inbound frame. Safe because every field has its own cap; outbound frames are not
-     * limited (a 500-entry snapshot is ~200 KB, ~3 MB with every field at its cap): clients must
-     * accept >= 1 MB (4 MB recommended).
-     */
+
+    /** All members of a room together (commands and TrackEnded), on top of the per-member limit. */
+    const val ROOM_COMMANDS_PER_SECOND = 20
+    /** Largest inbound frame. Safe because every field has its own cap. */
     const val MAX_FRAME_BYTES = 256L * 1024
+
+    /**
+     * Largest room snapshot (UTF-8 JSON): Add beyond it gets QUEUE_FULL, an over-large Create keeps
+     * the entries that fit. A typical 500-entry queue is ~200 KB. Server frames (Welcome/State)
+     * therefore stay below ~260 KB; clients must accept inbound frames of at least 1 MB.
+     */
+    const val MAX_STATE_BYTES = 256 * 1024
+
+    /** All rooms' snapshots together (see the heap budget above and StateBudget). */
+    const val MAX_ROOM_STATE_BYTES_TOTAL = 120L * 1024 * 1024
     const val MAX_NAME_LENGTH = 32
     const val MAX_VIDEO_ID_LENGTH = 64
     const val MAX_TEXT_LENGTH = 300
@@ -45,19 +82,50 @@ object Limits {
     /** A new socket must have joined (or created) a room within this long, or it is closed. */
     const val JOIN_DEADLINE_MS = 10_000L
 
-    /** Create/Join attempts per client IP (IPv6: per /64), successful or not. */
+    /**
+     * Join limiter per client IP (IPv6: per /64): [JOIN_BURST] tokens refilled at [JOINS_PER_MINUTE].
+     * Charged for every Create and for failed Joins (ROOM_NOT_FOUND, ROOM_FULL, UPGRADE_REQUIRED);
+     * successful joins and resumes are free, but need a non-empty bucket.
+     */
     const val JOINS_PER_MINUTE = 10
+    const val JOIN_BURST = 30
 
-    const val MAX_CONNECTIONS_PER_IP = 16
-    const val MAX_CONNECTIONS = 5_000
-    const val MAX_ROOMS = 2_000
+    /** Generous for shared addresses (a household, a campus, carrier NAT). */
+    const val MAX_CONNECTIONS_PER_IP = 48
+    /** Sized to the heap budget above: ~0.9 MB worst case per connection (colluding Acks). */
+    const val MAX_CONNECTIONS = 650
+
+    /** Live rooms per creator IP (IPv6: per /64), held until the room is deleted; beyond it RATE_LIMITED. */
+    const val MAX_ROOMS_PER_IP = 10
+
+    /** A room lives only while someone is (or was, < 60 s ago) connected: one room per connection. */
+    const val MAX_ROOMS = MAX_CONNECTIONS
 
     /** Every inbound frame (pings and garbage included) per connection; beyond this the socket is closed. */
     const val FRAMES_PER_SECOND = 20
     const val FRAME_BURST = 40
 
-    /** Ktor's per-socket inbound and outgoing frame channels (see WebSocketPeer.SEND_BUFFER for ours). */
-    const val WS_CHANNEL_CAPACITY = 8
+    /** Ktor's per-socket inbound frame channel. */
+    const val WS_INCOMING_CAPACITY = 8
+
+    /** Ktor's per-socket outgoing frame channel: one frame; everything else waits in our [PeerOutbox]. */
+    const val WS_OUTGOING_CAPACITY = 1
+
+    /** A client whose unsent messages exceed this is dropped (it can resume and get fresh state). */
+    const val MAX_PENDING_BYTES_PER_PEER = 2L * 1024 * 1024
+    const val MAX_PENDING_MESSAGES_PER_PEER = 64
+
+    /** All clients together (see PeerStats); bounds outbound buffering whatever the connection count. */
+    const val MAX_PENDING_BYTES_TOTAL = 96L * 1024 * 1024
+
+    /** A frame the client has not accepted within this long means it stopped reading: dropped. */
+    const val SEND_STALL_MS = 20_000L
+
+    /**
+     * A snapshot not acknowledged within this long drops the client. Longer than [SEND_STALL_MS]:
+     * a 256 KB snapshot over a slow mobile link (2G) can take well over 20 s to arrive.
+     */
+    const val ACK_DEADLINE_MS = 45_000L
 
     const val METRICS_INTERVAL_MS = 10 * 60_000L
 

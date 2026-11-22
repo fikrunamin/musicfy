@@ -34,16 +34,19 @@ class ServerDeps(
     val ids: IdGen = SecureIdGen(),
     val search: SearchService = SearchService(InnerTubeSearchBackend(defaultHttpClient()), clock),
     val socketLimits: SocketLimits = SocketLimits(),
+    val peerStats: PeerStats = PeerStats(),
+    val stateBudget: StateBudget = StateBudget(),
 )
 
 fun Application.ritmeModule(deps: ServerDeps) {
-    val registry = RoomRegistry(deps.clock, deps.ids, deps.socketLimits.maxRooms)
+    val registry = RoomRegistry(deps.clock, deps.ids, deps.socketLimits.maxRooms, deps.stateBudget)
     val guard = ConnectionGuard(deps.socketLimits, deps.clock)
     val searchLimiter = IpRateLimiter(deps.clock)
 
     // Only Caddy can reach this server, so X-Forwarded-For is trustworthy. Caddy (no
-    // trusted_proxies) replaces any client-sent value; the last entry is always the address Caddy
-    // itself saw, which stays correct even if a CDN / trusted_proxies is added in front later.
+    // trusted_proxies) replaces any client-sent value with the address it saw, so the last (and
+    // only) entry is the client. If a CDN is ever put in front with Caddy's trusted_proxies, Caddy
+    // appends the CDN's address after the client's: switch to skipLastProxies(1) then.
     install(XForwardedHeaders) { useLastProxy() }
     install(WebSockets) {
         pingPeriod = 15.seconds
@@ -51,12 +54,12 @@ fun Application.ritmeModule(deps: ServerDeps) {
         maxFrameSize = Limits.MAX_FRAME_BYTES
         masking = false
         // Ktor's default is UNLIMITED in both directions: a client that stops reading would grow
-        // the outgoing buffer forever (WebSocketPeer's send queue would never fill), and a flood
-        // would pile up inbound frames faster than the frame limiter sees them. Bounded + SUSPEND
-        // turns both into TCP backpressure.
+        // the outgoing buffer forever, and a flood would pile up inbound frames faster than the
+        // frame limiter sees them. Bounded + SUSPEND turns both into TCP backpressure; outgoing
+        // holds a single frame, everything else waits (coalesced, byte-bounded) in PeerOutbox.
         channels {
-            incoming = bounded(Limits.WS_CHANNEL_CAPACITY, ChannelOverflow.SUSPEND)
-            outgoing = bounded(Limits.WS_CHANNEL_CAPACITY, ChannelOverflow.SUSPEND)
+            incoming = bounded(Limits.WS_INCOMING_CAPACITY, ChannelOverflow.SUSPEND)
+            outgoing = bounded(Limits.WS_OUTGOING_CAPACITY, ChannelOverflow.SUSPEND)
         }
     }
 
@@ -77,13 +80,20 @@ fun Application.ritmeModule(deps: ServerDeps) {
     launch {
         while (isActive) {
             delay(Limits.METRICS_INTERVAL_MS)
-            log.info("rooms={} connections={}", registry.size, guard.connections)
+            log.info(
+                "rooms={} roomStateBytes={} connections={} pendingBytes={} dropped={}",
+                registry.size,
+                deps.stateBudget.usedBytes,
+                guard.connections,
+                deps.peerStats.pendingBytes.get(),
+                deps.peerStats.aborted.get(),
+            )
         }
     }
 
     routing {
         get("/healthz") { call.respondText("ok") }
-        webSocket("/ritme") { ritmeConnection(registry, deps.clock, guard) }
+        webSocket("/ritme") { ritmeConnection(registry, deps.clock, guard, deps.peerStats) }
 
         get("/api/search") {
             val query = call.request.queryParameters["q"]?.trim().orEmpty()

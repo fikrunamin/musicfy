@@ -350,4 +350,106 @@ class RoomLogicTest {
         // Invisible padding does not count towards the length.
         assertEquals("a".repeat(Limits.MAX_NAME_LENGTH), RoomLogic.cleanName("a".repeat(Limits.MAX_NAME_LENGTH) + "\u200B".repeat(10)))
     }
+
+    private fun maximal(i: Int) = NewEntry(
+        "", "\u0001".repeat(150) + "T".repeat(150), "A".repeat(300), "https://cdn.example/" + "t".repeat(480), 600_000,
+        MediaKind.URL, "https://cdn.example/$i/" + "u".repeat(2_000),
+    )
+
+    @Test
+    fun titlesAndArtistsAreCleanedOfInvisibleCharacters() {
+        val e = newEntry().copy(title = " \u202ESo\u0001ng\n", artist = "Ar\u200Btist\u0000")
+        val added = ok(apply(playingA, HOST, Command.Add(listOf(e)))).queue.last()
+        assertEquals("Song", added.title)
+        assertEquals("Artist", added.artist)
+        assertEquals(ErrorCode.INVALID, rejected(apply(playingA, HOST, Command.Add(listOf(e.copy(title = "\u0001\u200B \u0000"))))))
+    }
+
+    @Test
+    fun addIsRefusedOnceTheSnapshotWouldPassTheStateCap() {
+        var state = roomState()
+        var added = 0
+        while (true) {
+            when (val outcome = apply(state, HOST, Command.Add(List(20) { maximal(added + it) }))) {
+                is Outcome.Ok -> {
+                    state = outcome.state
+                    added += 20
+                }
+                is Outcome.Rejected -> {
+                    assertEquals(ErrorCode.QUEUE_FULL, outcome.code)
+                    break
+                }
+            }
+        }
+        assertTrue("only $added entries", added in 40 until Limits.MAX_QUEUE)
+        assertTrue(RoomLogic.stateBytes(state) <= Limits.MAX_STATE_BYTES)
+        // Smaller entries still fit until the cap.
+        ok(apply(state, HOST, Command.Add(listOf(newEntry("small")))))
+    }
+
+    @Test
+    fun anOversizedCreateKeepsTheEntriesThatFit() {
+        val create = ClientMessage.Create(PROTOCOL_VERSION, "Host", List(Limits.MAX_QUEUE) { maximal(it) })
+        val room = RoomLogic.newRoom("ABCDEF", HOST, "Host", create, now, ids)
+        assertTrue(room.queue.size in 40 until Limits.MAX_QUEUE)
+        assertTrue(RoomLogic.stateBytes(room) <= Limits.MAX_STATE_BYTES)
+        assertEquals(room.queue.first().entryId, room.currentEntryId)
+        // A normal full queue is far below the cap.
+        val normal = ClientMessage.Create(PROTOCOL_VERSION, "Host", List(Limits.MAX_QUEUE) { newEntry("v$it") })
+        assertEquals(Limits.MAX_QUEUE, RoomLogic.newRoom("ABCDEF", HOST, "Host", normal, now, ids).queue.size)
+    }
+
+    @Test
+    fun addChecksTheCachedSnapshotSizeAndTheServerWideBudget() {
+        val add = Command.Add(listOf(newEntry("n")))
+        ok(RoomLogic.apply(playingA, HOST, add, now, ids, SizeContext(currentBytes = 1_000, budgetLeft = 10_000)))
+        // The cached size is trusted (no re-encode of the whole state): near the cap means full.
+        assertEquals(
+            ErrorCode.QUEUE_FULL,
+            rejected(RoomLogic.apply(playingA, HOST, add, now, ids, SizeContext(currentBytes = Limits.MAX_STATE_BYTES - 10))),
+        )
+        // The server-wide budget left is smaller than the new entry.
+        assertEquals(ErrorCode.QUEUE_FULL, rejected(RoomLogic.apply(playingA, HOST, add, now, ids, SizeContext(budgetLeft = 10))))
+        // Other commands are not affected by either.
+        ok(RoomLogic.apply(playingA, HOST, Command.Pause, now, ids, SizeContext(currentBytes = Limits.MAX_STATE_BYTES, budgetLeft = 0)))
+    }
+
+    @Test
+    fun newRoomRespectsASmallerByteLimit() {
+        val create = ClientMessage.Create(PROTOCOL_VERSION, "Host", List(100) { maximal(it) })
+        val room = RoomLogic.newRoom("ABCDEF", HOST, "Host", create, now, ids, maxBytes = 20_000)
+        assertTrue(room.queue.size in 1..6)
+        assertTrue(RoomLogic.stateBytes(room) <= 20_000)
+    }
+
+    @Test
+    fun cleaningKeepsEmojiSequencesNewEmojiAndJoinersInText() {
+        fun cp(vararg codePoints: Int) = String(codePoints, 0, codePoints.size)
+        val family = cp(0x1F468, 0x200D, 0x1F469, 0x200D, 0x1F467) // ZWJ sequence
+        val scotland = cp(0x1F3F4, 0xE0067, 0xE0062, 0xE0073, 0xE0063, 0xE0074, 0xE007F) // tag sequence
+        val unicode16 = cp(0x1FAE9) // unassigned in Java 21's tables
+        val persian = "\u0645\u06CC\u200C\u062E\u0648\u0627\u0645" // ZWNJ
+        val heart = "\u2764\uFE0F" // VS16
+        listOf(family, scotland, unicode16, persian, heart, "$heart $family $scotland").forEach {
+            assertEquals(it, RoomLogic.cleanText(it))
+            assertEquals(it, RoomLogic.cleanName(it))
+        }
+        val song = newEntry().copy(title = "Lagu $family $unicode16", artist = persian)
+        val added = ok(apply(playingA, HOST, Command.Add(listOf(song)))).queue.last()
+        assertEquals("Lagu $family $unicode16", added.title)
+        assertEquals(persian, added.artist)
+    }
+
+    @Test
+    fun cleaningRemovesSpoofingAndLineBreakingCharacters() {
+        assertEquals("abcdefgh", RoomLogic.cleanText("a\u202Eb\u202Ac\u2066d\u2069e\u200Bf\uFEFFg\u2028h"))
+        assertEquals("Budi", RoomLogic.cleanText("\nBu\r\ndi\t\u0000\u009F\u2029"))
+        assertEquals("ab", RoomLogic.cleanText("a\uD800b")) // lone surrogate
+        // Only joiners / selectors left: nothing to show, so not a valid name or title.
+        assertNull(RoomLogic.cleanName("\u200D\u200C\uFE0F"))
+        // Letters that render blank (Hangul fillers, blank braille) do not count as visible either.
+        listOf("\u3164", "\u2800\u2800", "\u115F\u1160", "\uFFA0").forEach { assertNull(it, RoomLogic.cleanName(it)) }
+        assertEquals("\u3164a", RoomLogic.cleanName("\u3164a"))
+        assertEquals(ErrorCode.INVALID, rejected(apply(playingA, HOST, Command.Add(listOf(newEntry().copy(title = "\u200D\u200B"))))))
+    }
 }

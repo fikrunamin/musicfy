@@ -42,8 +42,30 @@ Update: `git pull && docker compose up -d --build`. Logs: `docker compose logs -
 Rooms live only in memory, so every deploy or restart ends all rooms; clients get disconnected
 and have to create a new room. Deploy when nobody is listening.
 
-Container logs are rotated (json-file, 10 MB x 3 per service); the server runs with a 512 MB
-memory limit (heap: 75 % of it). Every 10 minutes it logs the room and connection counts.
+Container logs are rotated (json-file, 10 MB x 3 per service); the server runs with a 1408 MB
+memory limit (heap: 75 % of it, ~1056 MB) and `-XX:+ExitOnOutOfMemoryError`, so should it ever run
+out of heap it exits and Docker restarts it (`restart: unless-stopped`) instead of limping on.
+Every 10 minutes it logs counts only: rooms, room-state bytes, connections, unsent bytes and
+dropped clients.
+
+### Heap budget
+
+The limits are sized so their worst cases fit the ~1056 MB heap (see `Limits.kt`):
+
+| Part | Bound | Worst case in heap |
+|---|---|---|
+| Baseline (JVM, Ktor, Netty, caches) | measured | ~80 MB |
+| Connections | 650 x ~0.9 MB worst case (colluding Acks: clients that ack predictable versions without reading can fill Ktor's 1 MiB output buffer; an honest client holds ~60 KB + one unacknowledged 256 KB snapshot) | ~585 MB |
+| Unsent outbound bytes (our outboxes) | server-wide budget | 96 MB |
+| Rooms at rest | 120 MB of encoded snapshots x 1.3 (measured heap/encoded: 0.88-1.27) | ~156 MB |
+| Headroom (GC, in-flight encodes) | rest | >= 130 MB |
+
+At most 650 rooms, of which at most 480 can be full (120 MB / 256 KB).
+
+Caveat: in one stress run with 570 colluding connections (ack without reading) live heap peaked
+at 883 MB (~1.35 MB per connection; another run peaked at 418 MB). The theoretical bound is
+~1.5 MB per connection, so a full server under that attack can exceed the heap; the JVM then
+exits and Docker restarts it. A per-snapshot ack token (planned) removes this case.
 
 The app's server URL setting must be `https://<RITME_DOMAIN>`.
 
@@ -60,9 +82,21 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
 
 - Inbound WebSocket frames are limited to 256 KB. Send `Create` with at most 200 initial entries
   and the rest as `Add` batches of at most 200.
-- Server-to-client frames are not limited: `Welcome`/`State` carry the full room (a 500-entry
-  queue is ~200 KB, up to ~3 MB with every field at its cap). Clients must accept inbound frames
-  of at least 1 MB; 4 MB is recommended.
+- A room's state is capped at 256 KB of JSON (a typical 500-entry queue is ~200 KB): `Add`
+  beyond it gets `QUEUE_FULL`, and an over-large `Create` keeps the initial entries that fit.
+  All rooms together are capped at 120 MB of snapshots: past that, `Add` gets `QUEUE_FULL` and
+  `Create` is trimmed or refused with `ROOM_FULL`. `Welcome`/`State` carry the full room, so
+  server frames stay below ~260 KB; clients must accept inbound frames of at least 1 MB.
+- Titles, artists and names are cleaned on the server: NFC; control characters, lone surrogates,
+  bidi embeddings/overrides/isolates, zero-width space, BOM and line/paragraph separators are
+  removed. ZWJ/ZWNJ, variation selectors, tag characters and code points newer than the server's
+  Unicode tables are kept, so new emoji, emoji sequences and subdivision flags survive.
+- **Flow control: clients must send `Ack(version)` after applying each `Welcome`/`State`** (the
+  `state.version` they applied). The server sends the next snapshot only after that Ack; newer
+  ones are coalesced meanwhile, so a slow client simply gets the latest state when it is ready.
+  An Ack for a version that was not sent is ignored. A client that has not acknowledged a
+  snapshot within 45 s is disconnected (it can resume with its token). `Error`, `Pong`, `Kicked`
+  and `RoomClosed` are not gated.
 - Clients decode with `decodeServerMessageOrNull` (unknown message types: skip), and must handle
   `MediaKind.UNKNOWN` (skip the entry) and `ErrorCode.UNKNOWN` (generic failure).
 - The server accepts protocol versions `MIN_SUPPORTED_PROTOCOL_VERSION..PROTOCOL_VERSION`;
@@ -77,12 +111,17 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
 | Limit | Value | When exceeded |
 |---|---|---|
 | Join deadline | a socket must have joined a room within 10 s | closed (policy violation), no message |
-| Create/Join attempts | 10 per minute per IP (IPv6: per /64), successful or not | `Error(RATE_LIMITED)`, closed |
-| Concurrent sockets | 16 per IP, 5000 total | `Error(RATE_LIMITED)`, closed (1013 try again later) |
-| Rooms | 2000 total | `Error(ROOM_FULL)` on Create, closed |
-| Inbound frames | 20/s per socket, burst 40 (pings and garbage included) | closed, no message |
-| Commands + TrackEnded | 10/s per member | `Error(RATE_LIMITED)` (TrackEnded: ignored) |
-| Send queue | 64 messages behind | disconnected; resume with the token for fresh state |
+| Join limiter | per IP (IPv6: per /64): burst 30, refilled 10/min; charged for every `Create` and for failed Joins (`ROOM_NOT_FOUND`, `ROOM_FULL`, `UPGRADE_REQUIRED`); successful joins and resumes are free but need a non-empty bucket | `Error(RATE_LIMITED)`, closed |
+| Concurrent sockets | 48 per IP, 650 total (sized to the heap budget above) | `Error(RATE_LIMITED)`, closed (1013 try again later), hung up within 0.5 s |
+| Rooms | 650 total; 120 MB of snapshots in total | `Error(ROOM_FULL)` on Create, closed |
+| Live rooms per creator | 10 per IP (IPv6: per /64), until the room is deleted | `Error(RATE_LIMITED)` on Create, closed |
+| Inbound frames | 20/s per socket, burst 40 (pings and garbage included; an `Ack` for the snapshot the client is awaiting is free) | closed, no message |
+| Commands + TrackEnded | 10/s per member and 20/s per room | `Error(RATE_LIMITED)` (TrackEnded: ignored) |
+| Unsent messages per client | snapshots coalesce (only the latest `State` waits); at most 2 MB or 64 messages | disconnected; resume with the token for fresh state |
+| Stalled client | a frame not written to the socket within 20 s, or a snapshot not acknowledged within 45 s | disconnected |
+| Server-wide unsent bytes | 96 MB | clients that are behind are disconnected; `Create`/`Join` get `RATE_LIMITED` until it drains |
+
+A client that ignores the server's Close frame is hung up on after at most 3 s.
 
 ## Privacy
 
