@@ -11,7 +11,7 @@ dependencies {
     api(project(":core:settings")) // AudioQuality lives in com.example.musicfy.constants
     api(project(":providers:innertube"))
     api(libs.okhttp)
-    implementation(libs.kotlinx.coroutines.core)
+    api(libs.kotlinx.coroutines.core) // PlaybackLogManager exposes StateFlow
     implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.junit)
 }
