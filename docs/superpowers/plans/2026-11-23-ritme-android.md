@@ -31,7 +31,7 @@
 - Threading: `RitmeSession`, `RitmeController`, `RitmePlaybackBridge` and every socket/timer callback run on the main thread.
 - Environment and commands (run from `/Users/suryasoft/WebstormProjects/musicfy/.worktrees/ritme-android`, branch `feature/ritme-android`):
   - `export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home PATH=/opt/homebrew/opt/openjdk@21/bin:$PATH`
-  - unit tests: `./gradlew :app:testUniversalFossDebugUnitTest --tests "<fully.qualified.Test>"`
+  - unit tests: `./gradlew :app:testUniversalFossDebugUnitTest --tests "<fully.qualified.Test>"`; JVM modules (`:core:*`, `:modules:*`, `:providers:*`): `./gradlew jvmTests`
   - compile: `./gradlew :app:compileUniversalFossDebugKotlin`
   - APK: `./gradlew :app:assembleUniversalFossDebug`
 - Commits: one per task, `git commit -m "<message>" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"`.
@@ -41,6 +41,7 @@
 1. **Revisi wins over §2.2:** `Create` carries `initialQueue: List<NewEntry>` + `startIndex`; clients send `NewEntry`, the server assigns `entryId`/`addedBy`.
 2. **ExoPlayer holds only the room's current entry.** The bridge loads one `MediaItem` at a time; there is no local mirror of the room queue, so the player can never advance on its own. The 1.5 s start anchor covers loading the next track. The room queue is shown by Ritme's own UI (replacing `QueueScreen` while in a room).
 3. **Interception has three layers:** (a) `RitmeGate.intercept(...)` at the top of `PlayerConnection`'s control methods, `MusicService.playQueue/playNext/addToQueue`, and the handful of UI call sites that touch `playerConnection.player` directly; (b) `RitmeSessionPlayer`, a `ForwardingPlayer` set as the media session's player only while in a room (notification, headset, Bluetooth, Android Auto); (c) the bridge's 1 s loop, which re-aligns position. Local pauses that bypass (a)/(b) — audio-focus loss, unplugged headphones — stay local until the room's playback changes.
+   **Local pause for members without control (coordinator decision, overrides spec 3.4 for pause/resume only):** a member who may not control the room can still pause and resume *their own device*. Pause becomes `RitmeLocalPlayback.pauseLocally()` plus the toast "Paused on this device only" / "Dijeda di perangkat ini saja", and never sends a room command. While paused locally the planner leaves the device alone (same as an audio-focus pause); play resumes it in sync; any change of the room's playback (new entry, Play/Pause/Seek by someone with control) re-syncs it. Seek, next and previous stay blocked for them with "The host locked the controls". Members with control still pause the whole room.
 4. **Drift hysteresis:** start correcting at ≥ 40 ms, stop below 20 ms (spec says both "< 40 ms ignore" and "until < 20 ms"). Seeks are rate-limited to one per 3 s, except when the room's playback state changed, where a drift > 250 ms is seeked away at once (so a room `Seek` does not crawl at 3 %).
 5. **Initial room queue** = the current song plus what comes after it in play order (history is not carried), capped at 500; local songs are skipped with a toast.
 6. **"Tambah ke Ritme" mode** is realised by interception: while in a room, tapping a song anywhere (search results included) adds it to the room; "Add to queue"/"Play next" in any menu become `Add(playNext = false/true)`.
@@ -48,6 +49,7 @@
 8. Queue reordering uses ↑/↓ buttons (same `moveUp`/`moveDown` targets as the web client) instead of a drag handle.
 9. Starting or joining is refused while casting (toast). Changing the server URL applies to the next room.
 10. When the service is destroyed while in a room the bridge sends `Leave`.
+11. No App Links: the https deep link stays without `autoVerify`. Follow-up (not in this plan): publish `/.well-known/assetlinks.json` on the Ritme server and set `autoVerify="true"` once the domain is final.
 
 ## File Structure
 
@@ -86,7 +88,7 @@
 | `.../ui/screens/ritme/RitmeQrCode.kt` | QR rendering with ZXing |
 | `.../ui/screens/ritme/RitmePill.kt` | "Ritme · N" pill |
 | `.../ui/screens/settings/RitmeSettingsScreen.kt` | Server URL + display name |
-| Modified | `app/build.gradle.kts`, `gradle/libs.versions.toml`, `app/proguard-rules.pro`, `PreferenceKeys.kt`, `MusicService.kt`, `PlayerConnection.kt`, `MainActivity.kt`, `AndroidManifest.xml`, `NavigationBuilder.kt`, `MusicfySettingsScreen.kt`, `BottomSheetPlayer.kt`, `BottomSheet.kt`, `PlayerControls.kt`, `PlayerProgressSlider.kt`, `LyricsScreen.kt`, `StyleKit.kt`, `TurntableControls.kt`, `PlayerMenu.kt`, `OldPlayerMenu.kt`, `SongMenu.kt`, `YouTubeSongMenu.kt`, `AlbumScreen.kt`, `OnlineSearchResult.kt`, `PlayerMenuActions.kt` |
+| Modified | `app/build.gradle.kts`, `gradle/libs.versions.toml`, `app/proguard-rules.pro`, `core/settings/.../constants/PreferenceKeys.kt` + `core/settings/src/test/resources/preference-keys.golden.txt`, `MusicService.kt`, `PlayerConnection.kt`, `MainActivity.kt`, `AndroidManifest.xml`, `NavigationBuilder.kt`, `MusicfySettingsScreen.kt`, `BottomSheetPlayer.kt`, `BottomSheet.kt`, `PlayerControls.kt`, `PlayerProgressSlider.kt`, `LyricsScreen.kt`, `StyleKit.kt`, `TurntableControls.kt`, `PlayerMenu.kt`, `OldPlayerMenu.kt`, `SongMenu.kt`, `YouTubeSongMenu.kt`, `AlbumScreen.kt`, `OnlineSearchResult.kt`, `PlayerMenuActions.kt` |
 | Tests | `app/src/test/kotlin/com/example/musicfy/ritme/**` (+ `testing/RitmeBuilders.kt`, `testing/RitmeFakes.kt`) |
 
 All paths below are relative to the worktree root. `.../ritme/` means `app/src/main/kotlin/com/example/musicfy/ritme/`.
@@ -98,13 +100,14 @@ All paths below are relative to the worktree root. `.../ritme/` means `app/src/m
 **Files:**
 - Modify: `app/build.gradle.kts` (defaultConfig, dependencies)
 - Modify: `app/proguard-rules.pro` (append)
-- Modify: `app/src/main/kotlin/com/example/musicfy/constants/PreferenceKeys.kt` (append)
+- Modify: `core/settings/src/main/kotlin/com/example/musicfy/constants/PreferenceKeys.kt` (append; since the desktop-d1 merge the keys live in `:core:settings`, same package `com.example.musicfy.constants`)
+- Modify: `core/settings/src/test/resources/preference-keys.golden.txt` (regenerated: two new lines)
 - Create: `app/src/main/kotlin/com/example/musicfy/ritme/RitmeConfig.kt`
 - Create: `app/src/main/kotlin/com/example/musicfy/ritme/RitmeLinks.kt`
 - Test: `app/src/test/kotlin/com/example/musicfy/ritme/RitmeLinksTest.kt`
 
 **Interfaces:**
-- Consumes: `:modules:ritme-protocol` (already in `settings.gradle.kts`, line `include(":modules:ritme-protocol")`).
+- Consumes: `:modules:ritme-protocol` (already in `settings.gradle.kts`, line `include(":modules:ritme-protocol")`; the app does not depend on it yet); `:core:settings` (holds `PreferenceKeys.kt`, already an app dependency).
 - Produces:
   - `BuildConfig.RITME_SERVER_URL: String`, `BuildConfig.RITME_ENABLED: Boolean`, manifest placeholder `${ritmeHost}`.
   - `object RitmeConfig { val ENABLED: Boolean; val DEFAULT_SERVER_URL: String }`
@@ -191,7 +194,7 @@ In `app/build.gradle.kts`, inside `defaultConfig { ... }`, directly after the li
         manifestPlaceholders["ritmeHost"] = java.net.URI(ritmeServerUrl).host
 ```
 
-In the `dependencies { ... }` block, directly after `implementation(project(":modules:monochrome"))`, add:
+In the `dependencies { ... }` block, directly after `implementation(project(":core:settings"))`, add:
 
 ```kotlin
     implementation(project(":modules:ritme-protocol"))
@@ -204,7 +207,7 @@ Append to `app/proguard-rules.pro`:
 -keep class com.example.musicfy.ritme.protocol.** { *; }
 ```
 
-Append to the end of `app/src/main/kotlin/com/example/musicfy/constants/PreferenceKeys.kt`:
+Append to the end of `core/settings/src/main/kotlin/com/example/musicfy/constants/PreferenceKeys.kt` (every key must be declared in this file; `PreferenceKeyNamesTest` pins the names):
 
 ```kotlin
 
@@ -290,10 +293,18 @@ object RitmeLinks {
 Run: `./gradlew :app:testUniversalFossDebugUnitTest --tests "com.example.musicfy.ritme.RitmeLinksTest"`
 Expected: PASS (5 tests).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Pin the two new preference keys**
+
+Run: `./gradlew :core:settings:test -PupdateGolden=true && git diff core/settings/src/test/resources/preference-keys.golden.txt`
+Expected: exactly two added lines, `RitmeDisplayNameKey=ritmeDisplayName` and `RitmeServerUrlKey=ritmeServerUrl`, and nothing removed.
+
+Run: `./gradlew :core:settings:test`
+Expected: PASS.
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add app/build.gradle.kts app/proguard-rules.pro app/src/main/kotlin/com/example/musicfy/constants/PreferenceKeys.kt app/src/main/kotlin/com/example/musicfy/ritme/RitmeConfig.kt app/src/main/kotlin/com/example/musicfy/ritme/RitmeLinks.kt app/src/test/kotlin/com/example/musicfy/ritme/RitmeLinksTest.kt
+git add app/build.gradle.kts app/proguard-rules.pro core/settings/src/main/kotlin/com/example/musicfy/constants/PreferenceKeys.kt core/settings/src/test/resources/preference-keys.golden.txt app/src/main/kotlin/com/example/musicfy/ritme/RitmeConfig.kt app/src/main/kotlin/com/example/musicfy/ritme/RitmeLinks.kt app/src/test/kotlin/com/example/musicfy/ritme/RitmeLinksTest.kt
 git commit -m "feat(ritme-android): protocol module, build config and room links" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -2525,6 +2536,16 @@ class RitmeSyncPlannerTest {
     }
 
     @Test
+    fun aLocalPauseResyncsAsSoonAsTheRoomChanges() {
+        val room = playingRoom()
+        // paused on this device only: every tick leaves it alone, drift and all
+        assertEquals(emptyList<PlayerOp>(), plan(room, 20_000, local(pos = 4_000, pwr = false), lastKey = keyAt(room, 20_000)).ops)
+        // someone with control seeks: the device follows the room again
+        val seeked = playingRoom(positionMs = 50_000, anchor = 21_000, version = 2)
+        assertEquals(listOf(PlayerOp.SeekTo(50_000), PlayerOp.Play), plan(seeked, 21_000, local(pos = 4_000, pwr = false), lastKey = keyAt(room, 20_000)).ops)
+    }
+
+    @Test
     fun aRoomSeekResyncsAndAResumeJustPlays() {
         val seeked = playingRoom(positionMs = 30_000, anchor = 20_000, version = 2)
         assertEquals(listOf(PlayerOp.SeekTo(30_100)), plan(seeked, 20_100, local(pos = 12_000, advancing = true, pwr = true)).ops)
@@ -2672,8 +2693,9 @@ data class SyncPlan(val ops: List<PlayerOp>, val wakeAtServerMs: Long?, val appl
  * - When the room's playback changes (play, pause, seek, anchor reached, [SyncInput.force]) the
  *   player is aligned: a drift over [RESYNC_ON_CHANGE_MS] is seeked away at once.
  * - Otherwise, while the player advances, [DriftCorrector] nudges speed or seeks.
- * - A player that is paused locally while the room plays (audio focus, unplugged headphones) is
- *   left alone until the room changes; an ended track waits for the room to move on.
+ * - A player that is paused locally while the room plays (audio focus, unplugged headphones, or a
+ *   member without control pausing "on this device only") is left alone until the room changes;
+ *   an ended track waits for the room to move on.
  */
 object RitmeSyncPlanner {
     const val PAUSED_ALIGN_MS = 40L
@@ -2783,7 +2805,7 @@ object RitmeModeTransitions {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `./gradlew :app:testUniversalFossDebugUnitTest --tests "com.example.musicfy.ritme.sync.RitmeSyncPlannerTest" --tests "com.example.musicfy.ritme.session.RitmeModeTransitionsTest"`
-Expected: PASS (14 + 4 tests).
+Expected: PASS (15 + 4 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -2813,15 +2835,15 @@ git commit -m "feat(ritme-android): sync planner (anchor start, resync, drift) a
 - Produces:
   - `sealed interface RitmeLocalAction { Play; Pause; TogglePlayPause; Seek(positionMs: Long); Next; Previous; AddItems(songs: List<MediaMetadata?>, playNext: Boolean); PlayQueue(songs: List<MediaMetadata?>); QueueEdit; Shuffle; Repeat; Speed }`
   - `@Singleton class RitmeGate @Inject constructor() { val active: StateFlow<Boolean>; val isActive: Boolean; var handler: ((RitmeLocalAction) -> Unit)?; fun intercept(action: RitmeLocalAction): Boolean; fun activate(); fun deactivate() }` — `intercept` returns `false` (caller runs its normal code) whenever the gate is closed.
-  - `sealed interface RitmeToast { QueueSaved; NotAvailable; ControlsLocked; Reconnecting; CastingBlocked; Added(count); SkippedLocal(count); Ended(reason: EndReason); CommandFailed(key: NoticeKey) }`, `fun interface RitmeNotifier { fun show(toast: RitmeToast) }`
-  - `interface RitmeLocalPlayback { val isPlayingLocally: Boolean; val isCasting: Boolean; fun resumeLocally(); fun playOrderQueue(): LocalPlayOrder }`, `data class LocalPlayOrder(val songs: List<MediaMetadata?>, val currentIndex: Int, val positionMs: Long)`
+  - `sealed interface RitmeToast { QueueSaved; NotAvailable; ControlsLocked; PausedLocally; Reconnecting; CastingBlocked; Added(count); SkippedLocal(count); Ended(reason: EndReason); CommandFailed(key: NoticeKey) }`, `fun interface RitmeNotifier { fun show(toast: RitmeToast) }`
+  - `interface RitmeLocalPlayback { val isPlayingLocally: Boolean; val isCasting: Boolean; fun resumeLocally(); fun pauseLocally(); fun playOrderQueue(): LocalPlayOrder }`, `data class LocalPlayOrder(val songs: List<MediaMetadata?>, val currentIndex: Int, val positionMs: Long)`
   - `interface RitmeSettings { val serverUrl: String; val displayName: String }`
   - `data class RitmeSheetRequest(val id: Long, val kind: Kind) { sealed interface Kind { data object Room; data class Entry(val code: String? = null, val startWith: List<MediaMetadata?>? = null) } }`
   - `@Singleton class RitmeController @Inject constructor(session: RitmeSession, gate: RitmeGate, notifier: RitmeNotifier, settings: RitmeSettings)` with `var localPlayback: RitmeLocalPlayback?`, `val sheetRequest: StateFlow<RitmeSheetRequest?>`, `fun openSheet()`, `fun openJoin(code: String)`, `fun openStartWith(songs: List<MediaMetadata?>)`, `fun consumeSheetRequest(id: Long)`, `fun startRoom(name: String, startWith: List<MediaMetadata?>? = null)`, `fun joinRoom(code: String, name: String)`, `fun shareLink(code: String): String`, `fun handle(action: RitmeLocalAction)`.
   - `object RitmeTexts { fun notice(key): Int; fun endedToast(reason): Int?; fun entryError(reason: EndReason?): Int? }`
   - `class TopToastRitmeNotifier(context) : RitmeNotifier`, `class DataStoreRitmeSettings(context) : RitmeSettings`
   - Strings: `ritme_name`, `ritme_reconnecting`, `ritme_toast_*`, `ritme_error_*`, plurals `ritme_toast_added`, `ritme_toast_skipped_local`.
-- Test fakes: `FakeNotifier` (`shown`), `FakeLocalPlayback` (`isPlayingLocally`, `isCasting`, `resumed`, `order`).
+- Test fakes: `FakeNotifier` (`shown`), `FakeLocalPlayback` (`isPlayingLocally`, `isCasting`, `resumed`, `pausedLocally`, `order`).
 
 - [ ] **Step 1: Append the fakes**
 
@@ -2839,10 +2861,17 @@ class FakeLocalPlayback : RitmeLocalPlayback {
     override var isPlayingLocally = false
     override var isCasting = false
     var resumed = 0
+    var pausedLocally = 0
     var order = LocalPlayOrder(emptyList(), 0, 0)
 
     override fun resumeLocally() {
         resumed++
+        isPlayingLocally = true
+    }
+
+    override fun pauseLocally() {
+        pausedLocally++
+        isPlayingLocally = false
     }
 
     override fun playOrderQueue(): LocalPlayOrder = order
@@ -2916,8 +2945,42 @@ class RitmeControllerTest {
     fun aLockedGuestGetsAToastInsteadOfACommand() {
         inRoom(paused.copy(settings = RoomSettings(guestsCanControl = false)), memberId = "m2")
         controller.handle(RitmeLocalAction.Next)
+        controller.handle(RitmeLocalAction.Previous)
+        controller.handle(RitmeLocalAction.Seek(1_000))
+        assertTrue(commands.isEmpty())
+        assertEquals(List<RitmeToast>(3) { RitmeToast.ControlsLocked }, toasts.shown)
+    }
+
+    @Test
+    fun aLockedGuestPausesAndResumesOnlyTheirOwnDevice() {
+        inRoom(playing.copy(settings = RoomSettings(guestsCanControl = false)), memberId = "m2")
+        local.isPlayingLocally = true
+        controller.handle(RitmeLocalAction.Pause)
+        assertEquals(1, local.pausedLocally)
+        assertEquals(listOf<RitmeToast>(RitmeToast.PausedLocally), toasts.shown)
+        controller.handle(RitmeLocalAction.TogglePlayPause) // paused locally, room playing: resume this device
+        assertEquals(1, local.resumed)
+        controller.handle(RitmeLocalAction.TogglePlayPause) // playing again: pause this device again
+        assertEquals(2, local.pausedLocally)
+        assertTrue(commands.isEmpty())
+    }
+
+    @Test
+    fun aLockedGuestCannotStartAPausedRoom() {
+        inRoom(paused.copy(settings = RoomSettings(guestsCanControl = false)), memberId = "m2")
+        controller.handle(RitmeLocalAction.Play)
+        assertEquals(0, local.resumed)
         assertTrue(commands.isEmpty())
         assertEquals(listOf<RitmeToast>(RitmeToast.ControlsLocked), toasts.shown)
+    }
+
+    @Test
+    fun aMemberWithControlPausesTheWholeRoom() {
+        inRoom(playing, memberId = "m2")
+        local.isPlayingLocally = true
+        controller.handle(RitmeLocalAction.Pause)
+        assertEquals(listOf<Command>(Command.Pause), commands)
+        assertEquals(0, local.pausedLocally)
     }
 
     @Test
@@ -3129,6 +3192,7 @@ sealed interface RitmeToast {
     data object QueueSaved : RitmeToast
     data object NotAvailable : RitmeToast
     data object ControlsLocked : RitmeToast
+    data object PausedLocally : RitmeToast
     data object Reconnecting : RitmeToast
     data object CastingBlocked : RitmeToast
     data class Added(val count: Int) : RitmeToast
@@ -3164,6 +3228,8 @@ interface RitmeLocalPlayback {
     val isCasting: Boolean
     /** The room is playing but this device is paused locally: just play again and re-sync. */
     fun resumeLocally()
+    /** Pause this device only (a member without control); the room plays on and nothing is sent. */
+    fun pauseLocally()
     fun playOrderQueue(): LocalPlayOrder
 }
 
@@ -3186,7 +3252,8 @@ data class RitmeSheetRequest(val id: Long, val kind: Kind) {
 /**
  * Turns local intents into room commands, checking the permission table first (spec 2.3, 3.4):
  * refused controls show "The host locked the controls"; local-only features show "Not available
- * during Ritme". Also starts/joins rooms and asks the UI for sheets. Main thread only.
+ * during Ritme". A member without control may still pause/resume their own device (no command;
+ * "Paused on this device only"). Also starts/joins rooms and asks the UI for sheets. Main thread only.
  */
 @Singleton
 class RitmeController @Inject constructor(
@@ -3251,9 +3318,9 @@ class RitmeController @Inject constructor(
         val me = state.memberId
         when (action) {
             RitmeLocalAction.Play -> play(room, me)
-            RitmeLocalAction.Pause -> control(room, me) { session.pause() }
+            RitmeLocalAction.Pause -> pause(room, me)
             RitmeLocalAction.TogglePlayPause ->
-                if (localPlayback?.isPlayingLocally == true) control(room, me) { session.pause() } else play(room, me)
+                if (localPlayback?.isPlayingLocally == true) pause(room, me) else play(room, me)
             is RitmeLocalAction.Seek -> control(room, me) { session.seek(action.positionMs) }
             RitmeLocalAction.Next -> control(room, me) { session.next() }
             RitmeLocalAction.Previous -> control(room, me) { session.previous() }
@@ -3270,6 +3337,18 @@ class RitmeController @Inject constructor(
     private fun play(room: RoomState, me: String?) {
         // Already playing for the room: this device was paused locally, so only it resumes.
         if (room.playback.isPlaying) localPlayback?.resumeLocally() else control(room, me) { session.play() }
+    }
+
+    private fun pause(room: RoomState, me: String?) {
+        if (RitmePermissions.canControl(room, me)) {
+            control(room, me) { session.pause() }
+            return
+        }
+        // No control: pause this device only. The room plays on; the next room change re-syncs it.
+        val local = localPlayback ?: return
+        if (!local.isPlayingLocally) return
+        local.pauseLocally()
+        notifier.show(RitmeToast.PausedLocally)
     }
 
     private inline fun control(room: RoomState, me: String?, send: () -> Boolean) {
@@ -3307,6 +3386,7 @@ class RitmeController @Inject constructor(
     <string name="ritme_toast_queue_saved">Your queue is saved and comes back when you leave Ritme</string>
     <string name="ritme_toast_unavailable">Not available during Ritme</string>
     <string name="ritme_toast_locked">The host locked the controls</string>
+    <string name="ritme_toast_paused_locally">Paused on this device only</string>
     <string name="ritme_toast_casting">Stop casting to use Ritme</string>
     <plurals name="ritme_toast_added">
         <item quantity="one">Added %d song to Ritme</item>
@@ -3342,6 +3422,7 @@ class RitmeController @Inject constructor(
     <string name="ritme_toast_queue_saved">Antrean kamu disimpan, dan akan kembali setelah keluar dari Ritme</string>
     <string name="ritme_toast_unavailable">Tidak tersedia saat Ritme</string>
     <string name="ritme_toast_locked">Host mengunci kontrol</string>
+    <string name="ritme_toast_paused_locally">Dijeda di perangkat ini saja</string>
     <string name="ritme_toast_casting">Hentikan cast untuk memakai Ritme</string>
     <plurals name="ritme_toast_added">
         <item quantity="other">%d lagu ditambahkan ke Ritme</item>
@@ -3436,6 +3517,7 @@ class TopToastRitmeNotifier(private val context: Context) : RitmeNotifier {
             RitmeToast.QueueSaved -> TopToaster.show(res.getString(R.string.ritme_toast_queue_saved), iconRes = R.drawable.group)
             RitmeToast.NotAvailable -> TopToaster.show(res.getString(R.string.ritme_toast_unavailable), iconRes = R.drawable.group)
             RitmeToast.ControlsLocked -> TopToaster.error(res.getString(R.string.ritme_toast_locked))
+            RitmeToast.PausedLocally -> TopToaster.show(res.getString(R.string.ritme_toast_paused_locally), iconRes = R.drawable.group)
             RitmeToast.Reconnecting -> TopToaster.show(res.getString(R.string.ritme_reconnecting), iconRes = R.drawable.group)
             RitmeToast.CastingBlocked -> TopToaster.error(res.getString(R.string.ritme_toast_casting))
             is RitmeToast.Added -> TopToaster.show(
@@ -3488,7 +3570,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 - [ ] **Step 6: Run tests and compile**
 
 Run: `./gradlew :app:testUniversalFossDebugUnitTest --tests "com.example.musicfy.ritme.*"`
-Expected: PASS (including 15 in `RitmeControllerTest`).
+Expected: PASS (including 18 in `RitmeControllerTest`).
 
 Run: `./gradlew :app:compileUniversalFossDebugKotlin`
 Expected: BUILD SUCCESSFUL.
@@ -3513,7 +3595,7 @@ git commit -m "feat(ritme-android): gate and controller route local intents to t
 - Produces:
   - `interface RitmePlayerHost { val player: ExoPlayer; val isCasting: Boolean; fun playOrderQueue(): LocalPlayOrder; fun enterRitmeMode(): LocalQueueSnapshot; fun loadRitmeItem(item: MediaItem, startPositionMs: Long); fun exitRitmeMode(snapshot: LocalQueueSnapshot) }`
   - `data class LocalQueueSnapshot(val title: String?, val items: List<MediaItem>, val index: Int, val positionMs: Long, val shuffle: Boolean, val repeatMode: Int, val skipSilence: Boolean) { companion object { val EMPTY } }`
-  - `@Singleton class RitmePlaybackBridge @Inject constructor(session, controller, gate, notifier) : RitmeLocalPlayback { fun attach(host: RitmePlayerHost); fun detach() }`
+  - `@Singleton class RitmePlaybackBridge @Inject constructor(session, controller, gate, notifier) : RitmeLocalPlayback { fun attach(host: RitmePlayerHost); fun detach() }` (implements `pauseLocally()` with a plain `player.pause()`; Task 7's planner keeps that device paused until the room changes)
   - `MusicService.ritmeGate: RitmeGate` (public `@Inject lateinit var`, read by `PlayerConnection` in Task 10) and a private `ritmeHost` used by Task 10's session-player swap.
 
 - [ ] **Step 1: Write the host interface**
@@ -3810,6 +3892,11 @@ class RitmePlaybackBridge @Inject constructor(
         sync(force = true)
     }
 
+    /** Pause on this device only; the planner then leaves it alone until the room changes. */
+    override fun pauseLocally() {
+        host?.player?.pause()
+    }
+
     override fun playOrderQueue(): LocalPlayOrder = host?.playOrderQueue() ?: LocalPlayOrder(emptyList(), 0, 0)
 
     private companion object {
@@ -4100,6 +4187,7 @@ import com.example.musicfy.ritme.RitmeLocalAction
  * The media session's player while a Ritme room is active (MusicService swaps it in and out).
  * Notification buttons, headset keys, Bluetooth and Android Auto all reach the player through the
  * session, so here they become room commands via [gate] instead of changing the local player.
+ * Whether a pause is a room Pause or "this device only" is decided by RitmeController, not here.
  * Next/previous stay available although the real player only holds the current entry.
  */
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -4370,7 +4458,7 @@ In `app/src/main/kotlin/com/example/musicfy/playback/PlayerConnection.kt`:
         if (ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.Previous)) return
 ```
 
-(`metadata` is `com.example.musicfy.extensions.metadata`, already imported in this file.)
+(`metadata` is `com.example.musicfy.extensions.metadata`, already imported in this file.) The guards only hand the intent over; `RitmeController` decides between a room command, a local pause/resume (members without control) and a toast, so no UI call site needs to know the member's permissions.
 
 4. In `updateCanSkipPreviousAndNext()`, replace
 
@@ -6246,6 +6334,8 @@ with
 
 - [ ] **Step 4: Deep links**
 
+Follow-up, not part of this plan: App Links (`assetlinks.json` on the server + `autoVerify="true"`) once the domain is final; until then the https link opens the browser by default on Android 12+ and the landing page's "Open in Musicfy app" button (`musicfy://ritme/{code}`) bridges it.
+
 `app/src/main/AndroidManifest.xml` — directly before `            <!-- Share filter -->` add:
 
 ```xml
@@ -6334,7 +6424,7 @@ git commit -m "feat(ritme-android): Ritme settings and room deep links" -m "Co-A
 
 - [ ] **Step 1: Full test suite and release build**
 
-Run: `./gradlew :app:testUniversalFossDebugUnitTest :modules:ritme-protocol:test`
+Run: `./gradlew :app:testUniversalFossDebugUnitTest jvmTests`
 Expected: PASS.
 
 Run: `./gradlew :app:assembleUniversalFossRelease` (falls back to the debug keystore locally), install it, start and join a Ritme once.
@@ -6351,7 +6441,7 @@ Record each result in the PR description.
 - [ ] 1 phone + desktop browser + phone browser on `https://ritme.dubeli.id/r/{code}`: web < 300 ms.
 - [ ] Airplane mode for 10 s while a song plays: music continues, pill shows "Reconnecting…", then back to "Ritme · N" and in sync within a few seconds. Airplane mode for 40 s: "Disconnected from Ritme" toast and the local queue returns paused.
 - [ ] Host force-stops the app (`adb shell am force-stop com.example.musicfy.debug`): another member becomes host after ~30 s.
-- [ ] Host turns "Members can control" off; a member presses play/pause/next on the headset and in the notification → "The host locked the controls", nothing changes in the room. With the room playing and the member paused locally (pull the headphones out), the member's play button resumes only that phone.
+- [ ] Host turns "Members can control" off; a member presses next/previous/seek on the headset, in the notification and in the app → "The host locked the controls", nothing changes in the room. The member presses pause → "Paused on this device only", only that phone stops, the room plays on and the phone stays paused through the 1 s loop; play resumes it in sync; when the host seeks or changes the song while the member is paused, the member's phone re-syncs and plays.
 - [ ] Leave Ritme → the personal queue is back, paused, with shuffle/repeat/speed as before. Same after being kicked ("You were removed from Ritme") and after the host ends it ("The host ended Ritme").
 - [ ] A track ends: every phone switches together ~1.5 s later; one phone with a broken stream shows the stream-failure UI, does not skip, and follows the room when it moves on.
 - [ ] Shuffle, repeat, speed (player buttons, "⋯" menu, notification custom shuffle) show "Not available during Ritme" and do nothing.
@@ -6397,6 +6487,8 @@ git commit -m "fix(ritme-android): <what was wrong>" -m "Co-Authored-By: Claude 
 | 3.3 room sheet: share, QR (ZXing), members + host menu, ≡/✕ by permission, add songs, guests toggle, leave/end with confirm | 11 (↑/↓ instead of drag, Decision 8) |
 | 3.3 menu "Add to queue/Play next" go to the room | 10 (`PlayerConnection`/`MusicService` intercepts) |
 | 3.4 pill (mini + full player, reconnecting), queue page replaced, dimmed/blocked controls + toasts, headset/notification intercepted | 12, 10 (`RitmeSessionPlayer`, toasts), 9 |
+| Coordinator decision: members without control pause/resume their own device only, re-sync on room change, seek/skip still blocked | 8 (`pause()`, `PausedLocally`, tests), 7 (planner test), 9 (`pauseLocally`), 10 (routing), 14 |
+| Merge with main: `PreferenceKeys.kt` in `:core:settings` with a golden key test | 1 (path + golden regeneration) |
 | 3.5 settings: server URL + restore default, display name | 13 |
 | 4.1 errors: unreachable/retry, room not found/full/upgrade, reconnecting, lost, kicked/closed, stream failure no auto-skip, rejected commands toast, process death | 11 (inline errors), 8 (`RitmeTexts`), 9 (`failStream` guard, notices), 9 (`detach` leaves) |
 | 4.2 Android JUnit: ClockSync, DriftCorrector, RitmeSession (stale, reconnect, Kicked) | 2, 6; reconnect in 4; "Kicked → queue restored" split into session end (6) + `RitmeModeTransitions` (7) + manual (14) |
