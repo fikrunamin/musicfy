@@ -201,6 +201,9 @@ export class PlaybackController {
     switch (event.type) {
       case 'playing':
         this.playerPlaying = true;
+        // Playing again after an ended (spurious end on a live stream, or the viewer restarted it
+        // from the player's own controls): the end cap no longer applies.
+        this.ended = false;
         this.hideTap();
         // Back from an ad or buffering: check right away instead of at the next tick. Not forced,
         // so a slow network cannot loop seek -> buffer -> playing -> seek faster than every 5 s.

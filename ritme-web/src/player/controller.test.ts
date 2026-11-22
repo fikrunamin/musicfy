@@ -353,6 +353,20 @@ describe('PlaybackController', () => {
         expect(t.needsTap).toEqual([]);
       });
 
+      it('a current-gen playing event clears ended (spurious end, or restarted by the viewer)', () => {
+        const { t, state, before } = ended();
+        t.player().emit({ type: 'playing', gen: t.player().lastGen });
+        t.controller.update({ ...state, version: 2 }, {});
+        expect(t.player().calls.slice(before)).toContain('play');
+      });
+
+      it('a stale-gen playing event does not clear ended', () => {
+        const { t, state, before } = ended();
+        t.player().emit({ type: 'playing', gen: t.player().lastGen - 1 });
+        t.controller.update({ ...state, version: 2 }, {});
+        expect(t.player().calls.slice(before)).toEqual([]);
+      });
+
       it('a room Seek resumes normally', () => {
         const { t, state, before } = ended();
         t.controller.update({ ...state, version: 2, playback: { isPlaying: true, positionMs: 2_000, anchorServerTimeMs: 110_500 } }, {});
