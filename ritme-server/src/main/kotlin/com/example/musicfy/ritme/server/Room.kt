@@ -8,7 +8,10 @@ import com.example.musicfy.ritme.protocol.ServerMessage
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** One client connection, as the room sees it. */
+/**
+ * One client connection, as the room sees it. send/close are called while the room lock is held:
+ * implementations must not suspend for long (buffer or drop, close asynchronously).
+ */
 interface Peer {
     suspend fun send(message: ServerMessage)
 
@@ -38,11 +41,11 @@ class Room(initial: RoomState, private val clock: Clock, private val ids: IdGen)
     val code: String get() = state.code
 
     /** The creator's Member is already in the initial state; this wires up their connection. */
-    suspend fun attachCreator(memberId: String, peer: Peer) = mutex.withLock {
+    suspend fun attachCreator(memberId: String, peer: Peer): Boolean = mutex.withLock {
         val token = ids.resumeToken()
         tokens[token] = memberId
         peers[memberId] = peer
-        peer.send(ServerMessage.Welcome(memberId, token, state, clock.now()))
+        welcome(memberId, token, peer, clock.now())
     }
 
     suspend fun join(name: String, resumeToken: String?, peer: Peer): JoinResult = mutex.withLock {
@@ -68,9 +71,9 @@ class Room(initial: RoomState, private val clock: Clock, private val ids: IdGen)
         }
         if (state.members.none { it.id == state.hostId }) state = RoomLogic.withHost(state, memberId)
         emptySince = null
-        peer.send(ServerMessage.Welcome(memberId, token, state, now))
+        val sent = welcome(memberId, token, peer, now)
         broadcast(ServerMessage.State(state), except = memberId)
-        JoinResult.Joined(this, memberId)
+        if (sent) JoinResult.Joined(this, memberId) else JoinResult.Rejected(ErrorCode.INVALID)
     }
 
     suspend fun leave(memberId: String) = mutex.withLock {
@@ -152,7 +155,20 @@ class Room(initial: RoomState, private val clock: Clock, private val ids: IdGen)
         } else if (emptySince == null) {
             emptySince = now
         }
-        emptySince?.let { now - it >= Limits.EMPTY_ROOM_MS } ?: false
+        val delete = emptySince?.let { now - it >= Limits.EMPTY_ROOM_MS } ?: false
+        if (delete) closed = true
+        delete
+    }
+
+    /** Sends Welcome; if the socket is already gone, start the member's grace period right away. */
+    private suspend fun welcome(memberId: String, token: String, peer: Peer, now: Long): Boolean {
+        val sent = runCatching { peer.send(ServerMessage.Welcome(memberId, token, state, now)) }.isSuccess
+        if (!sent) {
+            if (peers[memberId] === peer) peers.remove(memberId)
+            disconnectedAt[memberId] = now
+            state = RoomLogic.setConnected(state, memberId, false)
+        }
+        return sent
     }
 
     private fun forget(memberId: String) {

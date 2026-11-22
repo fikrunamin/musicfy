@@ -17,3 +17,9 @@ class FakePeer : Peer {
 
     inline fun <reified T : ServerMessage> last(): T = received.filterIsInstance<T>().last()
 }
+
+class DeadPeer : Peer {
+    override suspend fun send(message: ServerMessage) = throw IllegalStateException("socket closed")
+
+    override suspend fun close() = Unit
+}

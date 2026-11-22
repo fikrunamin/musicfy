@@ -26,7 +26,10 @@ class RoomRegistry(private val clock: Clock, private val ids: IdGen) {
             val code = ids.roomCode()
             val room = Room(RoomLogic.newRoom(code, hostId, name, msg, clock.now(), ids), clock, ids)
             if (rooms.putIfAbsent(code, room) == null) {
-                room.attachCreator(hostId, peer)
+                if (!room.attachCreator(hostId, peer)) {
+                    rooms.remove(code, room)
+                    return JoinResult.Rejected(ErrorCode.INVALID)
+                }
                 return JoinResult.Joined(room, hostId)
             }
         }

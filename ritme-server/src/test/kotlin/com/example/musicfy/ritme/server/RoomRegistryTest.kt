@@ -24,7 +24,7 @@ class RoomRegistryTest {
     private suspend fun create(peer: FakePeer = FakePeer(), queue: List<NewEntry> = emptyList()): JoinResult.Joined =
         registry.create(ClientMessage.Create(PROTOCOL_VERSION, "Host", queue), peer) as JoinResult.Joined
 
-    private suspend fun join(code: String, peer: FakePeer = FakePeer(), token: String? = null): JoinResult =
+    private suspend fun join(code: String, peer: Peer = FakePeer(), token: String? = null): JoinResult =
         registry.join(ClientMessage.Join(PROTOCOL_VERSION, code, "Guest", token), peer)
 
     @Test
@@ -203,5 +203,34 @@ class RoomRegistryTest {
         assertEquals(guest.memberId, back.memberId)
         assertEquals(guest.memberId, host.room.state.hostId)
         assertTrue(host.room.state.members.single().isHost)
+    }
+
+    @Test
+    fun creatorWhoseSocketDiedLeavesNoRoomBehind() = runBlocking {
+        assertEquals(JoinResult.Rejected(ErrorCode.INVALID), registry.create(ClientMessage.Create(PROTOCOL_VERSION, "Host"), DeadPeer()))
+        assertEquals(0, registry.size)
+    }
+
+    @Test
+    fun joinerWhoseSocketDiedIsDisconnectedAndExpires() = runBlocking {
+        val host = create()
+        assertEquals(JoinResult.Rejected(ErrorCode.INVALID), join(host.room.code, DeadPeer()))
+        val ghost = host.room.state.members.single { it.id != host.memberId }
+        assertFalse(ghost.connected)
+        clock.now += Limits.GRACE_MS
+        host.room.sweep()
+        assertEquals(listOf(host.memberId), host.room.state.members.map { it.id })
+    }
+
+    @Test
+    fun aSweptRoomRefusesLateJoins() = runBlocking {
+        val hostPeer = FakePeer()
+        val host = create(hostPeer)
+        host.room.disconnected(host.memberId, hostPeer)
+        registry.sweep()
+        clock.now += Limits.EMPTY_ROOM_MS
+        registry.sweep()
+        assertNull(registry.get(host.room.code))
+        assertEquals(JoinResult.Rejected(ErrorCode.ROOM_NOT_FOUND), host.room.join("Late", null, FakePeer()))
     }
 }
