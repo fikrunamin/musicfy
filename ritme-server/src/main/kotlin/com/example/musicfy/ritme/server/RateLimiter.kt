@@ -10,11 +10,16 @@ class RateLimiter(
     private var last = clock.now()
 
     fun tryAcquire(): Boolean {
+        if (!hasToken()) return false
+        tokens -= 1.0
+        return true
+    }
+
+    /** True when [tryAcquire] would succeed; spends nothing. */
+    fun hasToken(): Boolean {
         val now = clock.now()
         tokens = minOf(capacity.toDouble(), tokens + (now - last) * refillPerSecond / 1_000.0)
         last = now
-        if (tokens < 1.0) return false
-        tokens -= 1.0
-        return true
+        return tokens >= 1.0
     }
 }

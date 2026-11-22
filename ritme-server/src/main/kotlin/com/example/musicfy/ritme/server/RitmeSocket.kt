@@ -148,6 +148,9 @@ suspend fun DefaultWebSocketServerSession.endConnection() {
 const val CLOSE_HANDSHAKE_MS = 3_000L
 const val REFUSE_FLUSH_MS = 500L
 
+/** Join failures that spend a join-limiter token (they are what code guessing produces). */
+private val CHARGED_JOIN_FAILURES = setOf(ErrorCode.ROOM_NOT_FOUND, ErrorCode.ROOM_FULL, ErrorCode.UPGRADE_REQUIRED)
+
 /**
  * `/ritme`: enforces the connection caps (a slot is held until the TCP connection has really
  * ended), then runs [ritmeSession].
@@ -236,15 +239,16 @@ suspend fun DefaultWebSocketServerSession.ritmeSession(
             }
             val joined = session
             if (joined == null) {
-                val result = when (message) {
-                    is ClientMessage.Create, is ClientMessage.Join -> when {
-                        // A Welcome can be up to a full snapshot: no new members while over budget.
-                        stats.overBudget -> JoinResult.Rejected(ErrorCode.RATE_LIMITED)
-                        !guard.tryJoin(remoteHost) -> JoinResult.Rejected(ErrorCode.RATE_LIMITED)
-                        message is ClientMessage.Create -> registry.create(message, peer)
-                        else -> registry.join(message as ClientMessage.Join, peer)
+                val result = when {
+                    message !is ClientMessage.Create && message !is ClientMessage.Join -> JoinResult.Rejected(ErrorCode.INVALID)
+                    // A Welcome can be up to a full snapshot: no new members while over budget.
+                    stats.overBudget -> JoinResult.Rejected(ErrorCode.RATE_LIMITED)
+                    message is ClientMessage.Create ->
+                        if (guard.tryCreate(remoteHost)) registry.create(message, peer) else JoinResult.Rejected(ErrorCode.RATE_LIMITED)
+                    !guard.mayJoin(remoteHost) -> JoinResult.Rejected(ErrorCode.RATE_LIMITED)
+                    else -> registry.join(message as ClientMessage.Join, peer).also {
+                        if (it is JoinResult.Rejected && it.code in CHARGED_JOIN_FAILURES) guard.chargeFailedJoin(remoteHost)
                     }
-                    else -> JoinResult.Rejected(ErrorCode.INVALID)
                 }
                 when (result) {
                     is JoinResult.Joined -> session = result

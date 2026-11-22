@@ -48,10 +48,16 @@ object Limits {
     /** A new socket must have joined (or created) a room within this long, or it is closed. */
     const val JOIN_DEADLINE_MS = 10_000L
 
-    /** Create/Join attempts per client IP (IPv6: per /64), successful or not. */
+    /**
+     * Join limiter per client IP (IPv6: per /64): [JOIN_BURST] tokens refilled at [JOINS_PER_MINUTE].
+     * Charged for every Create and for failed Joins (ROOM_NOT_FOUND, ROOM_FULL, UPGRADE_REQUIRED);
+     * successful joins and resumes are free, but need a non-empty bucket.
+     */
     const val JOINS_PER_MINUTE = 10
+    const val JOIN_BURST = 30
 
-    const val MAX_CONNECTIONS_PER_IP = 16
+    /** Generous for shared addresses (a household, a campus, carrier NAT). */
+    const val MAX_CONNECTIONS_PER_IP = 48
     /**
      * Sized to memory (512 MB container, ~384 MB heap): an idle socket costs ~60 KB (Netty
      * buffers, Ktor session, coroutines) -> ~90 MB at the cap. Buffered outbound bytes are bounded

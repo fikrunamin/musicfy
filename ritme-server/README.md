@@ -60,9 +60,12 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
 
 - Inbound WebSocket frames are limited to 256 KB. Send `Create` with at most 200 initial entries
   and the rest as `Add` batches of at most 200.
-- Server-to-client frames are not limited: `Welcome`/`State` carry the full room (a 500-entry
-  queue is ~200 KB, up to ~3 MB with every field at its cap). Clients must accept inbound frames
-  of at least 1 MB; 4 MB is recommended.
+- A room's state is capped at 512 KB of JSON (a typical 500-entry queue is ~200 KB): `Add`
+  beyond it gets `QUEUE_FULL`, and an over-large `Create` keeps the initial entries that fit.
+  `Welcome`/`State` carry the full room, so server frames stay below ~520 KB, above the 256 KB
+  inbound limit: clients must accept inbound frames of at least 1 MB.
+- Titles, artists and names are cleaned on the server (NFC; control, format and zero-width
+  characters removed).
 - Clients decode with `decodeServerMessageOrNull` (unknown message types: skip), and must handle
   `MediaKind.UNKNOWN` (skip the entry) and `ErrorCode.UNKNOWN` (generic failure).
 - The server accepts protocol versions `MIN_SUPPORTED_PROTOCOL_VERSION..PROTOCOL_VERSION`;
@@ -77,12 +80,16 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
 | Limit | Value | When exceeded |
 |---|---|---|
 | Join deadline | a socket must have joined a room within 10 s | closed (policy violation), no message |
-| Create/Join attempts | 10 per minute per IP (IPv6: per /64), successful or not | `Error(RATE_LIMITED)`, closed |
-| Concurrent sockets | 16 per IP, 5000 total | `Error(RATE_LIMITED)`, closed (1013 try again later) |
+| Join limiter | per IP (IPv6: per /64): burst 30, refilled 10/min; charged for every `Create` and for failed Joins (`ROOM_NOT_FOUND`, `ROOM_FULL`, `UPGRADE_REQUIRED`); successful joins and resumes are free but need a non-empty bucket | `Error(RATE_LIMITED)`, closed |
+| Concurrent sockets | 48 per IP, 1500 total (~60 KB per idle socket, ~90 MB at the cap) | `Error(RATE_LIMITED)`, closed (1013 try again later), hung up within 0.5 s |
 | Rooms | 2000 total | `Error(ROOM_FULL)` on Create, closed |
 | Inbound frames | 20/s per socket, burst 40 (pings and garbage included) | closed, no message |
 | Commands + TrackEnded | 10/s per member | `Error(RATE_LIMITED)` (TrackEnded: ignored) |
-| Send queue | 64 messages behind | disconnected; resume with the token for fresh state |
+| Unsent messages per client | snapshots coalesce (only the latest `State` waits); at most 2 MB or 64 messages | disconnected; resume with the token for fresh state |
+| Stalled client | a frame not written to the socket within 20 s | disconnected |
+| Server-wide unsent bytes | 128 MB | clients that are behind are disconnected; `Create`/`Join` get `RATE_LIMITED` until it drains |
+
+A client that ignores the server's Close frame is hung up on after at most 3 s.
 
 ## Privacy
 

@@ -189,14 +189,15 @@ class SearchService(
 }
 
 /**
- * Token bucket per client: IPv4 address or IPv6 /64 (see [ipKey]). Buckets idle for longer than
- * [idleMs] are dropped (by then they have refilled, so nothing is forgotten); beyond [maxTracked]
- * the least recently used goes first, so active clients keep their state.
+ * Token bucket per client: IPv4 address or IPv6 /64 (see [ipKey]); [burst] tokens, refilled at
+ * [perMinute]. Buckets idle long enough to have refilled are dropped (nothing is forgotten);
+ * beyond [maxTracked] the least recently used goes first, so active clients keep their state.
  */
 class IpRateLimiter(
     private val clock: Clock,
     private val perMinute: Int = Limits.SEARCH_PER_MINUTE,
-    private val idleMs: Long = 2 * 60_000L,
+    private val burst: Int = perMinute,
+    private val idleMs: Long = maxOf(2 * 60_000L, burst * 60_000L / perMinute + 60_000L),
     private val maxTracked: Int = 10_000,
 ) {
     private class Bucket(val limiter: RateLimiter, var lastSeen: Long)
@@ -205,7 +206,12 @@ class IpRateLimiter(
 
     val tracked: Int get() = synchronized(buckets) { buckets.size }
 
-    fun tryAcquire(remoteHost: String): Boolean = synchronized(buckets) {
+    fun tryAcquire(remoteHost: String): Boolean = synchronized(buckets) { bucket(remoteHost).tryAcquire() }
+
+    /** True when [tryAcquire] would succeed; spends nothing. */
+    fun hasToken(remoteHost: String): Boolean = synchronized(buckets) { bucket(remoteHost).hasToken() }
+
+    private fun bucket(remoteHost: String): RateLimiter {
         val now = clock.now()
         val key = ipKey(remoteHost)
         val idle = buckets.values.iterator()
@@ -214,9 +220,9 @@ class IpRateLimiter(
         }
         val bucket = buckets[key] ?: run {
             if (buckets.size >= maxTracked) buckets.values.iterator().apply { next(); remove() }
-            Bucket(RateLimiter(perMinute, perMinute / 60.0, clock), now).also { buckets[key] = it }
+            Bucket(RateLimiter(burst, perMinute / 60.0, clock), now).also { buckets[key] = it }
         }
         bucket.lastSeen = now
-        bucket.limiter.tryAcquire()
+        return bucket.limiter
     }
 }

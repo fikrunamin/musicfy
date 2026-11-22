@@ -43,8 +43,9 @@ fun Application.ritmeModule(deps: ServerDeps) {
     val searchLimiter = IpRateLimiter(deps.clock)
 
     // Only Caddy can reach this server, so X-Forwarded-For is trustworthy. Caddy (no
-    // trusted_proxies) replaces any client-sent value; the last entry is always the address Caddy
-    // itself saw, which stays correct even if a CDN / trusted_proxies is added in front later.
+    // trusted_proxies) replaces any client-sent value with the address it saw, so the last (and
+    // only) entry is the client. If a CDN is ever put in front with Caddy's trusted_proxies, Caddy
+    // appends the CDN's address after the client's: switch to skipLastProxies(1) then.
     install(XForwardedHeaders) { useLastProxy() }
     install(WebSockets) {
         pingPeriod = 15.seconds
