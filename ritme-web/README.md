@@ -27,8 +27,11 @@ npm run e2e        # Playwright: builds and starts the real server on :47821 ser
 
 ## How sync works
 
-- Clock: 5 pings 200 ms apart on connect, then every 30 s; the offset comes from the lowest-RTT
-  sample of the last 8 (`src/sync/clock.ts`).
+- Clock: 5 pings 200 ms apart after every Welcome, then every 30 s; the offset comes from the
+  lowest-RTT sample of the last 8 (`src/sync/clock.ts`). Each Welcome starts a fresh window, and
+  so does waking from sleep (noticed on return to the tab when `Date.now()` moved more than 1 s
+  further than `performance.now()`), followed by a new burst; the forced re-sync then waits for
+  the first fresh Pong.
 - Playback follows the room snapshot only (`src/player/controller.ts`): new tracks are prepared
   paused and start at the server's anchor; drift over 300 ms is fixed by seeking, at most every
   5 s (room seeks, track changes and returning to the tab re-sync at once; the end of an ad is

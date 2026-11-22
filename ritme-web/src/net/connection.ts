@@ -103,6 +103,15 @@ export class RitmeConnection {
     return reqId;
   }
 
+  /**
+   * Another 5-ping burst, so the clock gets a fresh window quickly (after Welcome, and after the
+   * device slept). Nothing while not joined: every Welcome starts its own burst.
+   */
+  pingBurst(): void {
+    if (!this.joined) return;
+    for (let i = 0; i < PING_BURST; i++) this.later(i * PING_BURST_GAP_MS, () => this.ping());
+  }
+
   leave(): void {
     if (this.ended) return;
     // Leaving before the first Welcome just closes the socket; the server has no member to remove yet.
@@ -125,8 +134,6 @@ export class RitmeConnection {
       this.later(JOIN_TIMEOUT_MS, () => {
         if (!this.joined) this.drop(socket);
       });
-      for (let i = 0; i < PING_BURST; i++) this.later(i * PING_BURST_GAP_MS, () => this.ping());
-      this.later(PING_INTERVAL_MS, () => this.pingLoop());
     };
     socket.onmessage = (ev) => {
       if (this.socket !== socket || typeof ev.data !== 'string') return;
@@ -180,6 +187,9 @@ export class RitmeConnection {
         } finally {
           this.ack(message.state.version);
         }
+        // After the welcome event, so the session has reset its clock before the first Pong.
+        this.pingBurst();
+        this.later(PING_INTERVAL_MS, () => this.pingLoop());
         return;
       }
       case 'State':

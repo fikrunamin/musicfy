@@ -7,14 +7,23 @@ import { type NoticeKey, type SessionState, initialSession, sessionReducer } fro
 export interface ConnectionLike {
   start(intent: JoinIntent): void;
   command(cmd: Command): string | null;
+  pingBurst(): void;
   leave(): void;
 }
+
+/**
+ * A wall clock that keeps running while the device sleeps, compared with performance.now()
+ * (which does not) on wake: a gap above this means the clock samples are stale.
+ */
+export const SLEEP_DETECT_MS = 1_000;
 
 export interface SessionDeps {
   connect(onEvent: (event: ConnectionEvent) => void): ConnectionLike;
   clock?: ClockSync;
   /** Same monotonic clock the connection uses (performance.now()). */
   now: () => number;
+  /** Wall clock (Date.now()), only to notice that the device slept. */
+  wallNow?: () => number;
 }
 
 /** What the UI uses; Session implements it and UI tests pass a fake. */
@@ -22,6 +31,11 @@ export interface SessionApi {
   getState(): SessionState;
   subscribe(listener: () => void): () => void;
   serverNow(): number;
+  /**
+   * Called when the player should re-sync with force: when the page becomes visible, but after a
+   * sleep or a (re)connect only once the clock has a fresh sample. Returns an unsubscribe function.
+   */
+  onResync(listener: () => void): () => void;
   create(name: string): void;
   join(code: string, name: string): void;
   leave(): void;
@@ -50,7 +64,11 @@ export interface SessionApi {
 export class Session implements SessionApi {
   private state: SessionState = initialSession;
   private readonly listeners = new Set<() => void>();
+  private readonly resyncListeners = new Set<() => void>();
   private conn: ConnectionLike | null = null;
+  /** The clock was reset; the next kept Pong sample triggers a resync. */
+  private awaitingSample = false;
+  private hiddenAt: { local: number; wall: number } | null = null;
   readonly clock: ClockSync;
 
   constructor(private readonly deps: SessionDeps) {
@@ -65,6 +83,34 @@ export class Session implements SessionApi {
   };
 
   serverNow = (): number => this.clock.serverNow(this.deps.now());
+
+  onResync = (listener: () => void): (() => void) => {
+    this.resyncListeners.add(listener);
+    return () => this.resyncListeners.delete(listener);
+  };
+
+  /**
+   * Page visibility (main.tsx wires document.visibilitychange). On becoming visible, a wall-clock
+   * gap that performance.now() did not see means the device slept: the clock window is reset, a
+   * ping burst sent, and the resync waits for the first fresh Pong. Otherwise it resyncs at once.
+   */
+  visibilityChanged(visible: boolean): void {
+    const local = this.deps.now();
+    const wall = (this.deps.wallNow ?? Date.now)();
+    if (!visible) {
+      this.hiddenAt = { local, wall };
+      return;
+    }
+    const hidden = this.hiddenAt;
+    this.hiddenAt = null;
+    const missed = hidden ? wall - hidden.wall - (local - hidden.local) : 0;
+    if (Math.abs(missed) > SLEEP_DETECT_MS) {
+      this.resetClock(local, missed);
+      this.conn?.pingBurst();
+      return;
+    }
+    this.emitResync();
+  }
 
   create(name: string): void {
     this.begin({ kind: 'create', name });
@@ -142,10 +188,30 @@ export class Session implements SessionApi {
   }
 
   private onEvent(event: ConnectionEvent): void {
-    if (event.type === 'pong') this.clock.addSample(event.clientTime, event.receivedAt, event.serverTime);
-    if (event.type === 'welcome') this.clock.seed(event.welcome.serverTime, event.receivedAt);
+    if (event.type === 'welcome') {
+      // A new connection may follow a sleep: start a fresh window (the connection's ping burst
+      // follows this event) and use the Welcome's server time until the first Pong.
+      this.resetClock(event.receivedAt, 0);
+      this.clock.seed(event.welcome.serverTime, event.receivedAt);
+    }
+    let fresh = false;
+    if (event.type === 'pong') {
+      const kept = this.clock.addSample(event.clientTime, event.receivedAt, event.serverTime);
+      fresh = kept && this.awaitingSample;
+      if (fresh) this.awaitingSample = false;
+    }
     if (event.type === 'ended') this.conn = null;
     this.dispatch(event);
+    if (fresh) this.emitResync();
+  }
+
+  private resetClock(localNow: number, shiftMs: number): void {
+    this.clock.reset(localNow, shiftMs);
+    this.awaitingSample = true;
+  }
+
+  private emitResync(): void {
+    for (const listener of this.resyncListeners) listener();
   }
 
   private send(cmd: Command): void {

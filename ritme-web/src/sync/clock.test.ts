@@ -48,3 +48,51 @@ describe('ClockSync', () => {
     expect(clock.offset).toBe(9_990);
   });
 });
+
+describe('ClockSync.reset', () => {
+  it('drops every sample but keeps serving the last offset until a new sample arrives', () => {
+    const clock = new ClockSync();
+    clock.seed(10_000, 400); // 9_600
+    clock.addSample(1_000, 1_010, 11_000); // rtt 10, offset 9_995
+    clock.reset(5_000);
+    expect(clock.rtt).toBeNull();
+    expect(clock.offset).toBe(9_995);
+    expect(clock.serverNow(6_000)).toBe(15_995);
+    expect(clock.addSample(5_000, 5_100, 70_050)).toBe(true); // rtt 100, offset 65_000
+    expect(clock.offset).toBe(65_000);
+    expect(clock.rtt).toBe(100);
+  });
+
+  it('shifts the fallback by the given amount (time the local clock missed while asleep)', () => {
+    const clock = new ClockSync();
+    clock.addSample(0, 10, 1_005); // offset 1_000
+    clock.reset(20, 60_000);
+    expect(clock.offset).toBe(61_000);
+  });
+
+  it('falls back to the seed when there were no samples', () => {
+    const clock = new ClockSync();
+    expect(clock.offset).toBeNull();
+    clock.reset(0);
+    expect(clock.offset).toBeNull();
+    clock.seed(10_000, 400);
+    clock.reset(500);
+    expect(clock.offset).toBe(9_600);
+  });
+
+  it('ignores Pongs for Pings sent before the reset', () => {
+    const clock = new ClockSync();
+    clock.reset(1_000);
+    expect(clock.addSample(999, 1_005, 50_000)).toBe(false);
+    expect(clock.rtt).toBeNull();
+    expect(clock.addSample(1_000, 1_005, 50_000)).toBe(true);
+  });
+
+  it('a seed after a reset replaces the fallback', () => {
+    const clock = new ClockSync();
+    clock.addSample(0, 10, 1_005);
+    clock.reset(20);
+    clock.seed(90_000, 100);
+    expect(clock.offset).toBe(89_900);
+  });
+});

@@ -98,26 +98,17 @@ describe('ListenPanel after the tap gate', () => {
     expect(mocks.log.at(-1)).toBe('destroy');
   });
 
-  it('adds and removes the same visibilitychange listener and resyncs only when visible', async () => {
-    const add = vi.spyOn(document, 'addEventListener');
-    const rem = vi.spyOn(document, 'removeEventListener');
+  it('resyncs the controller when the session asks for it, and unsubscribes on unmount', async () => {
     const s = fakeSession();
     render(panel(s, playing(), 'listen'));
+    expect(s.resyncListeners.size).toBe(0);
     fireEvent.click(screen.getByRole('button', { name: 'Ketuk untuk ikut dengar' }));
     await Promise.resolve();
-    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
-    document.dispatchEvent(new Event('visibilitychange'));
-    expect(mocks.log).not.toContain('resync');
-    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
-    document.dispatchEvent(new Event('visibilitychange'));
+    expect(s.resyncListeners.size).toBe(1);
+    for (const l of s.resyncListeners) l();
     expect(mocks.log.filter((l) => l === 'resync')).toHaveLength(1);
     cleanup();
-    const added = add.mock.calls.filter((c) => c[0] === 'visibilitychange').map((c) => c[1]);
-    const removed = rem.mock.calls.filter((c) => c[0] === 'visibilitychange').map((c) => c[1]);
-    expect(added.length).toBeGreaterThan(0);
-    expect(added.every((f) => removed.includes(f))).toBe(true);
-    add.mockRestore();
-    rem.mockRestore();
+    expect(s.resyncListeners.size).toBe(0);
   });
 
   it('marks the entry unplayable on the session and hides the player', async () => {

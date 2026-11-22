@@ -8,6 +8,7 @@ class FakeConnection {
   intent: JoinIntent | null = null;
   commands: Command[] = [];
   left = false;
+  bursts = 0;
   constructor(readonly emit: (e: ConnectionEvent) => void) {}
   start(intent: JoinIntent) {
     this.intent = intent;
@@ -15,6 +16,9 @@ class FakeConnection {
   command(cmd: Command) {
     this.commands.push(cmd);
     return `r${this.commands.length}`;
+  }
+  pingBurst() {
+    this.bursts++;
   }
   leave() {
     this.left = true;
@@ -25,7 +29,9 @@ class FakeConnection {
 function setup() {
   const conns: FakeConnection[] = [];
   let now = 1_000;
+  let wall = 1_700_000_000_000;
   const session = new Session({
+    wallNow: () => wall,
     connect: (onEvent) => {
       const c = new FakeConnection(onEvent);
       conns.push(c);
@@ -41,7 +47,19 @@ function setup() {
     });
     c.emit({ type: 'status', status: 'online' });
   };
-  return { session, conns, welcome, setNow: (v: number) => (now = v) };
+  const pong = (c: FakeConnection, clientTime: number, serverTime: number) =>
+    c.emit({ type: 'pong', clientTime, serverTime, receivedAt: now });
+  return {
+    session,
+    conns,
+    welcome,
+    pong,
+    setNow: (v: number) => (now = v),
+    advance: (perfMs: number, wallMs: number = perfMs) => {
+      now += perfMs;
+      wall += wallMs;
+    },
+  };
 }
 
 describe('Session', () => {
@@ -115,5 +133,92 @@ describe('Session', () => {
     t.session.create('Budi');
     old.emit({ type: 'ended', reason: { kind: 'lost' } });
     expect(t.session.getState().phase).toBe('connecting');
+  });
+
+  it('starts a fresh clock window on every Welcome, so old low-rtt samples cannot win', () => {
+    const t = setup();
+    t.session.create('Budi');
+    t.welcome(t.conns[0]); // t=1_000
+    t.pong(t.conns[0], 1_000, 50_000); // rtt 0, offset 49_000
+    expect(t.session.serverNow()).toBe(50_000);
+    // Reconnect after the device slept: performance.now() barely moved, the server clock did.
+    t.conns[0].emit({ type: 'status', status: 'reconnecting' });
+    t.setNow(1_500);
+    t.conns[0].emit({
+      type: 'welcome',
+      welcome: { type: 'Welcome', memberId: 'm1', resumeToken: 't', serverTime: 900_000, protocolVersion: 1, state: room({ version: 2 }) },
+      receivedAt: 1_500,
+    });
+    expect(t.session.serverNow()).toBe(900_000); // the new seed, not the old sample
+    t.setNow(1_600);
+    t.pong(t.conns[0], 1_500, 900_150); // rtt 100, offset 898_600
+    expect(t.session.serverNow()).toBe(900_200);
+  });
+
+  it('asks for a forced resync when the first Pong after a Welcome lands', () => {
+    const t = setup();
+    let resyncs = 0;
+    t.session.onResync(() => resyncs++);
+    t.session.create('Budi');
+    t.welcome(t.conns[0]);
+    expect(resyncs).toBe(0);
+    t.pong(t.conns[0], 1_000, 50_000);
+    expect(resyncs).toBe(1);
+    t.pong(t.conns[0], 1_000, 50_000);
+    expect(resyncs).toBe(1);
+  });
+
+  it('becoming visible without a sleep resyncs at once and keeps the clock', () => {
+    const t = setup();
+    let resyncs = 0;
+    t.session.onResync(() => resyncs++);
+    t.session.create('Budi');
+    t.welcome(t.conns[0]);
+    t.pong(t.conns[0], 1_000, 50_000);
+    resyncs = 0;
+    t.session.visibilityChanged(false);
+    t.advance(60_000, 60_400); // hidden for a minute, clocks agree within 1 s
+    t.session.visibilityChanged(true);
+    expect(resyncs).toBe(1);
+    expect(t.conns[0].bursts).toBe(0);
+    expect(t.session.serverNow()).toBe(110_000);
+  });
+
+  it('after a sleep, resets the clock, sends a ping burst, and resyncs only once a new Pong lands', () => {
+    const t = setup();
+    let resyncs = 0;
+    const off = t.session.onResync(() => resyncs++);
+    t.session.create('Budi');
+    t.welcome(t.conns[0]);
+    t.pong(t.conns[0], 1_000, 50_000); // offset 49_000
+    resyncs = 0;
+    t.session.visibilityChanged(false); // perf 1_000
+    t.advance(2_000, 302_000); // asleep for 300 s: performance.now() moved only 2 s
+    t.session.visibilityChanged(true); // perf 3_000
+    expect(t.conns[0].bursts).toBe(1);
+    expect(resyncs).toBe(0);
+    // Until the burst answers, the old offset moved by the missed 300 s is used.
+    expect(t.session.serverNow()).toBe(3_000 + 49_000 + 300_000);
+    t.pong(t.conns[0], 2_000, 1); // a Ping from before the sleep: ignored
+    expect(resyncs).toBe(0);
+    t.advance(40);
+    t.pong(t.conns[0], 3_000, 352_100); // rtt 40, offset 349_080
+    expect(resyncs).toBe(1);
+    expect(t.session.serverNow()).toBe(3_040 + 349_080);
+    off();
+    t.session.visibilityChanged(false);
+    t.session.visibilityChanged(true);
+    expect(resyncs).toBe(1);
+  });
+
+  it('a visible event with no hidden one before it just resyncs', () => {
+    const t = setup();
+    let resyncs = 0;
+    t.session.onResync(() => resyncs++);
+    t.session.create('Budi');
+    t.welcome(t.conns[0]);
+    t.session.visibilityChanged(true);
+    expect(resyncs).toBe(1);
+    expect(t.conns[0].bursts).toBe(0);
   });
 });

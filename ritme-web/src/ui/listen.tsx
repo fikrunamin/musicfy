@@ -36,13 +36,11 @@ function PlayerHost({ session, room, unplayable, pageIsHttps }: Omit<Props, 'mod
     });
     controller.current = c;
     c.update(room, unplayable);
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') c.resync();
-    };
-    document.addEventListener('visibilitychange', onVisible);
+    // The session decides when: on becoming visible, or once the clock is fresh after a sleep or reconnect.
+    const offResync = session.onResync(() => c.resync());
     const release = keepScreenOn();
     return () => {
-      document.removeEventListener('visibilitychange', onVisible);
+      offResync();
       release();
       c.destroy();
       controller.current = null;

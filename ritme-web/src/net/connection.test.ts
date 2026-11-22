@@ -120,6 +120,43 @@ describe('RitmeConnection: in the room', () => {
     expect(t.last().types().filter((x) => x === 'Ping')).toHaveLength(6);
   });
 
+  it('starts the ping burst on Welcome, not on open, so the session can reset its clock first', () => {
+    const t = setup();
+    t.conn.start({ kind: 'join', code: 'K7M2QX', name: 'Sari' });
+    t.last().open();
+    vi.advanceTimersByTime(1_000);
+    expect(t.last().types()).not.toContain('Ping');
+    const order: string[] = [];
+    const sock = t.last();
+    const send = sock.send.bind(sock);
+    sock.send = (d: string) => {
+      order.push(`send:${JSON.parse(d).type}`);
+      send(d);
+    };
+    sock.receive(welcome());
+    order.push('welcome-dispatched');
+    vi.advanceTimersByTime(1_000);
+    expect(sock.sent.filter((m) => m.type === 'Ping').map((m) => m.clientTime)).toEqual([1_000, 1_200, 1_400, 1_600, 1_800]);
+    expect(order.indexOf('welcome-dispatched')).toBeLessThan(order.indexOf('send:Ping'));
+  });
+
+  it('pingBurst sends 5 more pings 200 ms apart while joined, and nothing otherwise', () => {
+    const t = setup();
+    t.conn.pingBurst();
+    joinIn(t);
+    vi.advanceTimersByTime(10_000);
+    const pings = () => t.last().sent.filter((m) => m.type === 'Ping').map((m) => m.clientTime);
+    expect(pings()).toHaveLength(5);
+    t.conn.pingBurst();
+    vi.advanceTimersByTime(1_000);
+    expect(pings().slice(5)).toEqual([10_000, 10_200, 10_400, 10_600, 10_800]);
+    t.last().serverClose();
+    t.conn.pingBurst();
+    vi.advanceTimersByTime(900);
+    expect(t.sockets).toHaveLength(1);
+    expect(pings()).toHaveLength(10);
+  });
+
   it('reports pongs with the receive time', () => {
     const t = setup();
     joinIn(t);
