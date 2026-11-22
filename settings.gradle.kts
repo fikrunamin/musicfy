@@ -36,6 +36,7 @@ include(":providers:paxsenixlyrics")
 include(":modules:api")
 include(":modules:applemusic")
 include(":modules:monochrome")
+include(":modules:ritme-protocol")
 
 
 // local newpipe extractor

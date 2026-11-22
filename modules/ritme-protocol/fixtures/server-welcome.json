@@ -1,0 +1,49 @@
+{
+    "type": "Welcome",
+    "memberId": "m1",
+    "resumeToken": "tok",
+    "state": {
+        "code": "K7M2QX",
+        "version": 3,
+        "hostId": "m1",
+        "settings": {
+            "guestsCanControl": true
+        },
+        "members": [
+            {
+                "id": "m1",
+                "name": "Budi",
+                "isHost": true,
+                "connected": true,
+                "joinedAt": 1000
+            },
+            {
+                "id": "m2",
+                "name": "Sari",
+                "isHost": false,
+                "connected": false,
+                "joinedAt": 2000
+            }
+        ],
+        "queue": [
+            {
+                "entryId": "e1",
+                "videoId": "dQw4w9WgXcQ",
+                "title": "Never Gonna Give You Up",
+                "artist": "Rick Astley",
+                "thumbnailUrl": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+                "durationMs": 213000,
+                "addedBy": "m1",
+                "kind": "YOUTUBE_MUSIC",
+                "url": null
+            }
+        ],
+        "currentEntryId": "e1",
+        "playback": {
+            "isPlaying": true,
+            "positionMs": 5000,
+            "anchorServerTimeMs": 1700000000000
+        }
+    },
+    "serverTime": 1700000000500
+}

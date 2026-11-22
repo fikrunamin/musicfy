@@ -1,0 +1,10 @@
+{
+    "type": "Command",
+    "reqId": "r1",
+    "cmd": {
+        "type": "SetSettings",
+        "settings": {
+            "guestsCanControl": false
+        }
+    }
+}

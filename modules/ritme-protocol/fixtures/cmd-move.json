@@ -1,0 +1,9 @@
+{
+    "type": "Command",
+    "reqId": "r1",
+    "cmd": {
+        "type": "Move",
+        "entryId": "e1",
+        "afterEntryId": null
+    }
+}
