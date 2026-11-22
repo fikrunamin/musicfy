@@ -11,6 +11,8 @@ const STATE_ENDED = 0;
 const STATE_PLAYING = 1;
 const STATE_PAUSED = 2;
 const STATE_CUED = 5;
+/** After a load, events naming the previous video are dropped for at most this long. */
+const STALE_WINDOW_MS = 3_000;
 
 export interface YTPlayer {
   cueVideoById(options: { videoId: string; startSeconds?: number }): void;
@@ -89,71 +91,98 @@ export function createYouTubePlayer(
   /** Generation of the latest load(); updated only there, so every event echoes the load it belongs to. */
   let currentGen = 0;
   let requestedVideoId: string | null = null;
+  let previousVideoId: string | null = null;
   /** load() was called and the new video has not reported CUED/PLAYING yet: position unknown. */
   let awaitingNewVideo = false;
+  /** Known-stale filtering is on from load() until the first accepted CUED/PLAYING, or STALE_WINDOW_MS. */
+  let filterActive = false;
+  let loadedAt = 0;
+  /** Last accepted state; -1 right after a (re-)cue. Cued/unstarted: seekTo would start playback. */
+  let lastState = -1;
+  let cuedStartMs: number | null = null;
 
   const cue = (videoId: string, startMs: number | null) => {
+    cuedStartMs = startMs;
+    lastState = -1;
     yt!.cueVideoById(startMs === null ? { videoId } : { videoId, startSeconds: startMs / 1000 });
   };
 
-  /** False while the player still reports a different (previous) video than the one requested. */
-  const showsRequestedVideo = (): boolean => {
-    if (requestedVideoId === null) return true;
+  /** True only for an event known to belong to the previous video, shortly after a load. */
+  const isStale = (): boolean => {
+    if (!filterActive) return false;
+    if (Date.now() - loadedAt > STALE_WINDOW_MS) {
+      filterActive = false;
+      return false;
+    }
     const shown = yt?.getVideoData?.()?.video_id;
-    return !shown || shown === requestedVideoId;
+    return !!shown && shown === previousVideoId && shown !== requestedVideoId;
   };
 
   const emit = (type: PlayerEvent['type']) => onEvent({ type, gen: currentGen });
 
-  loadApi().then(
-    (YT) => {
-      if (destroyed) return;
-      yt = new YT.Player(mount, {
-        host: EMBED_HOST,
-        width: '100%',
-        height: '100%',
-        playerVars: { playsinline: 1, rel: 0, origin: container.ownerDocument.location.origin },
-        events: {
-          onReady: () => {
-            ready = true;
-            if (pendingLoad) cue(pendingLoad.videoId, pendingLoad.startMs);
-            pendingLoad = null;
-            if (wantPlay) yt!.playVideo();
+  const connect = () => {
+    loadApi().then(
+      (YT) => {
+        if (destroyed) return;
+        yt = new YT.Player(mount, {
+          host: EMBED_HOST,
+          width: '100%',
+          height: '100%',
+          playerVars: { playsinline: 1, rel: 0, origin: container.ownerDocument.location.origin },
+          events: {
+            onReady: () => {
+              if (destroyed) return;
+              ready = true;
+              if (pendingLoad) cue(pendingLoad.videoId, pendingLoad.startMs);
+              pendingLoad = null;
+              if (wantPlay) yt!.playVideo();
+            },
+            onStateChange: (e) => {
+              if (destroyed || isStale()) return;
+              if (e.data === STATE_CUED || e.data === STATE_PLAYING) {
+                awaitingNewVideo = false;
+                filterActive = false;
+              }
+              lastState = e.data;
+              if (e.data === STATE_PLAYING) emit('playing');
+              else if (e.data === STATE_PAUSED) emit('paused');
+              else if (e.data === STATE_ENDED) emit('ended');
+            },
+            onError: (e) => {
+              if (destroyed || isStale()) return;
+              if (UNPLAYABLE_ERRORS.includes(e.data)) emit('unplayable');
+            },
           },
-          onStateChange: (e) => {
-            // A late state of the previous video must not be reported under the new generation.
-            if (!showsRequestedVideo()) return;
-            if (e.data === STATE_CUED || e.data === STATE_PLAYING) awaitingNewVideo = false;
-            if (e.data === STATE_PLAYING) emit('playing');
-            else if (e.data === STATE_PAUSED) emit('paused');
-            else if (e.data === STATE_ENDED) emit('ended');
-          },
-          onError: (e) => {
-            if (UNPLAYABLE_ERRORS.includes(e.data)) emit('unplayable');
-          },
-        },
-      });
-    },
-    () => {
-      failed = true;
-      if (!destroyed && pendingLoad) emit('unplayable');
-    },
-  );
+        });
+      },
+      () => {
+        failed = true;
+        if (!destroyed && pendingLoad) emit('unplayable');
+      },
+    );
+  };
+  connect();
 
   return {
     load(source: PlayableSource, startMs: number | null, gen: number) {
       if (source.kind !== 'youtube') throw new Error('YouTube player got a non-YouTube source');
       currentGen = gen;
+      if (requestedVideoId !== source.videoId) previousVideoId = requestedVideoId;
       requestedVideoId = source.videoId;
       awaitingNewVideo = true;
-      if (failed) {
-        queueMicrotask(() => {
-          if (!destroyed && gen === currentGen) onEvent({ type: 'unplayable', gen });
-        });
-        return;
-      }
+      filterActive = true;
+      loadedAt = Date.now();
+      lastState = -1;
+      cuedStartMs = startMs;
       if (ready) cue(source.videoId, startMs);
-      else pendingLoad = { videoId: source.videoId, startMs };
+      else {
+        pendingLoad = { videoId: source.videoId, startMs };
+        if (failed) {
+          // The API script failed earlier: try again for this entry.
+          failed = false;
+          connect();
+        }
+      }
     },
     play() {
       wantPlay = true;
@@ -164,10 +193,23 @@ export function createYouTubePlayer(
       if (ready) yt!.pauseVideo();
     },
     seek(ms: number) {
-      if (ready) yt!.seekTo(ms / 1000, true);
+      if (pendingLoad) {
+        pendingLoad.startMs = ms;
+        cuedStartMs = ms;
+        return;
+      }
+      if (!ready) return;
+      // seekTo on a cued/unstarted video starts playback; re-cue at the new position instead.
+      if (!wantPlay && requestedVideoId !== null && (lastState === STATE_CUED || lastState === -1)) {
+        awaitingNewVideo = true;
+        cue(requestedVideoId, ms);
+        return;
+      }
+      yt!.seekTo(ms / 1000, true);
     },
     currentMs() {
       if (!ready || awaitingNewVideo) return null;
+      if (lastState === STATE_CUED && cuedStartMs !== null) return cuedStartMs;
       return yt!.getCurrentTime() * 1000;
     },
     destroy() {

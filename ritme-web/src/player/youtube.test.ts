@@ -82,6 +82,8 @@ describe('createYouTubePlayer', () => {
     expect(player.currentMs()).toBeNull(); // new video has not reported yet
     yt.shownVideoId = 'abc';
     yt.options.events.onStateChange({ data: CUED });
+    expect(player.currentMs()).toBe(15_000); // cued: the cued start, not getCurrentTime()
+    yt.options.events.onStateChange({ data: 1 });
     expect(player.currentMs()).toBe(16_500);
     player.seek(20_000);
     expect(yt.calls.at(-1)).toEqual(['seek', 20, true]);
@@ -133,7 +135,7 @@ describe('createYouTubePlayer', () => {
     const { player, yt } = await readyPlayer();
     player.load({ kind: 'youtube', videoId: 'old' }, 0, 1);
     yt.shownVideoId = 'old';
-    yt.options.events.onStateChange({ data: CUED });
+    yt.options.events.onStateChange({ data: 1 });
     yt.time = 42;
     expect(player.currentMs()).toBe(42_000);
 
@@ -156,6 +158,97 @@ describe('createYouTubePlayer', () => {
     player.load({ kind: 'youtube', videoId: 'new' }, 0, 2);
     yt.options.events.onStateChange({ data: 0 }); // old video ended after the new load
     expect(events).toEqual([]);
+  });
+
+  it('seek on a cued video re-cues instead of seekTo (seekTo would start playback)', async () => {
+    const { player, yt } = await readyPlayer();
+    player.load({ kind: 'youtube', videoId: 'a' }, 60_000, 1);
+    player.pause();
+    yt.shownVideoId = 'a';
+    yt.options.events.onStateChange({ data: CUED });
+    expect(player.currentMs()).toBe(60_000); // not getCurrentTime() (0)
+    player.seek(90_000);
+    expect(yt.calls.some((c) => c[0] === 'seek')).toBe(false);
+    expect(yt.calls.at(-1)).toEqual(['cue', { videoId: 'a', startSeconds: 90 }]);
+    expect(player.currentMs()).toBeNull();
+    yt.options.events.onStateChange({ data: CUED });
+    expect(player.currentMs()).toBe(90_000);
+  });
+
+  it('seek uses seekTo when playing or when play is wanted', async () => {
+    const { player, yt } = await readyPlayer();
+    player.load({ kind: 'youtube', videoId: 'a' }, 0, 1);
+    yt.shownVideoId = 'a';
+    yt.options.events.onStateChange({ data: CUED });
+    player.play();
+    player.seek(5_000);
+    expect(yt.calls.at(-1)).toEqual(['seek', 5, true]);
+  });
+
+  it('does not starve on an unrelated video id', async () => {
+    const { player, yt, events } = await readyPlayer();
+    player.load({ kind: 'youtube', videoId: 'req' }, 0, 1);
+    yt.shownVideoId = 'other';
+    yt.options.events.onStateChange({ data: CUED });
+    yt.options.events.onStateChange({ data: 1 });
+    expect(events).toEqual([{ type: 'playing', gen: 1 }]);
+    expect(player.currentMs()).not.toBeNull();
+  });
+
+  it('drops a known-stale previous id right after load, accepts it later', async () => {
+    const { player, yt, events } = await readyPlayer();
+    player.load({ kind: 'youtube', videoId: 'a' }, 0, 1);
+    yt.shownVideoId = 'a';
+    yt.options.events.onStateChange({ data: CUED });
+    const realNow = Date.now;
+    let now = 1_000_000;
+    Date.now = () => now;
+    try {
+      player.load({ kind: 'youtube', videoId: 'b' }, 0, 2); // cache still shows 'a'
+      yt.options.events.onStateChange({ data: 1 });
+      yt.options.events.onError({ data: 150 });
+      expect(events).toEqual([]);
+      expect(player.currentMs()).toBeNull();
+      now += 3_500; // cache never updated: stop filtering
+      yt.options.events.onStateChange({ data: 1 });
+      expect(events).toEqual([{ type: 'playing', gen: 2 }]);
+      expect(player.currentMs()).not.toBeNull();
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it('callbacks after destroy do nothing', async () => {
+    const events: PlayerEvent[] = [];
+    const player = createYouTubePlayer(document.body, (e) => events.push(e), () => Promise.resolve(YT));
+    player.load({ kind: 'youtube', videoId: 'a' }, 0, 1);
+    await flush();
+    const yt = FakeYTPlayer.last!;
+    player.destroy();
+    const n = yt.calls.length;
+    yt.options.events.onReady();
+    yt.shownVideoId = 'a';
+    yt.options.events.onStateChange({ data: 1 });
+    yt.options.events.onError({ data: 150 });
+    expect(yt.calls).toHaveLength(n);
+    expect(events).toEqual([]);
+  });
+
+  it('retries the API on the next load after a failed script load', async () => {
+    const events: PlayerEvent[] = [];
+    let attempts = 0;
+    const loadApi = () => (++attempts === 1 ? Promise.reject(new Error('blocked')) : Promise.resolve(YT));
+    FakeYTPlayer.last = null;
+    const player = createYouTubePlayer(document.body, (e) => events.push(e), loadApi);
+    player.load({ kind: 'youtube', videoId: 'a' }, 0, 1);
+    await flush();
+    expect(events).toEqual([{ type: 'unplayable', gen: 1 }]);
+    player.load({ kind: 'youtube', videoId: 'b' }, 0, 2);
+    await flush();
+    expect(attempts).toBe(2);
+    FakeYTPlayer.last!.options.events.onReady();
+    expect(FakeYTPlayer.last!.calls).toEqual([['cue', { videoId: 'b', startSeconds: 0 }]]);
+    expect(events).toHaveLength(1);
   });
 
   it('reports unplayable when the API cannot load (blocked script)', async () => {
