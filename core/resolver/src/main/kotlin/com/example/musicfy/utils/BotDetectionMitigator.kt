@@ -2,13 +2,11 @@
 
 package com.example.musicfy.utils
 
-import com.music.innertube.YouTube
+import com.example.musicfy.core.resolver.ResolverLog
 import com.example.musicfy.core.resolver.ResolverRuntime
-import com.example.musicfy.utils.PlaybackLogManager
-import com.example.musicfy.utils.PlaybackLogLevel
+import com.music.innertube.YouTube
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import timber.log.Timber
 import java.util.concurrent.atomic.AtomicInteger
 
 object BotDetectionMitigator {
@@ -51,7 +49,7 @@ object BotDetectionMitigator {
     }
 
     suspend fun rotateGuestSession() {
-        Timber.tag(TAG).i("Rotating guest session to bypass bot detection...")
+        ResolverLog.tag(TAG).i("Rotating guest session to bypass bot detection...")
         PlaybackLogManager.log(
             PlaybackLogLevel.BOT,
             "Rotating guest session",
@@ -64,12 +62,12 @@ object BotDetectionMitigator {
 
             YouTube.visitorData = null
 
-            YouTube.refreshVisitorData().onSuccess { newData ->
-                Timber.tag(TAG).i("New visitorData obtained successfully for region ${currentLocale.gl}.")
+            ResolverRuntime.platform.backend.refreshVisitorData().onSuccess { newData ->
+                ResolverLog.tag(TAG).i("New visitorData obtained successfully for region ${currentLocale.gl}.")
 
                 ResolverRuntime.platform.onVisitorDataRotated(newData)
             }.onFailure { e ->
-                Timber.tag(TAG).e(e, "Failed to refresh visitorData during rotation")
+                ResolverLog.tag(TAG).e(e, "Failed to refresh visitorData during rotation")
 
                 YouTube.locale = currentLocale
             }

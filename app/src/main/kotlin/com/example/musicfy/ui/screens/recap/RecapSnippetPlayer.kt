@@ -42,7 +42,7 @@ internal class RecapSnippetPlayer(private val context: Context, private val scop
         job = scope.launch {
             val data = withContext(Dispatchers.IO) {
                 val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-                YTPlayerUtils.playerResponseForPlayback(songId, audioQuality = AudioQuality.AUTO, connectivityManager = cm).getOrNull()
+                YTPlayerUtils.playerResponseForPlayback(songId, audioQuality = AudioQuality.AUTO, networkMetered = { cm.isActiveNetworkMetered }).getOrNull()
             } ?: return@launch
             if (released || playingId != songId) return@launch
             val http = DefaultHttpDataSource.Factory()

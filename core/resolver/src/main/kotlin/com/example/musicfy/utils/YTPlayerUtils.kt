@@ -2,14 +2,9 @@
 
 package com.example.musicfy.utils
 
-import android.net.ConnectivityManager
-import android.util.Log
-import androidx.media3.common.PlaybackException
-import com.music.innertube.NewPipeExtractor
 import com.music.innertube.YouTube
 import com.music.innertube.models.YouTubeClient
 import com.music.innertube.models.YouTubeClient.Companion.ANDROID_CREATOR
-import com.example.musicfy.utils.BotDetectionMitigator
 import com.music.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_43_32
 import com.music.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_61_48
 import com.music.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_65_10
@@ -25,61 +20,28 @@ import com.music.innertube.models.YouTubeClient.Companion.WEB_CREATOR
 import com.music.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.music.innertube.models.response.PlayerResponse
 import com.example.musicfy.constants.AudioQuality
+import com.example.musicfy.core.resolver.ResolverBackend
+import com.example.musicfy.core.resolver.ResolverLog
+import com.example.musicfy.core.resolver.ResolverRuntime
+import com.example.musicfy.core.resolver.UriCodec
 import com.example.musicfy.utils.cipher.CipherDeobfuscator
-import com.example.musicfy.utils.YTPlayerUtils.MAIN_CLIENT
-import com.example.musicfy.utils.YTPlayerUtils.STREAM_FALLBACK_CLIENTS
-import com.example.musicfy.utils.YTPlayerUtils.validateStatus
 import com.example.musicfy.utils.potoken.PoTokenGenerator
 import com.example.musicfy.utils.potoken.PoTokenResult
 import com.example.musicfy.utils.sabr.EjsNTransformSolver
-import com.example.musicfy.utils.PlaybackLogLevel
-import com.example.musicfy.utils.PlaybackLogManager
-import com.music.innertube.models.IpVersion
-import okhttp3.Dns
-import okhttp3.OkHttpClient
-import timber.log.Timber
-import java.net.Inet4Address
-import java.net.Inet6Address
-import java.net.InetAddress
-import java.net.Proxy
-import java.net.ProxySelector
-import java.net.SocketAddress
-import java.net.URI
-import java.io.IOException
 
 object YTPlayerUtils {
     private const val logTag = "YTPlayerUtils"
     private const val TAG = "YTPlayerUtils"
 
-    private val httpClient: OkHttpClient = OkHttpClient.Builder()
-        .dns(object : Dns {
-            override fun lookup(hostname: String): List<InetAddress> {
-                val addresses = Dns.SYSTEM.lookup(hostname)
-                return when (YouTube.ipVersion) {
-                    IpVersion.IPV4 -> addresses.filter { it is Inet4Address }.ifEmpty { addresses }
-                    IpVersion.IPV6 -> addresses.filter { it is Inet6Address }.ifEmpty { addresses }
-                    IpVersion.AUTO -> addresses
-                }
-            }
-        })
-        .proxySelector(object : ProxySelector() {
-            override fun select(uri: URI?): List<Proxy> = listOfNotNull(YouTube.proxy ?: Proxy.NO_PROXY)
-            override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) {
-                Timber.tag(TAG).e(ioe, "Proxy connection failed for URI: $uri")
-            }
-        })
-        .proxyAuthenticator { _, response ->
-            YouTube.proxyAuth?.let { auth ->
-                response.request.newBuilder()
-                    .header("Proxy-Authorization", auth)
-                    .build()
-            } ?: response.request
-        }
-        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-        .build()
+    private var poTokenGenerator = PoTokenGenerator()
 
-    private val poTokenGenerator = PoTokenGenerator()
+    private val backend: ResolverBackend
+        get() = ResolverRuntime.platform.backend
+
+    /** Fresh BotGuard state for tests; production never calls this. */
+    internal fun resetForTests() {
+        poTokenGenerator = PoTokenGenerator()
+    }
 
     /** True once the BotGuard engine holds a usable session token. Surfaced in diagnostics. */
     val hasPoToken: Boolean
@@ -195,15 +157,15 @@ object YTPlayerUtils {
         videoId: String,
         playlistId: String? = null,
         audioQuality: AudioQuality,
-        connectivityManager: ConnectivityManager,
+        networkMetered: () -> Boolean,
     ): Result<PlaybackData> {
-        val firstAttempt = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager)
+        val firstAttempt = resolvePlaybackData(videoId, playlistId, audioQuality, networkMetered)
 
         if (firstAttempt.isFailure && YouTube.cookie == null) {
-            Timber.tag(TAG).w("Playback failed for guest. Rotating session and retrying...")
+            ResolverLog.tag(TAG).w("Playback failed for guest. Rotating session and retrying...")
             PlaybackLogManager.log(PlaybackLogLevel.BOT, "Playback failed for guest", "Triggering bot detection mitigation (rotating guest session)")
             BotDetectionMitigator.rotateGuestSession()
-            val retryResult = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager)
+            val retryResult = resolvePlaybackData(videoId, playlistId, audioQuality, networkMetered)
             retryResult.onSuccess { BotDetectionMitigator.notifyPlaybackSuccess() }
             return retryResult
         }
@@ -216,9 +178,9 @@ object YTPlayerUtils {
         videoId: String,
         playlistId: String? = null,
         audioQuality: AudioQuality,
-        connectivityManager: ConnectivityManager,
+        networkMetered: () -> Boolean,
     ): Result<PlaybackData> = runCatching {
-        Timber.tag(logTag).d("Fetching player response for videoId: $videoId, playlistId: $playlistId")
+        ResolverLog.tag(logTag).d("Fetching player response for videoId: $videoId, playlistId: $playlistId")
         PlaybackLogManager.log(PlaybackLogLevel.INFO, "Resolving playback data", "Video: $videoId")
 
         println("[PLAYBACK_DEBUG] playerResponseForPlayback called: videoId=$videoId, playlistId=$playlistId")
@@ -226,15 +188,15 @@ object YTPlayerUtils {
         val isUploadedTrack = playlistId == "MLPT" || playlistId?.contains("MLPT") == true
 
         val isLoggedIn = YouTube.cookie != null
-        Timber.tag(logTag).d("Session authentication status: ${if (isLoggedIn) "Logged in" else "Not logged in"}")
+        ResolverLog.tag(logTag).d("Session authentication status: ${if (isLoggedIn) "Logged in" else "Not logged in"}")
 
         // VISIONOS answers UNPLAYABLE without a visitorData, and App.kt only fetches one
         // asynchronously at startup - so a track played early would silently fall through to a
         // client that truncates at ~786 KB. Make sure we have one before asking for a stream.
         if (!isLoggedIn && YouTube.visitorData.isNullOrEmpty()) {
-            Timber.tag(logTag).d("No visitorData yet - fetching one before resolving playback")
-            YouTube.refreshVisitorData()
-                .onFailure { Timber.tag(logTag).w(it, "Could not fetch visitorData: ${it.message}") }
+            ResolverLog.tag(logTag).d("No visitorData yet - fetching one before resolving playback")
+            backend.refreshVisitorData()
+                .onFailure { ResolverLog.tag(logTag).w(it, "Could not fetch visitorData: ${it.message}") }
         }
 
         // NewPipe's signature-timestamp lookup is a blocking network round trip, and it is only
@@ -246,25 +208,25 @@ object YTPlayerUtils {
         var poToken: PoTokenResult? = null
         val sessionId = if (isLoggedIn) YouTube.dataSyncId else YouTube.visitorData
         if (MAIN_CLIENT.useWebPoTokens && sessionId != null) {
-            Timber.tag(logTag).d("Generating PoToken for MAIN_CLIENT with sessionId")
+            ResolverLog.tag(logTag).d("Generating PoToken for MAIN_CLIENT with sessionId")
             try {
                 poToken = poTokenGenerator.poTokenFor(videoId, sessionId)
                 if (poToken != null) {
-                    Timber.tag(logTag).d("PoToken generated successfully")
+                    ResolverLog.tag(logTag).d("PoToken generated successfully")
                 }
             } catch (e: Exception) {
-                Timber.tag(logTag).e(e, "PoToken generation failed: ${e.message}")
+                ResolverLog.tag(logTag).e(e, "PoToken generation failed: ${e.message}")
             }
         }
 
-        Timber.tag(logTag).d("Attempting to get player response using MAIN_CLIENT: ${MAIN_CLIENT.clientName}")
+        ResolverLog.tag(logTag).d("Attempting to get player response using MAIN_CLIENT: ${MAIN_CLIENT.clientName}")
         PlaybackLogManager.log(PlaybackLogLevel.DEBUG, "Trying ${MAIN_CLIENT.clientName} (Main)")
         val mainSigTimestamp = if (MAIN_CLIENT.useSignatureTimestamp) signatureTimestamp.timestamp else null
-        var mainPlayerResponse = YouTube.player(videoId, playlistId, MAIN_CLIENT, mainSigTimestamp, poToken?.playerRequestPoToken).getOrThrow()
+        var mainPlayerResponse = backend.player(videoId, playlistId, MAIN_CLIENT, mainSigTimestamp, poToken?.playerRequestPoToken).getOrThrow()
 
         var metadataResponse: PlayerResponse? = null
         if (isLoggedIn) {
-            Timber.tag(logTag).d("Fetching metadata from METADATA_CLIENT (WEB_REMIX) for authenticated tracking")
+            ResolverLog.tag(logTag).d("Fetching metadata from METADATA_CLIENT (WEB_REMIX) for authenticated tracking")
             try {
 
                 var metaPoToken: PoTokenResult? = null
@@ -273,17 +235,17 @@ object YTPlayerUtils {
                     try {
                         metaPoToken = poTokenGenerator.poTokenFor(videoId, metaSessionId)
                     } catch (e: Exception) {
-                        Timber.tag(logTag).e(e, "Metadata PoToken generation failed")
+                        ResolverLog.tag(logTag).e(e, "Metadata PoToken generation failed")
                     }
                 }
-                metadataResponse = YouTube.player(
+                metadataResponse = backend.player(
                     videoId, playlistId, METADATA_CLIENT,
                     if (METADATA_CLIENT.useSignatureTimestamp) signatureTimestamp.timestamp else null,
                     metaPoToken?.playerRequestPoToken
                 ).getOrNull()
-                Timber.tag(logTag).d("Metadata response obtained: ${metadataResponse?.playabilityStatus?.status}")
+                ResolverLog.tag(logTag).d("Metadata response obtained: ${metadataResponse?.playabilityStatus?.status}")
             } catch (e: Exception) {
-                Timber.tag(logTag).e(e, "Failed to fetch metadata from METADATA_CLIENT")
+                ResolverLog.tag(logTag).e(e, "Failed to fetch metadata from METADATA_CLIENT")
             }
         }
 
@@ -304,11 +266,11 @@ object YTPlayerUtils {
 
         if (isAgeRestrictedFromResponse && isLoggedIn) {
 
-            Timber.tag(logTag).d("Restricted content detected, trying WEB_CREATOR")
-            Log.i(TAG, "Age-restricted: using WEB_CREATOR for videoId=$videoId")
-            val creatorResponse = YouTube.player(videoId, playlistId, WEB_CREATOR, null, null).getOrNull()
+            ResolverLog.tag(logTag).d("Restricted content detected, trying WEB_CREATOR")
+            ResolverLog.release(TAG, "Age-restricted: using WEB_CREATOR for videoId=$videoId")
+            val creatorResponse = backend.player(videoId, playlistId, WEB_CREATOR, null, null).getOrNull()
             if (creatorResponse?.playabilityStatus?.status == "OK") {
-                Timber.tag(logTag).d("WEB_CREATOR works for age-restricted content")
+                ResolverLog.tag(logTag).d("WEB_CREATOR works for age-restricted content")
                 mainPlayerResponse = creatorResponse
                 usedAgeRestrictedClient = WEB_CREATOR
             }
@@ -332,8 +294,8 @@ object YTPlayerUtils {
         var isAgeRestricted = currentStatus in RESTRICTED_STATUSES
 
         if (isAgeRestricted) {
-            Timber.tag(logTag).d("Content is still age-restricted (status: $currentStatus), will try fallback clients")
-            Log.i(TAG, "Age-restricted content detected: videoId=$videoId, status=$currentStatus")
+            ResolverLog.tag(logTag).d("Content is still age-restricted (status: $currentStatus), will try fallback clients")
+            ResolverLog.release(TAG, "Age-restricted content detected: videoId=$videoId, status=$currentStatus")
         }
 
         val isPrivateTrack = mainPlayerResponse.videoDetails?.musicVideoType == "MUSIC_VIDEO_TYPE_PRIVATELY_OWNED_TRACK"
@@ -355,29 +317,29 @@ object YTPlayerUtils {
 
                 client = MAIN_CLIENT
                 streamPlayerResponse = retryMainPlayerResponse ?: mainPlayerResponse
-                Timber.tag(logTag).d("Trying stream from MAIN_CLIENT: ${client.clientName}")
+                ResolverLog.tag(logTag).d("Trying stream from MAIN_CLIENT: ${client.clientName}")
             } else {
 
                 client = STREAM_FALLBACK_CLIENTS[clientIndex]
-                Timber.tag(logTag).d("Trying fallback client ${clientIndex + 1}/${STREAM_FALLBACK_CLIENTS.size}: ${client.clientName}")
+                ResolverLog.tag(logTag).d("Trying fallback client ${clientIndex + 1}/${STREAM_FALLBACK_CLIENTS.size}: ${client.clientName}")
                 PlaybackLogManager.log(PlaybackLogLevel.DEBUG, "Trying fallback [${clientIndex + 1}/${STREAM_FALLBACK_CLIENTS.size}]", client.clientName)
 
                 if (client.loginRequired && !isLoggedIn && YouTube.cookie == null) {
 
-                    Timber.tag(logTag).d("Skipping client ${client.clientName} - requires login but user is not logged in")
+                    ResolverLog.tag(logTag).d("Skipping client ${client.clientName} - requires login but user is not logged in")
                     continue
                 }
 
                 if (client.useWebPoTokens && poToken == null && sessionId != null) {
-                    Timber.tag(logTag).d("Lazily generating PoToken for fallback web client: ${client.clientName}")
+                    ResolverLog.tag(logTag).d("Lazily generating PoToken for fallback web client: ${client.clientName}")
                     try {
                         poToken = poTokenGenerator.poTokenFor(videoId, sessionId)
                     } catch (e: Exception) {
-                        Timber.tag(logTag).e(e, "Lazy PoToken generation failed")
+                        ResolverLog.tag(logTag).e(e, "Lazy PoToken generation failed")
                     }
                 }
 
-                Timber.tag(logTag).d("Fetching player response for fallback client: ${client.clientName}")
+                ResolverLog.tag(logTag).d("Fetching player response for fallback client: ${client.clientName}")
 
                 val clientPoToken = if (client.useWebPoTokens) poToken?.playerRequestPoToken else null
 
@@ -388,11 +350,11 @@ object YTPlayerUtils {
                         signatureTimestamp.timestamp
                     }
                 streamPlayerResponse =
-                    YouTube.player(videoId, playlistId, client, clientSigTimestamp, clientPoToken).getOrNull()
+                    backend.player(videoId, playlistId, client, clientSigTimestamp, clientPoToken).getOrNull()
             }
 
             if (streamPlayerResponse?.playabilityStatus?.status == "OK") {
-                Timber.tag(logTag).d("Player response status OK for client: ${if (clientIndex == -1) MAIN_CLIENT.clientName else STREAM_FALLBACK_CLIENTS[clientIndex].clientName}")
+                ResolverLog.tag(logTag).d("Player response status OK for client: ${if (clientIndex == -1) MAIN_CLIENT.clientName else STREAM_FALLBACK_CLIENTS[clientIndex].clientName}")
                 PlaybackLogManager.log(PlaybackLogLevel.INFO, "Player response OK", if (clientIndex == -1) MAIN_CLIENT.clientName else STREAM_FALLBACK_CLIENTS[clientIndex].clientName)
 
                 val hasDirectUrls = streamPlayerResponse.streamingData?.adaptiveFormats
@@ -400,7 +362,7 @@ object YTPlayerUtils {
                 val hasSignatureCipher = streamPlayerResponse.streamingData?.adaptiveFormats
                     ?.any { !it.signatureCipher.isNullOrEmpty() || !it.cipher.isNullOrEmpty() } == true
 
-                Timber.tag(logTag).d("URL check: hasDirectUrls=$hasDirectUrls, hasSignatureCipher=$hasSignatureCipher")
+                ResolverLog.tag(logTag).d("URL check: hasDirectUrls=$hasDirectUrls, hasSignatureCipher=$hasSignatureCipher")
 
                 val responseToUse = streamPlayerResponse
 
@@ -410,11 +372,11 @@ object YTPlayerUtils {
                 val formatCandidates = selectAudioFormatCandidates(
                     responseToUse,
                     audioQuality,
-                    connectivityManager.isActiveNetworkMetered,
+                    networkMetered(),
                 )
 
                 if (formatCandidates.isEmpty()) {
-                    Timber.tag(logTag).d("No suitable format found for client: $clientLabel")
+                    ResolverLog.tag(logTag).d("No suitable format found for client: $clientLabel")
                     continue
                 }
 
@@ -428,15 +390,15 @@ object YTPlayerUtils {
                         streamUrl = candidateUrl
                         break
                     }
-                    Timber.tag(logTag).d("Could not resolve URL for ${candidate.mimeType}@${candidate.bitrate}, trying next candidate")
+                    ResolverLog.tag(logTag).d("Could not resolve URL for ${candidate.mimeType}@${candidate.bitrate}, trying next candidate")
                 }
 
                 if (format == null || streamUrl == null) {
-                    Timber.tag(logTag).d("Stream URL not found for any candidate format on client: $clientLabel")
+                    ResolverLog.tag(logTag).d("Stream URL not found for any candidate format on client: $clientLabel")
                     continue
                 }
 
-                Timber.tag(logTag).d("Format selected: ${format.mimeType}, bitrate: ${format.bitrate} ($clientLabel)")
+                ResolverLog.tag(logTag).d("Format selected: ${format.mimeType}, bitrate: ${format.bitrate} ($clientLabel)")
 
                 val currentClient = if (clientIndex == -1) {
                     usedAgeRestrictedClient ?: MAIN_CLIENT
@@ -448,46 +410,46 @@ object YTPlayerUtils {
 
                 if (currentClient.useWebPoTokens) {
                     try {
-                        Timber.tag(logTag).d("Applying n-transform to stream URL for ${currentClient.clientName}")
+                        ResolverLog.tag(logTag).d("Applying n-transform to stream URL for ${currentClient.clientName}")
                         val transformed = EjsNTransformSolver.transformNParamInUrl(streamUrl!!)
                         if (transformed != streamUrl) {
                             streamUrl = transformed
-                            Timber.tag(logTag).d("N-transform applied successfully")
+                            ResolverLog.tag(logTag).d("N-transform applied successfully")
                         }
                     } catch (e: Exception) {
-                        Timber.tag(logTag).e(e, "N-transform failed: ${e.message}")
+                        ResolverLog.tag(logTag).e(e, "N-transform failed: ${e.message}")
                     }
                 }
 
                 if (currentClient.useWebPoTokens && poToken?.streamingDataPoToken != null) {
-                    Timber.tag(logTag).d("Appending pot= parameter to stream URL")
+                    ResolverLog.tag(logTag).d("Appending pot= parameter to stream URL")
                     val separator = if ("?" in streamUrl!!) "&" else "?"
-                    streamUrl = "${streamUrl}${separator}pot=${android.net.Uri.encode(poToken.streamingDataPoToken)}"
+                    streamUrl = "${streamUrl}${separator}pot=${UriCodec.encode(poToken.streamingDataPoToken)}"
                 }
 
                 streamExpiresInSeconds = streamPlayerResponse.streamingData?.expiresInSeconds
                 if (streamExpiresInSeconds == null) {
-                    Timber.tag(logTag).d("Stream expiration time not found")
+                    ResolverLog.tag(logTag).d("Stream expiration time not found")
                     continue
                 }
 
-                Timber.tag(logTag).d("Stream expires in: $streamExpiresInSeconds seconds")
+                ResolverLog.tag(logTag).d("Stream expires in: $streamExpiresInSeconds seconds")
 
                 val urlHost = try { java.net.URL(streamUrl).host } catch (e: Exception) { "unknown" }
-                Timber.tag(logTag).d("Stream URL host: $urlHost, pot length: ${poToken?.streamingDataPoToken?.length ?: 0}")
+                ResolverLog.tag(logTag).d("Stream URL host: $urlHost, pot length: ${poToken?.streamingDataPoToken?.length ?: 0}")
 
                 val isPrivatelyOwned = streamPlayerResponse.videoDetails?.musicVideoType == "MUSIC_VIDEO_TYPE_PRIVATELY_OWNED_TRACK"
 
                 if (isPrivatelyOwned || clientIndex == STREAM_FALLBACK_CLIENTS.size - 1) {
-                    Timber.tag(logTag).d("Using stream without validation: ${currentClient.clientName}")
+                    ResolverLog.tag(logTag).d("Using stream without validation: ${currentClient.clientName}")
                     successClient = currentClient
-                    Log.i(TAG, "Playback: client=${currentClient.clientName}, videoId=$videoId, private=$isPrivatelyOwned")
+                    ResolverLog.release(TAG, "Playback: client=${currentClient.clientName}, videoId=$videoId, private=$isPrivatelyOwned")
                     break
                 }
 
                 if (validateStatus(streamUrl!!, currentClient.streamHeaders())) {
 
-                    Timber.tag(logTag).d("Stream validated successfully with client: ${currentClient.clientName}")
+                    ResolverLog.tag(logTag).d("Stream validated successfully with client: ${currentClient.clientName}")
                     successClient = currentClient
                     PlaybackLogManager.log(
                         PlaybackLogLevel.INFO,
@@ -497,10 +459,10 @@ object YTPlayerUtils {
                             "bytes=${format.contentLength ?: 0}",
                     )
 
-                    Log.i(TAG, "Playback: client=${currentClient.clientName}, videoId=$videoId")
+                    ResolverLog.release(TAG, "Playback: client=${currentClient.clientName}, videoId=$videoId")
                     break
                 } else {
-                    Timber.tag(logTag).d("Stream validation failed for client: ${currentClient.clientName}")
+                    ResolverLog.tag(logTag).d("Stream validation failed for client: ${currentClient.clientName}")
 
                     if (currentClient.useWebPoTokens) {
                         var nTransformWorked = false
@@ -508,17 +470,17 @@ object YTPlayerUtils {
                         try {
                             val nTransformed = CipherDeobfuscator.transformNParamInUrl(streamUrl!!)
                             if (nTransformed != streamUrl) {
-                                Timber.tag(logTag).d("CipherDeobfuscator n-transform applied, re-validating...")
+                                ResolverLog.tag(logTag).d("CipherDeobfuscator n-transform applied, re-validating...")
                                 if (validateStatus(nTransformed, currentClient.streamHeaders())) {
-                                    Timber.tag(logTag).d("N-transformed URL VALIDATED OK!")
+                                    ResolverLog.tag(logTag).d("N-transformed URL VALIDATED OK!")
                                     streamUrl = nTransformed
                                     nTransformWorked = true
                                     successClient = currentClient
-                                    Log.i(TAG, "Playback: client=${currentClient.clientName}, videoId=$videoId (cipher n-transform)")
+                                    ResolverLog.release(TAG, "Playback: client=${currentClient.clientName}, videoId=$videoId (cipher n-transform)")
                                 }
                             }
                         } catch (e: Exception) {
-                            Timber.tag(logTag).e(e, "CipherDeobfuscator n-transform error")
+                            ResolverLog.tag(logTag).e(e, "CipherDeobfuscator n-transform error")
                         }
 
                         if (nTransformWorked) break
@@ -527,15 +489,15 @@ object YTPlayerUtils {
             } else {
                 val status = streamPlayerResponse?.playabilityStatus?.status ?: "Unknown"
                 val reason = streamPlayerResponse?.playabilityStatus?.reason ?: "No reason"
-                Timber.tag(logTag).d("Player response status not OK: $status, reason: $reason")
+                ResolverLog.tag(logTag).d("Player response status not OK: $status, reason: $reason")
                 PlaybackLogManager.log(PlaybackLogLevel.WARNING, "Client failed: ${client.clientName}", "$status: $reason")
 
-                Timber.tag(logTag).d("Player response status not OK: ${streamPlayerResponse?.playabilityStatus?.status}, reason: ${streamPlayerResponse?.playabilityStatus?.reason}")
+                ResolverLog.tag(logTag).d("Player response status not OK: ${streamPlayerResponse?.playabilityStatus?.status}, reason: ${streamPlayerResponse?.playabilityStatus?.reason}")
             }
         }
 
         if (streamPlayerResponse == null) {
-            Timber.tag(logTag).e("Bad stream player response - all clients failed")
+            ResolverLog.tag(logTag).e("Bad stream player response - all clients failed")
             if (isUploadedTrack) {
                 println("[PLAYBACK_DEBUG] FAILURE: All clients failed for uploaded track videoId=$videoId")
             }
@@ -544,33 +506,29 @@ object YTPlayerUtils {
 
         if (streamPlayerResponse.playabilityStatus.status != "OK") {
             val errorReason = streamPlayerResponse.playabilityStatus.reason
-            Timber.tag(logTag).e("Playability status not OK: $errorReason")
+            ResolverLog.tag(logTag).e("Playability status not OK: $errorReason")
             if (isUploadedTrack) {
                 println("[PLAYBACK_DEBUG] FAILURE: Playability not OK for uploaded track - status=${streamPlayerResponse.playabilityStatus.status}, reason=$errorReason")
             }
-            throw PlaybackException(
-                errorReason,
-                null,
-                PlaybackException.ERROR_CODE_REMOTE_ERROR
-            )
+            throw ResolverRuntime.platform.playbackError(errorReason)
         }
 
         if (streamExpiresInSeconds == null) {
-            Timber.tag(logTag).e("Missing stream expire time")
+            ResolverLog.tag(logTag).e("Missing stream expire time")
             throw Exception("Missing stream expire time")
         }
 
         if (format == null) {
-            Timber.tag(logTag).e("Could not find format")
+            ResolverLog.tag(logTag).e("Could not find format")
             throw Exception("Could not find format")
         }
 
         if (streamUrl == null) {
-            Timber.tag(logTag).e("Could not find stream url")
+            ResolverLog.tag(logTag).e("Could not find stream url")
             throw Exception("Could not find stream url")
         }
 
-        Timber.tag(logTag).d("Successfully obtained playback data with format: ${format.mimeType}, bitrate: ${format.bitrate}")
+        ResolverLog.tag(logTag).d("Successfully obtained playback data with format: ${format.mimeType}, bitrate: ${format.bitrate}")
         if (isUploadedTrack) {
             println("[PLAYBACK_DEBUG] SUCCESS: Got playback data for uploaded track - format=${format.mimeType}, streamUrl=${streamUrl?.take(100)}...")
         }
@@ -585,7 +543,7 @@ object YTPlayerUtils {
             streamHeaders = successClient?.streamHeaders().orEmpty(),
         )
     }.onFailure { e ->
-        Timber.tag(logTag).e(e, "Playback resolution failed")
+        ResolverLog.tag(logTag).e(e, "Playback resolution failed")
         PlaybackLogManager.log(PlaybackLogLevel.ERROR, "Playback failed", "${e::class.simpleName}: ${e.message}")
 
         println("[PLAYBACK_DEBUG] EXCEPTION during playback for videoId=$videoId: ${e::class.simpleName}: ${e.message}")
@@ -605,14 +563,14 @@ object YTPlayerUtils {
 
         for (client in VIDEO_BACKGROUND_CLIENTS) {
             val response = try {
-                YouTube.player(videoId, null, client, signatureTimestamp.timestamp, null).getOrNull()
+                backend.player(videoId, null, client, signatureTimestamp.timestamp, null).getOrNull()
             } catch (e: Exception) {
-                Timber.tag(logTag).d("resolveVideoStreamUrl: client ${client.clientName} threw: ${e.message}")
+                ResolverLog.tag(logTag).d("resolveVideoStreamUrl: client ${client.clientName} threw: ${e.message}")
                 null
             } ?: continue
 
             if (response.playabilityStatus.status != "OK") {
-                Timber.tag(logTag).d("resolveVideoStreamUrl: client ${client.clientName} not OK: ${response.playabilityStatus.status}")
+                ResolverLog.tag(logTag).d("resolveVideoStreamUrl: client ${client.clientName} not OK: ${response.playabilityStatus.status}")
                 continue
             }
 
@@ -622,19 +580,19 @@ object YTPlayerUtils {
                 ?: response.streamingData?.formats?.firstOrNull { !it.isAudio }
 
             if (format == null) {
-                Timber.tag(logTag).d("resolveVideoStreamUrl: client ${client.clientName} had no video format")
+                ResolverLog.tag(logTag).d("resolveVideoStreamUrl: client ${client.clientName} had no video format")
                 continue
             }
 
             val url = try {
                 findUrlOrNull(format, videoId, response, skipNewPipe = false)
             } catch (e: Exception) {
-                Timber.tag(logTag).d("resolveVideoStreamUrl: client ${client.clientName} URL resolution threw: ${e.message}")
+                ResolverLog.tag(logTag).d("resolveVideoStreamUrl: client ${client.clientName} URL resolution threw: ${e.message}")
                 null
             }
 
             if (url != null) {
-                Timber.tag(logTag).d("resolveVideoStreamUrl: resolved via ${client.clientName}")
+                ResolverLog.tag(logTag).d("resolveVideoStreamUrl: resolved via ${client.clientName}")
                 return@runCatching url
             }
         }
@@ -646,21 +604,21 @@ object YTPlayerUtils {
         videoId: String,
         playlistId: String? = null,
     ): Result<PlayerResponse> {
-        Timber.tag(logTag).d("Fetching metadata-only player response for videoId: $videoId using MAIN_CLIENT: ${MAIN_CLIENT.clientName}")
-        return YouTube.player(videoId, playlistId, client = WEB_REMIX)
-            .onSuccess { Timber.tag(logTag).d("Successfully fetched metadata") }
-            .onFailure { Timber.tag(logTag).e(it, "Failed to fetch metadata") }
+        ResolverLog.tag(logTag).d("Fetching metadata-only player response for videoId: $videoId using MAIN_CLIENT: ${MAIN_CLIENT.clientName}")
+        return backend.player(videoId, playlistId, client = WEB_REMIX)
+            .onSuccess { ResolverLog.tag(logTag).d("Successfully fetched metadata") }
+            .onFailure { ResolverLog.tag(logTag).e(it, "Failed to fetch metadata") }
     }
 
     private fun findFormat(
         playerResponse: PlayerResponse,
         audioQuality: AudioQuality,
-        connectivityManager: ConnectivityManager,
+        networkMetered: () -> Boolean,
     ): PlayerResponse.StreamingData.Format? =
         selectAudioFormatCandidates(
             playerResponse,
             audioQuality,
-            connectivityManager.isActiveNetworkMetered,
+            networkMetered(),
         ).firstOrNull()
 
     /**
@@ -675,7 +633,7 @@ object YTPlayerUtils {
         audioQuality: AudioQuality,
         networkMetered: Boolean,
     ): List<PlayerResponse.StreamingData.Format> {
-        Timber.tag(logTag).d("Finding format with audioQuality: $audioQuality, network metered: $networkMetered")
+        ResolverLog.tag(logTag).d("Finding format with audioQuality: $audioQuality, network metered: $networkMetered")
 
         val audioFormats = playerResponse.streamingData?.adaptiveFormats
             ?.filter { it.isAudio && it.bitrate > 0 }
@@ -683,7 +641,7 @@ object YTPlayerUtils {
             .orEmpty()
 
         if (audioFormats.isEmpty()) {
-            Timber.tag(logTag).d("No suitable audio format found")
+            ResolverLog.tag(logTag).d("No suitable audio format found")
             return emptyList()
         }
 
@@ -738,7 +696,7 @@ object YTPlayerUtils {
                 usableFormats.filter { it.bitrate > targetBitrateBps }.sortedWith(preferLowerAboveTarget)
         }
 
-        Timber.tag(logTag).d(
+        ResolverLog.tag(logTag).d(
             "Format candidates ($effectiveQuality): " + candidates.take(8).joinToString {
                 "${it.mimeType}@${it.bitrate}${if (it.url.isNullOrEmpty()) " (cipher)" else ""}"
             }
@@ -773,34 +731,8 @@ object YTPlayerUtils {
      * url, so probing without them can fail on a url that plays perfectly well. HEAD is not
      * usable here - googlevideo answers it with 403 even for good urls - so this is a ranged GET.
      */
-    private fun validateStatus(url: String, headers: Map<String, String> = emptyMap()): Boolean {
-        Timber.tag(logTag).d("Validating stream URL status")
-        try {
-            val requestBuilder = okhttp3.Request.Builder()
-                .get()
-                .url(url)
-                .header("Range", "bytes=0-0")
-
-            headers.forEach { (name, value) -> requestBuilder.header(name, value) }
-            if (headers["User-Agent"] == null) {
-                requestBuilder.header("User-Agent", YouTubeClient.USER_AGENT_WEB)
-            }
-
-            YouTube.cookie?.let { cookie ->
-                requestBuilder.addHeader("Cookie", cookie)
-            }
-
-            httpClient.newCall(requestBuilder.build()).execute().use {
-                val isSuccessful = it.isSuccessful || it.code == 206
-                Timber.tag(logTag).d("Stream URL validation result: ${if (isSuccessful) "Success" else "Failed"} (${it.code})")
-                return isSuccessful
-            }
-        } catch (e: Exception) {
-            Timber.tag(logTag).e(e, "Stream URL validation failed with exception")
-            reportException(e)
-        }
-        return false
-    }
+    private fun validateStatus(url: String, headers: Map<String, String> = emptyMap()): Boolean =
+        backend.validateStatus(url, headers)
 
     data class SignatureTimestampResult(
         val timestamp: Int?,
@@ -808,22 +740,22 @@ object YTPlayerUtils {
     )
 
     private fun getSignatureTimestampOrNull(videoId: String): SignatureTimestampResult {
-        Timber.tag(logTag).d("Getting signature timestamp for videoId: $videoId")
-        val result = NewPipeExtractor.getSignatureTimestamp(videoId)
+        ResolverLog.tag(logTag).d("Getting signature timestamp for videoId: $videoId")
+        val result = backend.signatureTimestamp(videoId)
         return result.fold(
             onSuccess = { timestamp ->
-                Timber.tag(logTag).d("Signature timestamp obtained: $timestamp")
+                ResolverLog.tag(logTag).d("Signature timestamp obtained: $timestamp")
                 SignatureTimestampResult(timestamp, isAgeRestricted = false)
             },
             onFailure = { error ->
                 val isAgeRestricted = error.message?.contains("age-restricted", ignoreCase = true) == true ||
                     error.cause?.message?.contains("age-restricted", ignoreCase = true) == true
                 if (isAgeRestricted) {
-                    Timber.tag(logTag).d("Age-restricted content detected from NewPipe")
-                    Log.i(TAG, "Age-restricted detected early via NewPipe: videoId=$videoId")
+                    ResolverLog.tag(logTag).d("Age-restricted content detected from NewPipe")
+                    ResolverLog.release(TAG, "Age-restricted detected early via NewPipe: videoId=$videoId")
                 } else {
-                    Timber.tag(logTag).e(error, "Failed to get signature timestamp")
-                    reportException(error)
+                    ResolverLog.tag(logTag).e(error, "Failed to get signature timestamp")
+                    error.printStackTrace()
                 }
                 SignatureTimestampResult(null, isAgeRestricted)
             }
@@ -836,41 +768,41 @@ object YTPlayerUtils {
         playerResponse: PlayerResponse,
         skipNewPipe: Boolean = false
     ): String? {
-        Timber.tag(logTag).d("Finding stream URL for format: ${format.mimeType}, videoId: $videoId, skipNewPipe: $skipNewPipe")
+        ResolverLog.tag(logTag).d("Finding stream URL for format: ${format.mimeType}, videoId: $videoId, skipNewPipe: $skipNewPipe")
 
         if (!format.url.isNullOrEmpty()) {
-            Timber.tag(logTag).d("Using URL from format directly")
+            ResolverLog.tag(logTag).d("Using URL from format directly")
             return format.url
         }
 
         val signatureCipher = format.signatureCipher ?: format.cipher
         if (!signatureCipher.isNullOrEmpty()) {
-            Timber.tag(logTag).d("Format has signatureCipher, using custom deobfuscation")
+            ResolverLog.tag(logTag).d("Format has signatureCipher, using custom deobfuscation")
             val customDeobfuscatedUrl = CipherDeobfuscator.deobfuscateStreamUrl(signatureCipher, videoId)
             if (customDeobfuscatedUrl != null) {
-                Timber.tag(logTag).d("Stream URL obtained via custom cipher deobfuscation")
+                ResolverLog.tag(logTag).d("Stream URL obtained via custom cipher deobfuscation")
                 return customDeobfuscatedUrl
             }
-            Timber.tag(logTag).d("Custom cipher deobfuscation failed")
+            ResolverLog.tag(logTag).d("Custom cipher deobfuscation failed")
         }
 
         if (skipNewPipe) {
-            Timber.tag(logTag).d("Skipping NewPipe methods for age-restricted content")
+            ResolverLog.tag(logTag).d("Skipping NewPipe methods for age-restricted content")
             return null
         }
 
-        val deobfuscatedUrl = NewPipeExtractor.getStreamUrl(format, videoId)
+        val deobfuscatedUrl = backend.newPipeStreamUrl(format, videoId)
         if (deobfuscatedUrl != null) {
-            Timber.tag(logTag).d("Stream URL obtained via NewPipe deobfuscation")
+            ResolverLog.tag(logTag).d("Stream URL obtained via NewPipe deobfuscation")
             return deobfuscatedUrl
         }
 
-        Timber.tag(logTag).d("Trying StreamInfo fallback for URL")
-        val streamUrls = YouTube.getNewPipeStreamUrls(videoId)
+        ResolverLog.tag(logTag).d("Trying StreamInfo fallback for URL")
+        val streamUrls = backend.newPipeStreamUrls(videoId)
         if (streamUrls.isNotEmpty()) {
             val streamUrl = streamUrls.find { it.first == format.itag }?.second
             if (streamUrl != null) {
-                Timber.tag(logTag).d("Stream URL obtained from StreamInfo")
+                ResolverLog.tag(logTag).d("Stream URL obtained from StreamInfo")
                 return streamUrl
             }
 
@@ -881,16 +813,16 @@ object YTPlayerUtils {
             }?.second
 
             if (audioStream != null) {
-                Timber.tag(logTag).d("Audio stream URL obtained from StreamInfo (different itag)")
+                ResolverLog.tag(logTag).d("Audio stream URL obtained from StreamInfo (different itag)")
                 return audioStream
             }
         }
 
-        Timber.tag(logTag).e("Failed to get stream URL")
+        ResolverLog.tag(logTag).e("Failed to get stream URL")
         return null
     }
 
     fun forceRefreshForVideo(videoId: String) {
-        Timber.tag(logTag).d("Force refreshing for videoId: $videoId")
+        ResolverLog.tag(logTag).d("Force refreshing for videoId: $videoId")
     }
 }
