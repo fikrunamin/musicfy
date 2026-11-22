@@ -13,6 +13,7 @@ const STATE_PAUSED = 2;
 const STATE_CUED = 5;
 /** After a load, events naming the previous video are dropped for at most this long. */
 const STALE_WINDOW_MS = 3_000;
+const RECHECK_MS = 250;
 
 export interface YTPlayer {
   cueVideoById(options: { videoId: string; startSeconds?: number }): void;
@@ -100,6 +101,8 @@ export function createYouTubePlayer(
   /** Last accepted state; -1 right after a (re-)cue. Cued/unstarted: seekTo would start playback. */
   let lastState = -1;
   let cuedStartMs: number | null = null;
+  let droppedState: number | null = null;
+  let recheckTimers: ReturnType<typeof setTimeout>[] = [];
 
   const cue = (videoId: string, startMs: number | null) => {
     cuedStartMs = startMs;
@@ -120,6 +123,36 @@ export function createYouTubePlayer(
 
   const emit = (type: PlayerEvent['type']) => onEvent({ type, gen: currentGen });
 
+  const acceptState = (state: number) => {
+    droppedState = null;
+    if (state === STATE_CUED || state === STATE_PLAYING) {
+      awaitingNewVideo = false;
+      filterActive = false;
+    }
+    lastState = state;
+    if (state === STATE_PLAYING) emit('playing');
+    else if (state === STATE_PAUSED) emit('paused');
+    else if (state === STATE_ENDED) emit('ended');
+  };
+
+  const clearRechecks = () => {
+    for (const t of recheckTimers) clearTimeout(t);
+    recheckTimers = [];
+    droppedState = null;
+  };
+
+  /** A state dropped as stale may have been the real one (cached video data lagging): look again. */
+  const recheck = () => {
+    if (destroyed || droppedState === null) return;
+    if (!isStale()) acceptState(droppedState);
+  };
+
+  const scheduleRecheck = () => {
+    if (recheckTimers.length > 0) return;
+    const remaining = Math.max(0, loadedAt + STALE_WINDOW_MS - Date.now());
+    recheckTimers = [setTimeout(recheck, RECHECK_MS), setTimeout(recheck, remaining + 1)];
+  };
+
   const connect = () => {
     loadApi().then(
       (YT) => {
@@ -138,15 +171,13 @@ export function createYouTubePlayer(
               if (wantPlay) yt!.playVideo();
             },
             onStateChange: (e) => {
-              if (destroyed || isStale()) return;
-              if (e.data === STATE_CUED || e.data === STATE_PLAYING) {
-                awaitingNewVideo = false;
-                filterActive = false;
+              if (destroyed) return;
+              if (isStale()) {
+                droppedState = e.data;
+                scheduleRecheck();
+                return;
               }
-              lastState = e.data;
-              if (e.data === STATE_PLAYING) emit('playing');
-              else if (e.data === STATE_PAUSED) emit('paused');
-              else if (e.data === STATE_ENDED) emit('ended');
+              acceptState(e.data);
             },
             onError: (e) => {
               if (destroyed || isStale()) return;
@@ -169,6 +200,7 @@ export function createYouTubePlayer(
       currentGen = gen;
       if (requestedVideoId !== source.videoId) previousVideoId = requestedVideoId;
       requestedVideoId = source.videoId;
+      clearRechecks();
       awaitingNewVideo = true;
       filterActive = true;
       loadedAt = Date.now();
@@ -200,7 +232,7 @@ export function createYouTubePlayer(
       }
       if (!ready) return;
       // seekTo on a cued/unstarted video starts playback; re-cue at the new position instead.
-      if (!wantPlay && requestedVideoId !== null && (lastState === STATE_CUED || lastState === -1)) {
+      if (!wantPlay && requestedVideoId !== null && (lastState === STATE_CUED || lastState === STATE_ENDED || lastState === -1)) {
         awaitingNewVideo = true;
         cue(requestedVideoId, ms);
         return;
@@ -214,6 +246,7 @@ export function createYouTubePlayer(
     },
     destroy() {
       destroyed = true;
+      clearRechecks();
       yt?.destroy();
       mount.remove();
     },

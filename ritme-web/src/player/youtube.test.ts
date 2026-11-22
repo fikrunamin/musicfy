@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { PlayerEvent } from './types';
 import { type YTNamespace, type YTPlayerOptions, IFRAME_API_URL, createYouTubeApiLoader, createYouTubePlayer } from './youtube';
 
@@ -215,6 +215,39 @@ describe('createYouTubePlayer', () => {
       expect(player.currentMs()).not.toBeNull();
     } finally {
       Date.now = realNow;
+    }
+  });
+
+  it('seek on an ended video re-cues instead of seekTo (seekTo would replay the tail)', async () => {
+    const { player, yt } = await readyPlayer();
+    player.load({ kind: 'youtube', videoId: 'a' }, 0, 1);
+    yt.shownVideoId = 'a';
+    yt.options.events.onStateChange({ data: 1 });
+    yt.options.events.onStateChange({ data: 0 });
+    player.pause();
+    player.seek(225_000);
+    expect(yt.calls.some((c) => c[0] === 'seek')).toBe(false);
+    expect(yt.calls.at(-1)).toEqual(['cue', { videoId: 'a', startSeconds: 225 }]);
+  });
+
+  it('recovers a CUED/PLAYING dropped as stale once the video data catches up', async () => {
+    const { player, yt, events } = await readyPlayer();
+    player.load({ kind: 'youtube', videoId: 'a' }, 0, 1);
+    yt.shownVideoId = 'a';
+    yt.options.events.onStateChange({ data: CUED });
+    vi.useFakeTimers();
+    try {
+      player.load({ kind: 'youtube', videoId: 'b' }, 0, 2);
+      yt.options.events.onStateChange({ data: CUED }); // cache still 'a': dropped
+      yt.options.events.onStateChange({ data: 1 });
+      expect(events).toEqual([]);
+      expect(player.currentMs()).toBeNull();
+      yt.shownVideoId = 'b'; // no further state events
+      vi.advanceTimersByTime(250);
+      expect(events).toEqual([{ type: 'playing', gen: 2 }]);
+      expect(player.currentMs()).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
     }
   });
 
