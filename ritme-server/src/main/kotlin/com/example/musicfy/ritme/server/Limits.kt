@@ -1,32 +1,31 @@
 package com.example.musicfy.ritme.server
 
 /**
- * Heap budget. The container has `mem_limit: 1408m` and the JVM `-XX:MaxRAMPercentage=75`, so the
- * heap is ~1056 MB (and `-XX:+ExitOnOutOfMemoryError` restarts it should it ever run out). The
- * limits below are chosen so that their worst cases add up:
+ * Heap budget. The container has `mem_limit: 1408m` and the JVM `-XX:MaxRAMPercentage=75`, which
+ * gives a max heap of ~1020 MB as reported by the JVM (and `-XX:+ExitOnOutOfMemoryError` restarts it
+ * should it ever run out). The limits below are chosen so that their worst cases add up:
  *
  * | Part | Bound | Worst case in heap |
  * |---|---|---|
  * | Baseline (JVM, Ktor, Netty, caches) | measured | ~80 MB |
- * | Connections | [MAX_CONNECTIONS] (650) x ~0.9 MB | ~585 MB |
+ * | Connections | [MAX_CONNECTIONS] (380) x ~1.5 MB | ~570 MB |
  * | Unsent outbound bytes (our outboxes) | [MAX_PENDING_BYTES_TOTAL] | 96 MB |
  * | Rooms at rest | [MAX_ROOM_STATE_BYTES_TOTAL] (120 MB encoded) x 1.3 | ~156 MB |
- * | Headroom (GC, in-flight encodes) | rest | >= 130 MB |
+ * | Headroom (GC, in-flight encodes) | rest | ~118 MB |
  *
  * Per connection: an honest client holds ~60 KB of socket/session overhead plus at most one
  * unacknowledged snapshot (<= [MAX_STATE_BYTES]) in Ktor's per-connection output buffer (up to
  * 1 MiB, outside our accounting). Acks are predictable when one connection drives a room, so
- * colluding clients that ack without reading can fill that buffer: measured ~0.8 MB per connection,
- * budgeted as ~0.9 MB. Ktor's ping timeout and the stall/ack timers still drop such clients.
- * Caveat: probe12 (30 rooms x 19 colluding peers) peaked between 418 and 883 MB live heap across
- * runs, i.e. up to ~1.35 MB per connection; the theoretical bound is ~1.5 MB (Ktor's 1 MiB buffer
- * plus the frame in the outgoing slot plus the frame being written). At that worst case 650
- * connections exceed the heap; ExitOnOutOfMemoryError then restarts the container. A per-snapshot
- * unpredictable ack token (planned) brings the bound back to one snapshot per connection.
+ * colluding clients that ack without reading can fill that buffer. Worst case ~1.5 MB per
+ * connection: Ktor's 1 MiB buffer plus the frame in our outgoing slot plus the frame being
+ * written; measured up to ~1.35 MB (probe12: 570 colluding peers, 883 MB live). Ktor's ping
+ * timeout and the stall/ack timers drop such clients within ~20 s. 380 rather than 400
+ * connections: at 400 the theoretical worst case leaves only ~88 MB (91 % heap occupancy), and
+ * probe12 already showed back-to-back full GCs at 87 %. A per-snapshot unpredictable ack token
+ * (planned) brings the bound back to one snapshot per connection and allows far more connections.
  * Room objects take 0.9-1.3x their encoded size in heap (measured: ASCII-heavy maximal entries
  * 1.10, 3-byte characters 0.88, typical YouTube entries 1.27), hence the 1.3 factor.
- * Rooms: at most [MAX_ROOMS]; at most [MAX_ROOM_STATE_BYTES_TOTAL] / [MAX_STATE_BYTES] = 480 of
- * them can be full, the rest stay small (~1-2 KB each).
+ * Rooms: at most [MAX_ROOMS] (380); the room-state budget alone would allow 480 full ones.
  */
 object Limits {
     const val MAX_MEMBERS = 20
@@ -92,8 +91,8 @@ object Limits {
 
     /** Generous for shared addresses (a household, a campus, carrier NAT). */
     const val MAX_CONNECTIONS_PER_IP = 48
-    /** Sized to the heap budget above: ~0.9 MB worst case per connection (colluding Acks). */
-    const val MAX_CONNECTIONS = 650
+    /** Sized to the heap budget above: ~1.5 MB worst case per connection (colluding Acks). */
+    const val MAX_CONNECTIONS = 380
 
     /** Live rooms per creator IP (IPv6: per /64), held until the room is deleted; beyond it RATE_LIMITED. */
     const val MAX_ROOMS_PER_IP = 10
