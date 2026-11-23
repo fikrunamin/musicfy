@@ -1,0 +1,45 @@
+# libVLC plugins bundled with Musicfy desktop (read by scripts/desktop/fetch-libvlc.sh).
+# Format: [mac:|win:]<category>/<name>[?]
+#   <name> is the file lib<name>_plugin.dylib / lib<name>_plugin.dll; '?' marks it optional.
+#   macOS builds keep every plugin in one folder; the category only matters on Windows.
+# Before release, D4.1 audits each entry's licence (spec §4.8): GPL-2.0-only plugins must go.
+
+# input: the proxy is plain http on 127.0.0.1; downloaded songs are local files
+access/http
+access/https?
+access/filesystem
+stream_filter/prefetch?
+stream_filter/cache_read?
+
+# containers: webm (itag 249/250/251) and m4a (139/140)
+demux/mkv
+demux/mp4
+demux/es
+packetizer/packetizer_mpeg4audio?
+packetizer/packetizer_copy?
+
+# decoders
+codec/opus
+codec/faad?
+codec/avcodec
+
+# output; adummy is --aout=dummy for tests and CI
+mac:audio_output/auhal
+win:audio_output/mmdevice
+win:audio_output/directsound?
+audio_output/adummy
+
+# EQ (+ normalisation preamp), resampling, format and channel conversion, mixing
+audio_filter/equalizer
+audio_filter/soxr?
+audio_filter/ugly_resampler
+audio_filter/speex_resampler?
+audio_filter/samplerate?
+audio_filter/audio_format
+audio_filter/trivial_channel_mixer
+audio_filter/simple_channel_mixer?
+audio_filter/remap?
+audio_mixer/float_mixer
+audio_mixer/integer_mixer
+
+misc/logger?

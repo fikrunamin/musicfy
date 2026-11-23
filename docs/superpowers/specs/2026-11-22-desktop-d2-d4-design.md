@@ -896,6 +896,12 @@ rilis pertama.
 | 5 | Cookie plaintext di DataStore | Keychain OS (macOS Keychain, Windows Credential Manager, libsecret) |
 | 6 | AppImage, winget, update in-place macOS | Setelah signing tersedia |
 
+## Hasil eksperimen D2.0 (diisi saat implementasi)
+
+| ID | Tanggal | Platform | Hasil | Default yang dipilih | Catatan |
+|---|---|---|---|---|---|
+| E1 | 2026-11-23 | macOS arm64 (lokal) / macOS x64 (CI) / Windows x64 (CI) / Linux (CI, libVLC sistem) | macOS arm64: LULUS (4/4 `BundledVlcSmokeTest`, libVLC dimuat dari `desktopApp/resources/macos-arm64/vlc/lib`, tanpa VLC terpasang). macOS x64, Windows x64, Linux: MENUNGGU CI (branch belum di-push) | vlcj 4.8.3 + libVLC 3.0.23 (sementara, sampai job `engine` hijau di `macos-15-intel` dan `windows-latest`) | `vlc-plugins.txt` tidak diubah; `audio_filter/soxr` (opsional) tidak ada di build macOS 3.0.23, jadi `--audio-resampler=soxr` jatuh ke resampler bawaan. Ukuran folder `vlc`: macOS arm64 19M; platform lain menunggu CI. Temuan diagnostik (di luar kriteria): (1) dengan `--aout=dummy`, `finished` datang ~`network-caching` (1,5 s; `file://` 0,3 s) sebelum akhir media; dengan `auhal` media diputar penuh. (2) m4a lewat HTTP: waktu yang dilaporkan libVLC berhenti maju setelah demux mencapai EOF (fixture 5 s: sepanjang lagu; fixture 20 s: setelah seek), audio tetap berbunyi sampai akhir; webm dan `file://` normal. Perlu diuji dengan m4a DASH asli di Task 5. |
+
 ---
 
 ## Referensi

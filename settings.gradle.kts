@@ -48,6 +48,8 @@ include(":core:designsystem")
 
 // desktop app (Compose Desktop + Koin)
 include(":desktopApp")
+// desktop-only capability modules (plain JVM); see the D2 spec §1.1
+include(":desktop:player")
 
 // local newpipe extractor
 //includeBuild("../NewPipeExtractor") {
