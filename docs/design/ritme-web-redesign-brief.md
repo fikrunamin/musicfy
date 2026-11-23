@@ -266,3 +266,58 @@ gradients, heavy glassmorphism and stock illustrations.
 - desain aplikasi musik minimalis
 - ui pemutar musik gelap
 - desain aplikasi dengar bareng
+
+---
+
+## 11. Revisi setelah putaran desain pertama: satu panggung, bukan dua pemutar
+
+Berlaku untuk layar **C (mode Dengar)**, **D (mode Remote)**, dan semua versi desktopnya. Bagian ini
+menang kalau bertentangan dengan bagian sebelumnya.
+
+**Masalah di desain pertama:** layar Dengar menampilkan cover besar dengan kontrol **dan** kartu
+"Pemutar YouTube" terpisah yang punya tombol play merah. Pengguna jadi melihat dua pemutar dan tidak
+tahu harus menekan yang mana.
+
+**Cara kerja yang perlu dipahami:**
+- **Pemutar YouTube adalah sumber suara yang sebenarnya.** Aturan YouTube mewajibkan pemutarnya
+  terlihat: minimal 200 × 200 px, tidak disembunyikan, dan tidak ditimpa elemen apa pun.
+- **Judul, progres, dan tombol ⏮ ⏯ ⏭ adalah remote untuk room**, bukan pemutar terpisah.
+
+**Aturan baru:**
+1. **Mode Dengar:** pemutar YouTube **menempati slot artwork**, di posisi cover besar. Bentuknya
+   persegi atau 16:9, minimal 200 px di sisi terpendek, dengan sudut membulat seperti kartu cover.
+   Judul, artis, "oleh …", progres, dan kontrol tetap di bawahnya. **Tidak ada cover terpisah dan
+   tidak ada kartu "Pemutar YouTube" lain.**
+2. **Sebelum mulai mendengar:** slot yang sama menampilkan **cover** dengan tombol besar **"Ketuk
+   untuk ikut dengar"** di atasnya. Setelah diketuk, cover berganti menjadi pemutar YouTube dengan
+   transisi halus.
+3. **Mode Remote:** tidak ada pemutar YouTube sama sekali. Slot menampilkan **cover besar** (seperti
+   desain pertama), dengan kontrol di bawahnya.
+4. **Di atas video tidak boleh ada apa pun:** tanpa label, tanpa ikon, tanpa tombol play merah,
+   tanpa gradien yang menutupi. Label "Pemutar YouTube" dihapus. Latar blur dari cover tetap boleh
+   di belakang slot.
+5. **Lagu LIVE dan entri video** memakai slot yang sama. Untuk entri video, slot boleh lebih lebar
+   (16:9 penuh).
+6. **Desktop:** kolom kiri berisi slot ini (video saat mode Dengar, cover saat mode Remote) beserta
+   kontrolnya, jadi tidak ada lagi kartu video terpisah.
+7. Tips "Biarkan layar menyala supaya musik tidak berhenti." tetap ada, sebagai teks kecil di bawah
+   kontrol.
+
+**Yang perlu dibuat ulang:** layar C dan D (HP, gelap dan terang) dan versi desktopnya, ditambah
+satu varian "sebelum mulai" (cover dan tombol "Ketuk untuk ikut dengar"). Layar lain dari desain
+pertama tidak perlu diubah.
+
+**Prompt tambahan siap tempel:**
+
+```
+Revise the Ritme "listen" screen: there must be ONE stage, not two players. In listen mode the
+visible YouTube player itself occupies the large artwork slot (square or 16:9, min 200px on the
+short side, rounded like the cover card), with title, artist, "oleh …", progress and
+previous/play-pause/next controls below it. Remove the separate "Pemutar YouTube" card and the red
+play button; nothing may overlay the video (no labels, icons or gradients on top). Before the user
+starts listening, the same slot shows the album cover with a large "Ketuk untuk ikut dengar" button;
+after tapping it smoothly becomes the YouTube player. Remote mode shows only the large cover (no
+YouTube player). Keep everything else from the previous design (blurred artwork backdrop, avatar
+stack, "Tersinkron", queue rows). Deliver: listen (before start), listen (playing), remote — mobile
+390×844 dark & light, plus desktop 1440×900 where the left column holds this slot and controls.
+```
