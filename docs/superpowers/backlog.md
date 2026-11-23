@@ -82,3 +82,13 @@ video URL. Sampai saat itu, DMG hanya dibuat manual untuk percobaan
   konfirmasi sebelum "Tambah ke Ritme". Implementasinya memakai JCEF (sudah direncanakan di D2 untuk
   BotGuard) di atas `:modules:ritme-media` dari #3. Dikerjakan bersama Ritme desktop, sebelum
   installer CI.
+
+## 2026-11-23: Follow-up kecil Ritme Android (setelah merge batch perbaikan)
+
+- Kalau host mematikan "Anggota boleh menambah" saat daftar panjang milik tamu masih dikirim,
+  batch-batch sisanya tetap terkirim lalu ditolak satu per satu. Akibatnya toast "Host menutup
+  penambahan lagu" bisa muncul 2x. Usulan: buang sisa daftar setelah balasan FORBIDDEN pertama.
+- Di room dengan "Anggota boleh menambah" mati, tombol Putar/Acak di halaman playlist/album tetap
+  terlihat dan hanya memunculkan toast. Pertimbangkan menyembunyikan atau meredupkannya untuk tamu.
+- Flaky test `AbuseLimitsTest.anInboundFrameFloodClosesTheSocket`: sudah diperbaiki di main lewat
+  #2a (9743293). Pantau saja.
