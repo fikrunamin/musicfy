@@ -44,4 +44,8 @@ val integrationTest by tasks.registering(Test::class) {
         showStandardStreams = true
     }
     shouldRunAfter(tasks.test)
+    // A go/no-go gate must really load libVLC: never up-to-date, never restored from the build cache
+    // (the bundled libVLC folder is not a tracked input).
+    outputs.upToDateWhen { false }
+    outputs.cacheIf { false }
 }

@@ -60,7 +60,9 @@ if [ "$OSKEY" = mac ]; then
   plugin_src() { echo "$SRC/plugins/lib$2_plugin.dylib"; }
   plugin_dst() { echo "$OUT/plugins/lib$2_plugin.dylib"; }
 else
-  if command -v unzip >/dev/null 2>&1; then unzip -q "$ARCHIVE" -d "$WORK"; else 7z x -y -o"$WORK" "$ARCHIVE" >/dev/null; fi
+  if command -v unzip >/dev/null 2>&1; then unzip -q "$ARCHIVE" -d "$WORK"
+  elif command -v 7z >/dev/null 2>&1; then 7z x -y -o"$WORK" "$ARCHIVE" >/dev/null
+  else echo "error: need unzip or 7z to extract $ARCHIVE" >&2; exit 1; fi
   SRC="$WORK/vlc-$VLC_VERSION"
   cp "$SRC/libvlc.dll" "$SRC/libvlccore.dll" "$OUT/"
   plugin_src() { echo "$SRC/plugins/$1/lib$2_plugin.dll"; }
