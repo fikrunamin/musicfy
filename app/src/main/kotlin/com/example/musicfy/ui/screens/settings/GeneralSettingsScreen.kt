@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -15,6 +16,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -25,9 +29,12 @@ import com.example.musicfy.constants.DontSkipOnFailureKey
 import com.example.musicfy.constants.LocalSongAutoMetadataKey
 import com.example.musicfy.constants.OfflineModeKey
 import com.example.musicfy.constants.StreamFailureTimeoutKey
+import com.example.musicfy.constants.UpdateSourceKey
+import com.example.musicfy.core.settings.UpdateSource
 import com.example.musicfy.ui.screens.audiolab.LabCard
 import com.example.musicfy.ui.screens.audiolab.LabSlider
 import com.example.musicfy.ui.component.AppSwitch
+import com.example.musicfy.ui.component.LocalZoomOutOverlayState
 import com.example.musicfy.ui.component.SettingsGroup
 import com.example.musicfy.ui.component.SettingsGroupStyle
 import com.example.musicfy.ui.component.SettingsItem
@@ -62,6 +69,16 @@ fun GeneralSettingsScreen(navController: NavController) {
         StreamFailureTimeoutKey,
         defaultValue = 6
     )
+
+    // Update source: the GitHub repo updates, the changelog and the commit list come from. Edited
+    // like Ritme's server URL (same rows, same sheet); blank stored = UpdateSource.DEFAULT_URL.
+    val (updateSource, setUpdateSource) = rememberPreference(UpdateSourceKey, "")
+    val shownUpdateSource = UpdateSource.repoUrl(UpdateSource.resolve(updateSource))
+    val popup = LocalZoomOutOverlayState.current
+    val updateSourceLabel = stringResource(R.string.update_source)
+    val updateSourceReset = stringResource(R.string.update_source_reset)
+    val updateSourceInvalid = stringResource(R.string.update_source_invalid)
+    val updateSourceSave = stringResource(R.string.update_source_save)
 
     SubSettingsScaffold(
         title = "General",
@@ -175,6 +192,48 @@ fun GeneralSettingsScreen(navController: NavController) {
                     steps = 14,
                 )
             }
+        }
+
+        val showUpdateSource = query.isBlank() ||
+            listOf("Update source github repo releases fork", updateSourceLabel, updateSourceReset, shownUpdateSource)
+                .any { it.contains(query, ignoreCase = true) }
+        if (showUpdateSource) {
+            Spacer(Modifier.height(14.dp))
+            SettingsGroup(
+                style = SettingsGroupStyle.Grouped,
+                items = listOf(
+                    SettingsItem(
+                        title = { Text(updateSourceLabel) },
+                        // English like the other rows: it is what the settings search index flashes
+                        highlightKey = "Update source",
+                        descriptionText = shownUpdateSource,
+                        icon = painterResource(R.drawable.github),
+                        iconShape = CircleShape,
+                        onClick = {
+                            popup.showRitmeFieldSheet(
+                                field = RitmeField(
+                                    label = updateSourceLabel,
+                                    initial = shownUpdateSource,
+                                    placeholder = UpdateSource.DEFAULT_URL,
+                                    keyboard = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
+                                    save = updateSourceSave,
+                                    parse = UpdateSource::toStore,
+                                    error = updateSourceInvalid,
+                                ),
+                                onSave = setUpdateSource,
+                            )
+                        },
+                    ),
+                    SettingsItem(
+                        title = { Text(updateSourceReset) },
+                        descriptionText = UpdateSource.DEFAULT_URL,
+                        icon = painterResource(R.drawable.restore),
+                        iconShape = CircleShape,
+                        enabled = updateSource.isNotBlank(),
+                        onClick = { setUpdateSource("") },
+                    ),
+                ),
+            )
         }
 
         Spacer(Modifier.height(140.dp))

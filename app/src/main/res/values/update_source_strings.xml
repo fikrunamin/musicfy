@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- General → Update source. Indonesian copy lives in values-in/update_source_strings.xml. -->
+    <string name="update_source">Update source</string>
+    <string name="update_source_reset">Restore default</string>
+    <string name="update_source_save">Save</string>
+    <string name="update_source_invalid">Enter a GitHub repo, like https://github.com/owner/repo</string>
+</resources>

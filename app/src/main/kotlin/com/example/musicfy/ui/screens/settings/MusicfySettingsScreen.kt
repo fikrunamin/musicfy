@@ -115,6 +115,7 @@ private val SettingsIndex = listOfNotNull(
     SettingsEntry("Edit profile", "General", "general_settings", "username avatar account"),
     SettingsEntry("Offline mode", "General", "general_settings", "play downloaded cache offline"),
     SettingsEntry("Local song auto metadata", "General", "general_settings", "match tags id3 covers lyrics"),
+    SettingsEntry("Update source", "General", "general_settings", "updates github repo fork releases sumber update restore default"),
 
     // Experimental
     SettingsEntry("Import & sync", "Experimental", "experimental_settings", "import spotify apple music deezer tidal tunemymusic csv youtube sync export backup transfer"),

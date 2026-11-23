@@ -82,6 +82,7 @@ import com.example.musicfy.BuildConfig
 import com.example.musicfy.LocalPlayerAwareWindowInsets
 import com.example.musicfy.R
 import com.example.musicfy.core.updater.extractUrls
+import com.example.musicfy.core.updater.updateSourceUrls
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -141,7 +142,7 @@ fun ChangelogScreen(
                         showingCached = true
                     }
                 } else {
-                    val changelogUrl = URL("https://github.com/musicfy-app/musicfy/releases/download/$tag/changelog.json")
+                    val changelogUrl = URL(context.updateSourceUrls().changelogJsonUrl(tag))
                     val connection = changelogUrl.openConnection() as HttpURLConnection
                     connection.setRequestProperty("User-Agent", "Musicfy-Changelog-App")
                     connection.setRequestProperty("Accept", "application/json")
@@ -214,7 +215,7 @@ fun ChangelogScreen(
         isFetchingOldReleases = true
         coroutineScope.launch(Dispatchers.IO) {
             try {
-                val releasesUrl = URL("https://api.github.com/repos/musicfy-app/musicfy/releases")
+                val releasesUrl = URL(context.updateSourceUrls().releasesApi())
                 val connection = releasesUrl.openConnection() as HttpURLConnection
                 connection.setRequestProperty("User-Agent", "Musicfy-Changelog-App")
                 connection.setRequestProperty("Accept", "application/vnd.github+json")

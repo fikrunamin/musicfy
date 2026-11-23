@@ -60,6 +60,7 @@ import com.example.musicfy.R
 import coil3.compose.AsyncImage
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import com.example.musicfy.core.settings.UpdateSourceUrls
 import com.example.musicfy.core.updater.downloadmanager.UpdateDownloadWorker
 import com.example.musicfy.core.updater.downloadmanager.DownloadNotificationManager
 import kotlinx.coroutines.Dispatchers
@@ -326,7 +327,7 @@ fun UpdateScreen(navController: NavHostController) {
                                                 ContextCompat.startActivity(context, installIntent, null)
                                             }
                                         } else {
-                                            val urlToDownload = currentStatus.apkUrl ?: "https://github.com/musicfy-app/musicfy/releases/download/${currentStatus.version}/musicfy.apk"
+                                            val urlToDownload = currentStatus.apkUrl ?: context.updateSourceUrls().releaseAssetUrl(currentStatus.version, UpdateSourceUrls.APK_ASSET)
                                             val downloadRequest = OneTimeWorkRequestBuilder<UpdateDownloadWorker>()
                                                 .setInputData(workDataOf("apk_url" to urlToDownload, "version" to currentStatus.version, "file_size" to currentStatus.size))
                                                 .addTag("update_download")
@@ -646,7 +647,8 @@ suspend fun checkForUpdate(
 ) {
     withContext(Dispatchers.IO) {
         try {
-            val url = URL("https://api.github.com/repos/musicfy-app/musicfy/releases")
+            val urls = context.updateSourceUrls()
+            val url = URL(urls.releasesApi())
             val json = url.openStream().bufferedReader().use { it.readText() }
             val releases = JSONArray(json)
 
@@ -658,9 +660,9 @@ suspend fun checkForUpdate(
 
             if (betaEnabled) {
                 try {
-                    val nightlyUrl = URL("https://api.github.com/repos/musicfy-app/musicfy/actions/workflows/nightly.yml/runs?status=success&per_page=1")
-                    val nightlyJson = nightlyUrl.openStream().bufferedReader().use { it.readText() }
-                    val nightlyData = JSONObject(nightlyJson)
+                    // A repo without the nightly workflow (a fork, say) answers 404: no nightly, no error.
+                    val nightlyJson = fetchNightlyRunsJson(urls)
+                    val nightlyData = JSONObject(nightlyJson ?: """{"workflow_runs":[]}""")
                     val runs = nightlyData.optJSONArray("workflow_runs")
                     if (runs != null && runs.length() > 0) {
                         val firstRun = runs.getJSONObject(0)
@@ -710,7 +712,7 @@ suspend fun checkForUpdate(
                 changelogList.add(ChangelogSection(context.getString(R.string.changelog), listOf(subjectLine)))
 
                 val formattedReleaseDate = formatGitHubDate(runUpdatedAt)
-                val apkDownloadUrl = "https://nightly.link/musicfy-app/musicfy/workflows/nightly.yml/main/musicfy-gms-nightly.zip"
+                val apkDownloadUrl = urls.nightlyApkUrl()
 
                 withContext(Dispatchers.Main) {
                     onSuccess(displayTag, true, changelogList, "~30", formattedReleaseDate, "Bleeding-edge nightly build from main branch.", null, apkDownloadUrl)
@@ -770,7 +772,7 @@ suspend fun checkForUpdate(
                     var imageUrl: String? = null
                     try {
                         val changelogUrl =
-                            URL("https://github.com/musicfy-app/musicfy/releases/download/$tagWithPrefix/changelog.json")
+                            URL(urls.changelogJsonUrl(tagWithPrefix))
                         val changelogJson = changelogUrl.openStream().bufferedReader().use { it.readText() }
                         val changelogData = JSONObject(changelogJson)
 
@@ -804,7 +806,7 @@ suspend fun checkForUpdate(
                     for (j in 0 until assets.length()) {
                         val asset = assets.getJSONObject(j)
                         val assetName = asset.getString("name")
-                        if (assetName == "musicfy.apk") {
+                        if (assetName == UpdateSourceUrls.APK_ASSET) {
                             val apkSizeInBytes = asset.getLong("size")
                             apkSizeInMB = String.format("%.1f", apkSizeInBytes / (1024.0 * 1024.0))
                             apkDownloadUrl = asset.getString("browser_download_url")
@@ -830,6 +832,26 @@ suspend fun checkForUpdate(
         }
     }
 }
+/**
+ * The newest successful nightly run as JSON, or null when the update source has no nightly
+ * workflow (404) or does not answer with 200: the caller then offers no nightly.
+ */
+private fun fetchNightlyRunsJson(urls: UpdateSourceUrls): String? {
+    val connection = URL(urls.nightlyRunsApi()).openConnection() as java.net.HttpURLConnection
+    return try {
+        connection.setRequestProperty("Accept", "application/vnd.github+json")
+        val code = connection.responseCode
+        if (code == java.net.HttpURLConnection.HTTP_OK) {
+            connection.inputStream.bufferedReader().use { it.readText() }
+        } else {
+            Log.i("UpdateCheck", "No nightly workflow in ${urls.repo} (HTTP $code)")
+            null
+        }
+    } finally {
+        connection.disconnect()
+    }
+}
+
 fun String.extractUrls(): List<Pair<IntRange, String>> {
     val urlPattern = Pattern.compile(
         "(?:^|[\\s])((https?://|www\\.|pic\\.)[\\w-]+(\\.[\\w-]+)+([/?].*)?)"

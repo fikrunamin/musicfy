@@ -64,6 +64,7 @@ import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.example.musicfy.LocalPlayerAwareWindowInsets
 import com.example.musicfy.R
+import com.example.musicfy.core.updater.updateSourceUrls
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -107,7 +108,7 @@ fun CommitScreen(
         hasError = false
         coroutineScope.launch(Dispatchers.IO) {
             try {
-                val url = URL("https://api.github.com/repos/musicfy-app/musicfy/commits?branch=main&per_page=50")
+                val url = URL(context.updateSourceUrls().commitsApi(perPage = 50))
                 val json = url.openStream().bufferedReader().use { it.readText() }
                 val array = JSONArray(json)
                 val outputFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault())

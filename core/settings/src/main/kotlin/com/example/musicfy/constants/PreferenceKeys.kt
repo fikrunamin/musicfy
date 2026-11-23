@@ -973,3 +973,7 @@ const val LyricsCacheWipeGeneration = 1
 // Ritme (listen together): server URL override (blank = the official server) and display name
 val RitmeServerUrlKey = stringPreferencesKey("ritmeServerUrl")
 val RitmeDisplayNameKey = stringPreferencesKey("ritmeDisplayName")
+
+// "Update source": the GitHub repo the updater, changelog and commit list read from.
+// Blank = UpdateSource.DEFAULT_URL; otherwise a canonical https://github.com/<owner>/<repo>.
+val UpdateSourceKey = stringPreferencesKey("updateSource")

@@ -140,8 +140,11 @@ fun RitmeSettingsScreen(navController: NavController) {
     }
 }
 
-/** One editable Ritme setting: [parse] gives what to store, or null while the text is not valid. */
-private class RitmeField(
+/**
+ * One editable text setting: [parse] gives what to store, or null while the text is not valid.
+ * Also used by General → Update source, so both editors look and behave the same.
+ */
+internal class RitmeField(
     val label: String,
     val initial: String,
     val placeholder: String,
@@ -166,7 +169,7 @@ private var fieldSheetOpen = false
  * Edits one setting in a PopupSheet laid out like the start/join sheet. Neither the button nor
  * the keyboard's Done saves text that does not parse.
  */
-private fun PopupSheetState.showRitmeFieldSheet(field: RitmeField, onSave: (String) -> Unit) {
+internal fun PopupSheetState.showRitmeFieldSheet(field: RitmeField, onSave: (String) -> Unit) {
     if (fieldSheetOpen) return
     fieldSheetOpen = true
     val form = RitmeFieldForm(field.initial.take(field.maxLength))

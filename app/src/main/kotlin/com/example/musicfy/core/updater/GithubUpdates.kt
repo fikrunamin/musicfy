@@ -6,6 +6,10 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
 import com.example.musicfy.BuildConfig
+import com.example.musicfy.constants.UpdateSourceKey
+import com.example.musicfy.core.settings.UpdateSourceUrls
+import com.example.musicfy.utils.dataStore
+import com.example.musicfy.utils.get
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
@@ -14,6 +18,9 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
+// The original author's repo and profile: credits only (Star, bug reports, Developer space).
+// Updates, the changelog and the commit list read the "Update source" setting instead
+// (Context.updateSourceUrls below).
 const val GithubOwner = "realidkroo"
 const val GithubRepo = "musicfy"
 
@@ -21,8 +28,9 @@ const val GithubProfileUrl = "https://github.com/$GithubOwner"
 const val GithubRepoUrl = "https://github.com/$GithubOwner/$GithubRepo"
 const val InstagramUrl = "https://www.instagram.com/realidkroo/"
 
-private const val ReleasesApi =
-    "https://api.github.com/repos/$GithubOwner/$GithubRepo/releases?per_page=20"
+/** URLs for the repo picked in Settings → General → Update source (the fork by default). */
+fun Context.updateSourceUrls(): UpdateSourceUrls =
+    UpdateSourceUrls.fromStored(applicationContext.dataStore[UpdateSourceKey])
 
 data class GithubRelease(
     val title: String,
@@ -76,38 +84,50 @@ private const val CacheTtlMillis = 15L * 60L * 1000L
 
 private val cacheLock = Any()
 private var cachedAt = 0L
+private var cachedRepo: String? = null
 private var cachedResult: Result<GithubRelease?>? = null
+private var inFlightRepo: String? = null
 private var inFlight: kotlinx.coroutines.Deferred<Result<GithubRelease?>>? = null
 
 private val updateScope = kotlinx.coroutines.CoroutineScope(
     kotlinx.coroutines.SupervisorJob() + Dispatchers.IO
 )
 
-suspend fun getLatestRelease(force: Boolean = false): Result<GithubRelease?> {
+/** Cached per update source, so changing the repo in Settings is picked up on the next check. */
+suspend fun getLatestRelease(context: Context, force: Boolean = false): Result<GithubRelease?> {
+    val urls = context.updateSourceUrls()
     val deferred = synchronized(cacheLock) {
-        if (!force) {
+        if (!force && cachedRepo == urls.repo) {
             val cached = cachedResult
             if (cached != null && System.currentTimeMillis() - cachedAt < CacheTtlMillis) {
                 return cached
             }
         }
-        inFlight ?: updateScope.async { fetchLatestRelease() }.also { inFlight = it }
+        inFlight?.takeIf { inFlightRepo == urls.repo }
+            ?: updateScope.async { fetchLatestRelease(urls) }.also {
+                inFlight = it
+                inFlightRepo = urls.repo
+            }
     }
 
     val result = deferred.await()
     synchronized(cacheLock) {
-        if (inFlight === deferred) inFlight = null
+        if (inFlight === deferred) {
+            inFlight = null
+            inFlightRepo = null
+        }
         if (result.isSuccess) {
             cachedResult = result
+            cachedRepo = urls.repo
             cachedAt = System.currentTimeMillis()
         }
     }
     return result
 }
 
-suspend fun fetchLatestRelease(): Result<GithubRelease?> = withContext(Dispatchers.IO) {
+suspend fun fetchLatestRelease(urls: UpdateSourceUrls): Result<GithubRelease?> = withContext(Dispatchers.IO) {
     runCatching {
-        val connection = (URL(ReleasesApi).openConnection() as HttpURLConnection).apply {
+        val connection = (URL(urls.releasesApi(perPage = 20)).openConnection() as HttpURLConnection).apply {
             connectTimeout = 12_000
             readTimeout = 12_000
             setRequestProperty("Accept", "application/vnd.github+json")
@@ -187,7 +207,7 @@ suspend fun fetchLatestRelease(): Result<GithubRelease?> = withContext(Dispatche
                 tag = tag,
                 version = displayVersion,
                 body = release.optString("body").orEmpty(),
-                htmlUrl = release.optString("html_url").orEmpty().ifBlank { "$GithubRepoUrl/releases" },
+                htmlUrl = release.optString("html_url").orEmpty().ifBlank { urls.releasesPageUrl },
                 apkUrl = apkUrl,
                 apkName = apkName,
                 apkSizeBytes = apkSize,

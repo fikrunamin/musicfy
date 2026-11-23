@@ -72,8 +72,9 @@ import kotlinx.coroutines.launch
 @Composable
 fun rememberUpdateState(): androidx.compose.runtime.State<UpdateState> {
     val state = remember { mutableStateOf<UpdateState>(UpdateState.Checking) }
+    val context = LocalContext.current
     LaunchedEffect(Unit) {
-        val result = getLatestRelease()
+        val result = getLatestRelease(context)
         state.value = result.fold(
             onSuccess = { release ->
                 when {

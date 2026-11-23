@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="update_source">Sumber update</string>
+    <string name="update_source_reset">Kembalikan default</string>
+    <string name="update_source_save">Simpan</string>
+    <string name="update_source_invalid">Masukkan repo GitHub yang valid, misalnya https://github.com/owner/repo</string>
+</resources>

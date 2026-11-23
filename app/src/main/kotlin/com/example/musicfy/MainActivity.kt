@@ -436,7 +436,7 @@ class MainActivity : ComponentActivity() {
                 // Same cached lookup the version sheet and home prompt use (this app's own
                 // releases - the old checker here queried another project's repo). Launch-time
                 // only: nothing about updates runs in the background.
-                val release = com.example.musicfy.core.updater.getLatestRelease().getOrNull()
+                val release = com.example.musicfy.core.updater.getLatestRelease(context).getOrNull()
                 val isAvailable = release != null &&
                     com.example.musicfy.core.updater.isNewerThanInstalled(release.version)
                 saveUpdateAvailableState(context, isAvailable)
