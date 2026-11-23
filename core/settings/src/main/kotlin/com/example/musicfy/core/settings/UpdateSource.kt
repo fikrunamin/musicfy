@@ -48,6 +48,9 @@ class UpdateSourceUrls(val repo: String) {
     val repoUrl: String get() = UpdateSource.repoUrl(repo)
     val releasesPageUrl: String get() = "$repoUrl/releases"
 
+    /** The new-issue page, where bug reports go (the configured source, the fork by default). */
+    val newIssueUrl: String get() = "$repoUrl/issues/new"
+
     private val api: String get() = "https://api.github.com/repos/$repo"
 
     fun releasesApi(perPage: Int? = null): String =

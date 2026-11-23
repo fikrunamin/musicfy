@@ -49,4 +49,13 @@ class UpdateSourceUrlsTest {
         assertEquals("https://github.com/fikrunamin/musicfy", UpdateSourceUrls.fromStored(null).repoUrl)
         assertEquals("https://github.com/a/b", UpdateSourceUrls.fromStored("github.com/a/b").repoUrl)
     }
+
+    @Test
+    fun newIssueUrlFollowsTheSource() {
+        assertEquals("https://github.com/o/r/issues/new", UpdateSourceUrls("o/r").newIssueUrl)
+        assertEquals(
+            "https://github.com/fikrunamin/musicfy/issues/new",
+            UpdateSourceUrls.fromStored(null).newIssueUrl,
+        )
+    }
 }

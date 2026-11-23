@@ -114,6 +114,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.navigation.NavController
 import com.example.musicfy.BuildConfig
+import com.example.musicfy.core.updater.updateSourceUrls
 import com.example.musicfy.LocalAppContentObscured
 import com.example.musicfy.LocalDatabase
 import com.example.musicfy.R
@@ -972,7 +973,7 @@ private fun VersionCapsule(update: Boolean, onAbout: () -> Unit) {
                     update || action == CapsuleAction.ABOUT -> onAbout()
                     action == CapsuleAction.STAR -> context.openCapsuleUrl(com.example.musicfy.core.updater.GithubRepoUrl)
                     action == CapsuleAction.DONATE -> popup.showDonateSheet()
-                    else -> context.openCapsuleUrl(bugReportUrl())
+                    else -> context.openCapsuleUrl(bugReportUrl(context))
                 }
             }
             .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -1012,7 +1013,7 @@ private fun VersionCapsule(update: Boolean, onAbout: () -> Unit) {
 }
 
 /** A new GitHub issue, already holding the version and device so the report says where it happened. */
-private fun bugReportUrl(): String {
+private fun bugReportUrl(context: android.content.Context): String {
     val body = buildString {
         appendLine("**What happened?**")
         appendLine()
@@ -1025,7 +1026,7 @@ private fun bugReportUrl(): String {
         appendLine("Android: ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
         append("Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
     }
-    return "${com.example.musicfy.core.updater.GithubRepoUrl}/issues/new?labels=bug&body=${android.net.Uri.encode(body)}"
+    return "${context.updateSourceUrls().newIssueUrl}?labels=bug&body=${android.net.Uri.encode(body)}"
 }
 
 private fun android.content.Context.openCapsuleUrl(url: String) {
