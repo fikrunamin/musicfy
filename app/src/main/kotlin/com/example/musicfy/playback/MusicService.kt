@@ -1091,7 +1091,7 @@ class MusicService :
                 delay(RITME_READY_POLL_MS)
                 waitedMs += RITME_READY_POLL_MS
             }
-            ritmeBridge.onServiceReady()
+            ritmeBridge.onServiceReady(ritmeHost)
         }
     }
 
@@ -3837,9 +3837,13 @@ class MusicService :
         if (dataStore.get(PersistentQueueKey, true)) {
             saveQueueToDisk()
         }
-        // The service scope's save loops outlive the gate: leave no room item behind for them to persist.
-        if (ritmeGate.isActive) player.clearMediaItems()
+        // Leave the room first: clearing a READY player reports STATE_ENDED synchronously, which the
+        // bridge must not hear as the end of the entry (a TrackEnded would skip it for everyone).
+        val wasInRitme = ritmeGate.isActive
         ritmeBridge.detach()
+        // The service scope's save loops outlive the gate: leave no room item behind for them to
+        // persist. With no items, saveQueueToDisk and ensureQueueRunway return without doing anything.
+        if (wasInRitme) player.clearMediaItems()
         if (discordRpc?.isRpcRunning() == true) {
             discordRpc?.closeRPC()
         }

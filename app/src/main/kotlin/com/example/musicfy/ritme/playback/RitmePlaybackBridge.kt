@@ -18,6 +18,7 @@ import com.example.musicfy.ritme.net.RitmeTimer
 import com.example.musicfy.ritme.net.RitmeTimers
 import com.example.musicfy.ritme.protocol.QueueEntry
 import com.example.musicfy.ritme.session.RitmeModeTransitions
+import com.example.musicfy.ritme.session.RitmePhase
 import com.example.musicfy.ritme.session.RitmeSession
 import com.example.musicfy.ritme.session.RitmeTransition
 import com.example.musicfy.ritme.session.RitmeUiState
@@ -95,6 +96,8 @@ class RitmePlaybackBridge internal constructor(
     private var lastVersion = Long.MIN_VALUE
     private var lastConnection: ConnectionStatus? = null
     private var lastNoticeId = 0L
+    /** This device is leaving because casting started: that toast already says why, Ended(Left) would repeat it. */
+    private var leavingForCast = false
 
     private var tickTimer: RitmeTimer? = null
     private var wakeTimer: RitmeTimer? = null
@@ -102,7 +105,10 @@ class RitmePlaybackBridge internal constructor(
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
-            if (playbackState == Player.STATE_ENDED) onLocalEnded()
+            // Clearing the player (MusicService.onDestroy) also reports ENDED, with no item left:
+            // that is not the end of the entry, and a TrackEnded would skip it for the whole room.
+            if (playbackState != Player.STATE_ENDED || !inRitme || listening?.mediaItemCount == 0) return
+            onLocalEnded()
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -126,21 +132,28 @@ class RitmePlaybackBridge internal constructor(
         scope = CoroutineScope(SupervisorJob() + stateContext).also { s -> s.launch { session.state.collect(::onState) } }
     }
 
-    /** MusicService restored its queue and settings: a room (already active or later) may take the player now. */
-    fun onServiceReady() {
-        if (host == null || ready) return
+    /**
+     * MusicService restored its queue and settings: a room (already active or later) may take the
+     * player now. Only from the attached [host]: a destroyed service's late readiness is ignored.
+     */
+    fun onServiceReady(host: RitmePlayerHost) {
+        if (this.host == null || this.host !== host || ready) return
         ready = true
         onState(session.state.value)
     }
 
     fun detach() {
+        val attached = host != null
         scope?.cancel()
         scope = null
         stopTimers()
         listening?.removeListener(playerListener)
         listening = null
-        if (inRitme) {
-            // The service is going away, so nothing would play the room here any more.
+        // The service is going away, so nothing would play the room here any more. Also while still
+        // connecting, or in a room not entered yet (the service was not ready): no ghost member stays.
+        val phase = session.state.value.phase
+        val active = phase == RitmePhase.CONNECTING || phase == RitmePhase.IN_ROOM
+        if (inRitme || (attached && active)) {
             inRitme = false
             gate.deactivate()
             session.leave()
@@ -178,6 +191,7 @@ class RitmePlaybackBridge internal constructor(
         gate.activate()
         snapshot = h.enterRitmeMode()
         inRitme = true
+        leavingForCast = false
         resetTracking()
         if (snapshot?.items?.isNotEmpty() == true) notifier.show(RitmeToast.QueueSaved)
         tickTimer?.cancel()
@@ -192,7 +206,9 @@ class RitmePlaybackBridge internal constructor(
         host?.exitRitmeMode(snapshot ?: LocalQueueSnapshot.EMPTY)
         snapshot = null
         resetTracking()
-        reason?.let { notifier.show(RitmeToast.Ended(it)) }
+        val castLeave = leavingForCast && reason == EndReason.Left
+        leavingForCast = false
+        if (!castLeave) reason?.let { notifier.show(RitmeToast.Ended(it)) }
         session.dismiss()
     }
 
@@ -201,8 +217,9 @@ class RitmePlaybackBridge internal constructor(
         if (!inRitme) return
         if (host?.isCasting == true) {
             // The cast device would play on its own clock: leave the room (spec: Ritme is refused while casting).
-            // Ended(Left) follows synchronously and exit() restores the local queue.
+            // Ended(Left) follows and exit() restores the local queue, without a second "you left" toast.
             notifier.show(RitmeToast.CastingStopped)
+            leavingForCast = true
             session.leave()
             return
         }

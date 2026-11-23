@@ -41,6 +41,7 @@ private class FakePlayer {
     var playWhenReady = false
     var state = Player.STATE_IDLE
     var params: PlaybackParameters = PlaybackParameters.DEFAULT
+    var itemCount = 0
     val listeners = mutableListOf<Player.Listener>()
     val ops = mutableListOf<String>()
 
@@ -53,6 +54,7 @@ private class FakePlayer {
             "isPlaying" -> playWhenReady && state == Player.STATE_READY
             "getPlayWhenReady" -> playWhenReady
             "getPlaybackState" -> state
+            "getMediaItemCount" -> itemCount
             "getPlaybackParameters" -> params
             "setPlaybackParameters" -> {
                 params = args!![0] as PlaybackParameters
@@ -100,6 +102,13 @@ private class FakePlayer {
         state = Player.STATE_ENDED
         listeners.toList().forEach { it.onPlaybackStateChanged(Player.STATE_ENDED) }
     }
+
+    /** clearMediaItems() on a READY player: it reports STATE_ENDED synchronously, with no items left. */
+    fun clear() {
+        itemCount = 0
+        state = Player.STATE_ENDED
+        listeners.toList().forEach { it.onPlaybackStateChanged(Player.STATE_ENDED) }
+    }
 }
 
 private class FakeHost(private val fake: FakePlayer, private val gate: RitmeGate) : RitmePlayerHost {
@@ -124,6 +133,7 @@ private class FakeHost(private val fake: FakePlayer, private val gate: RitmeGate
     override fun loadRitmeItem(item: MediaItem, startPositionMs: Long) {
         calls += "load ${item.mediaId}@$startPositionMs"
         fake.positionMs = startPositionMs
+        fake.itemCount = 1
         fake.state = Player.STATE_READY
         fake.playWhenReady = false
     }
@@ -162,7 +172,7 @@ class RitmePlaybackBridgeTest {
     @Before
     fun setUp() {
         bridge.attach(host)
-        bridge.onServiceReady()
+        bridge.onServiceReady(host)
     }
 
     private fun join(state: RoomState, memberId: String = "m1") {
@@ -370,7 +380,7 @@ class RitmePlaybackBridgeTest {
         assertEquals(emptyList<String>(), host.calls)
         assertFalse(gate.isActive)
 
-        bridge.onServiceReady()
+        bridge.onServiceReady(host)
 
         assertEquals(listOf("save gate=false", "enter gate=true", "load e1@0"), host.calls)
         assertTrue(gate.isActive)
@@ -385,8 +395,97 @@ class RitmePlaybackBridgeTest {
 
         assertTrue(connector.last.left)
         assertTrue(RitmeToast.CastingStopped in toasts.shown)
+        assertFalse(RitmeToast.Ended(EndReason.Left) in toasts.shown) // one toast says why, not two
         assertFalse(gate.isActive)
         assertEquals("exit gate=false", host.calls.last())
+    }
+
+    @Test
+    fun onlyTheCastLeaveIsNotToastedAsLeft() {
+        joinPlaying()
+        host.isCasting = true
+        timers.advanceBy(1_000)
+        host.isCasting = false
+
+        joinPlaying()
+        session.leave()
+
+        assertEquals(1, toasts.shown.count { it == RitmeToast.Ended(EndReason.Left) })
+    }
+
+    @Test
+    fun clearingTheRoomItemSendsNoTrackEnded() {
+        joinPlaying()
+
+        // MusicService.onDestroy clearing a READY player fires STATE_ENDED synchronously; that is
+        // not the end of the entry, and a TrackEnded would skip it for the whole room.
+        fake.clear()
+        bridge.detach()
+
+        assertEquals(emptyList<String>(), connector.last.trackEnds)
+        assertTrue(connector.last.left)
+    }
+
+    @Test
+    fun detachingWhileTheCurrentEntryIsLoadedSendsNoTrackEnded() {
+        joinPlaying()
+
+        // onDestroy's order: detach (Leave) first, then clear the room item.
+        bridge.detach()
+        fake.clear()
+
+        assertEquals(emptyList<String>(), connector.last.trackEnds)
+        assertTrue(connector.last.left)
+    }
+
+    @Test
+    fun detachingWhileConnectingGivesTheAttemptUp() {
+        session.join(settings.serverUrl, starting.code, "Budi")
+        assertEquals(RitmePhase.CONNECTING, session.state.value.phase)
+
+        bridge.detach()
+
+        assertTrue(connector.last.left)
+    }
+
+    @Test
+    fun detachingInARoomNotYetEnteredLeavesIt() {
+        bridge.detach()
+        bridge.attach(host) // a new MusicService, still restoring its queue
+        join(starting)
+        assertFalse(gate.isActive)
+
+        bridge.detach() // destroyed before it was ready: no ghost member stays behind
+
+        assertTrue(connector.last.left)
+    }
+
+    @Test
+    fun attachingToARoomAlreadyActiveDoesNotLeaveIt() {
+        bridge.detach()
+        join(starting) // joined while no service was running
+
+        bridge.attach(host)
+        assertFalse(connector.last.left)
+        bridge.onServiceReady(host)
+
+        assertTrue(gate.isActive)
+    }
+
+    @Test
+    fun aStaleServiceSayingReadyIsIgnored() {
+        val oldHost = host
+        bridge.detach()
+        val newHost = FakeHost(fake, gate)
+        bridge.attach(newHost) // the new MusicService is still restoring
+        join(starting)
+
+        bridge.onServiceReady(oldHost) // the destroyed service's readiness check finishing late
+
+        assertEquals(emptyList<String>(), newHost.calls)
+        assertFalse(gate.isActive)
+        bridge.onServiceReady(newHost)
+        assertTrue(gate.isActive)
     }
 
     @Test
