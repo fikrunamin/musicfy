@@ -39,3 +39,34 @@ repo aslinya (`musicfy-app/musicfy`).
   room butuh token. Putuskan saat spec.
 - Desktop: field yang sama di layar Pengaturan D3, saat Ritme hadir di desktop.
 - Pakai ulang aturan cleanup dan kebijakan log privasi yang sudah ada di server.
+
+## 2026-11-23: Nonton bareng (video) dan izin menambah ke antrean
+
+Permintaan pengguna (catatan, belum dijadwalkan; Android Ritme diselesaikan dulu).
+
+### 3. Tambah video dari klien (sub-proyek #2 Ritme)
+
+- Kondisi sekarang:
+  - Protokol, server, dan pemutar web sudah mendukung `YOUTUBE_VIDEO` dan `URL` (web memutar
+    video YouTube di pemutar besar yang tersinkron, dan URL lewat `<video>` atau hls.js).
+  - **Belum ada klien yang bisa menambahkan entri video.** Pencarian `/api/search` hanya lagu.
+  - Android sub-proyek #1 memutar `YOUTUBE_VIDEO` sebagai audio saja.
+  - Ritme belum ada di desktop.
+- Usulan untuk web (sekitar 2–3 jam):
+  - tombol "Tambah video": tempel link YouTube atau link mp4/m3u8;
+  - endpoint server baru, misalnya `/api/video?id=`, untuk judul dan durasi dari ID YouTube, supaya
+    browser tidak memanggil pihak ketiga baru;
+  - tampilan room yang menyesuaikan saat entri video sedang diputar.
+- Android: pemutar video tersinkron dan tombol tambah video (sub-proyek #2).
+- Desktop: setelah D2–D3, Ritme masuk desktop (seam di spec D2–D4 §1.5).
+- Browser in-app dengan deteksi video/stream (sub-proyek #3), khusus Android dan desktop.
+
+### 4. Izin menambah ke antrean
+
+- Kondisi sekarang: **semua anggota** boleh `Add` (lagu, video, atau URL). "Anggota boleh kontrol"
+  hanya membatasi putar, jeda, lompat, seek, dan urutan.
+- Usulan: setelan room baru "Anggota boleh menambah lagu" (`guestsCanAdd`, default true). Di server,
+  `Add` dicek seperti `control{}` saat setelan mati. Protokol: field baru di `RoomSettings` dengan
+  default true supaya klien lama tetap jalan (tolerant decoding). UI di web, Android, dan desktop
+  ikut menampilkan sakelar dan menyembunyikan tombol tambah. Opsional: setelan terpisah khusus
+  video.
