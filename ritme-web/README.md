@@ -71,3 +71,10 @@ mode, thumbnails (sent without a referrer), the media of `URL` entries, and, in 
 the metadata of a pasted media link (a hidden `<video preload="metadata" muted>`, to the host that
 link points at). A Content Security Policy in `index.html` enforces this. The display name is kept
 in `localStorage`, the room's resume token in `sessionStorage` (this tab only).
+
+## Fonts, icons, screenshots
+
+- Inter is self-hosted from `@fontsource/inter@5.3.0` (SIL OFL 1.1, `src/fonts/OFL.txt`): weight 600 for all text, 400 as a fallback. No font CDN, so the CSP stays as it is.
+- Icons are Material Symbols Rounded (weight 400, Apache-2.0, `src/ui/icon-paths.LICENSE.txt`) as inline SVG paths. To add one, add its name to `NAMES` in `scripts/build-icons.mjs` and regenerate:
+  `npm pack @material-symbols/svg-400@0.49.0` into a temp dir, untar it, then `node scripts/build-icons.mjs <dir>/package/rounded`.
+- Redesign screenshots: `npm run build && npm run shots` (optionally `-- --grep @room`) writes PNGs for 390×844 and 1440×900, dark and light, to `test-results/redesign/after/` (`SHOTS_SET=before` for a baseline). It runs the real server like the e2e, with the fake YouTube and gradient artwork.

@@ -1,0 +1,104 @@
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  font: 600 var(--fs-body) / 1.4 var(--font);
+  letter-spacing: var(--tracking);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Hierarchy by size, never by weight (handoff "Tipografi"). */
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+  font-weight: 600;
+}
+
+h1 {
+  font-size: var(--fs-title);
+  letter-spacing: var(--tracking-title);
+  line-height: 1.15;
+}
+
+h2 {
+  font-size: var(--fs-section);
+  letter-spacing: var(--tracking-title);
+  line-height: 1.2;
+}
+
+h3 {
+  font-size: var(--fs-body);
+  color: var(--muted);
+  letter-spacing: var(--tracking);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.meta {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+.caption {
+  font-size: var(--fs-caption);
+  color: var(--muted);
+}
+
+/* prefers-reduced-motion: every animation and transition off, changes are immediate (handoff "Gerak"). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

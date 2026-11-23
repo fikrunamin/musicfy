@@ -1,0 +1,92 @@
+/*
+ * Design tokens from docs/design/handoff/ritme-web-handoff.html ("Token warna", "Jarak, radius,
+ * sentuh"). Dark is the primary theme; light follows prefers-color-scheme. Values marked
+ * "screens" are sampled from the handoff screens (not in its token table).
+ */
+:root {
+  color-scheme: dark;
+  --bg: #000000;
+  --surface: #1a1a1a;
+  --surface2: #2c2c2c;
+  --surface3: #333333;
+  --text: #ffffff;
+  --muted: #ffffff99;
+  --faint: #ffffff1f;
+  --accent: #e0e0e0;
+  --on-accent: #000000;
+  --danger: #ff5a4e;
+  --overlay: #000000b3;
+  /* screens: danger buttons and the LIVE badge sit on the danger colour at 12 %. */
+  --danger-soft: #ff5a4e1f;
+  /* screens: the sync dot and the reconnecting banner. */
+  --sync: #4bd587;
+  --warn: #f5b500;
+  --on-warn: #000000;
+  /* screens: desktop panels over the blurred backdrop. */
+  --panel: #0000004d;
+  /* Fixed in both themes (handoff): direct-link placeholder and the error stage. */
+  --placeholder: #161616;
+  --stage-error: #0d0d0d;
+  --on-dark: #ffffff;
+  --on-dark-muted: #ffffff99;
+  /* Video entries darken the backdrop more than songs (brief §12 I). */
+  --overlay-video: #000000d9;
+
+  --r-pill: 999px;
+  --r-card: 24px;
+  --r-stage: 20px;
+  --r-input: 16px;
+  --r-thumb: 8px;
+  --r-sheet: 28px;
+
+  --gutter: 16px;
+  --gap-section: 24px;
+  --gap-item: 12px;
+  --pad-desktop: 24px;
+  --btn-h: 52px;
+  --row-h: 60px;
+  --target: 44px;
+
+  --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --tracking: -0.4px;
+  --tracking-title: -0.05em;
+  --fs-display: 44px;
+  --fs-title: 28px;
+  --fs-section: 20px;
+  --fs-header: 17px;
+  --fs-body: 15px;
+  --fs-meta: 13px;
+  --fs-caption: 12px;
+
+  --t-sheet: 280ms;
+  --t-player: 400ms;
+  --t-cover: 600ms;
+  --pulse: 2s;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #ffffff;
+    --surface: #f0f0f0;
+    --surface2: #e0e0e0;
+    --surface3: #cccccc;
+    --text: #000000;
+    --muted: #00000099;
+    --faint: #0000001a;
+    --accent: #000000;
+    --on-accent: #ffffff;
+    --danger: #d93025;
+    --overlay: #ffffffc7;
+    --danger-soft: #d930251f;
+    --sync: #259956;
+    --panel: #ffffff8c;
+    --overlay-video: #ffffffd9;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --fs-display: 96px;
+  }
+}
