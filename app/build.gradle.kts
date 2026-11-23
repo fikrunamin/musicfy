@@ -393,6 +393,9 @@ dependencies {
     implementation(project(":modules:monochrome"))
     implementation(project(":core:platform"))
     implementation(project(":core:settings"))
+    implementation(project(":core:model"))
+    implementation(project(":core:resolver"))
+    implementation(project(":core:designsystem"))
 
 
     implementation(libs.ktor.client.core)
@@ -414,4 +417,9 @@ dependencies {
     implementation(libs.androidx.webkit)
 
     testImplementation(libs.junit)
+}
+
+tasks.withType<Test>().configureEach {
+    // ./gradlew :app:testUniversalFossDebugUnitTest -PupdateGolden=true rewrites golden files
+    systemProperty("updateGolden", providers.gradleProperty("updateGolden").getOrElse("false"))
 }

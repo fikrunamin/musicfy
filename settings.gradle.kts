@@ -41,6 +41,13 @@ include(":modules:ritme-protocol")
 // shared core: plain JVM, used by the Android app and the desktop app
 include(":core:platform")
 include(":core:settings")
+include(":core:model")
+include(":core:database")
+include(":core:resolver")
+include(":core:designsystem")
+
+// desktop app (Compose Desktop + Koin)
+include(":desktopApp")
 
 // local newpipe extractor
 //includeBuild("../NewPipeExtractor") {

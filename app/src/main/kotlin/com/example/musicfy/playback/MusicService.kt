@@ -3314,7 +3314,7 @@ class MusicService :
                 YTPlayerUtils.playerResponseForPlayback(
                     mediaId,
                     audioQuality = audioQuality,
-                    connectivityManager = connectivityManager,
+                    networkMetered = { connectivityManager.isActiveNetworkMetered },
                 )
             }.getOrElse { throwable ->
                 when (throwable) {
@@ -3776,7 +3776,7 @@ class MusicService :
                 val playbackData = YTPlayerUtils.playerResponseForPlayback(
                     videoId = mediaId,
                     audioQuality = audioQuality,
-                    connectivityManager = connectivityManager,
+                    networkMetered = { connectivityManager.isActiveNetworkMetered },
                 ).getOrNull()
                 playbackData?.streamUrl
             } catch (e: Exception) {

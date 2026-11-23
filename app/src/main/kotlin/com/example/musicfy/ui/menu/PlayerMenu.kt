@@ -434,13 +434,15 @@ fun PlayerMenu(
                             )
                         )
                     }
-                    if (mediaMetadata.album != null) {
+                    // Local copy: cross-module properties (core:model) can't be smart-cast.
+                    val metadataAlbum = mediaMetadata.album
+                    if (metadataAlbum != null) {
                         add(
                             Material3MenuItemData(
                                 title = { Text(text = stringResource(R.string.view_album)) },
                                 description = {
                                     Text(
-                                        text = mediaMetadata.album.title,
+                                        text = metadataAlbum.title,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -453,7 +455,7 @@ fun PlayerMenu(
                                     )
                                 },
                                 onClick = {
-                                    navController.navigate("album/${mediaMetadata.album.id}")
+                                    navController.navigate("album/${metadataAlbum.id}")
                                     playerBottomSheetState.collapseSoft()
                                     onDismiss()
                                 }

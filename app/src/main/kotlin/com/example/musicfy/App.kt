@@ -22,6 +22,7 @@ import coil3.request.crossfade
 import com.music.innertube.YouTube
 import com.music.innertube.models.IpVersion
 import com.music.innertube.models.YouTubeLocale
+import com.example.musicfy.core.settings.resolveContentLocale
 import com.music.kugou.KuGou
 import com.music.lastfm.LastFM
 import com.example.musicfy.constants.*
@@ -30,7 +31,8 @@ import com.example.musicfy.extensions.toEnum
 import com.example.musicfy.extensions.toInetSocketAddress
 import com.example.musicfy.utils.CrashHandler
 import com.example.musicfy.utils.PreferencesCache
-import com.example.musicfy.utils.cipher.CipherDeobfuscator
+import com.example.musicfy.core.resolver.ResolverRuntime
+import com.example.musicfy.platform.androidResolverPlatform
 import com.example.musicfy.utils.dataStore
 import com.example.musicfy.utils.reportException
 import dagger.hilt.android.HiltAndroidApp
@@ -68,7 +70,7 @@ class App : Application(), SingletonImageLoader.Factory {
 
         CrashHandler.install(this)
 
-        CipherDeobfuscator.initialize(this)
+        ResolverRuntime.install(androidResolverPlatform(this))
 
         if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
@@ -134,15 +136,12 @@ class App : Application(), SingletonImageLoader.Factory {
         val locale = Locale.getDefault()
         val languageTag = locale.language
 
-        YouTube.locale = YouTubeLocale(
-            gl = settings[ContentCountryKey]?.takeIf { it != SYSTEM_DEFAULT }
-                ?: locale.country.takeIf { it in CountryCodeToName }
-                ?: "US",
-            hl = settings[ContentLanguageKey]?.takeIf { it != SYSTEM_DEFAULT }
-                ?: locale.language.takeIf { it in LanguageCodeToName }
-                ?: languageTag.takeIf { it in LanguageCodeToName }
-                ?: "en"
-        )
+        YouTube.locale = resolveContentLocale(
+            contentCountry = settings[ContentCountryKey],
+            contentLanguage = settings[ContentLanguageKey],
+            countryCandidates = listOf(locale.country),
+            languageCandidates = listOf(locale.language, languageTag),
+        ).let { YouTubeLocale(gl = it.gl, hl = it.hl) }
 
         if (languageTag == "zh-TW") {
             KuGou.useTraditionalChinese = true
@@ -267,16 +266,12 @@ class App : Application(), SingletonImageLoader.Factory {
                         ?.let { Locale.forLanguageTag(it) }
                         ?: systemLocale
 
-                    YouTube.locale = YouTubeLocale(
-                        gl = contentCountry?.takeIf { it != SYSTEM_DEFAULT }
-                            ?: effectiveAppLocale.country.takeIf { it in CountryCodeToName }
-                            ?: systemLocale.country.takeIf { it in CountryCodeToName }
-                            ?: "US",
-                        hl = contentLanguage?.takeIf { it != SYSTEM_DEFAULT }
-                            ?: effectiveAppLocale.toLanguageTag().takeIf { it in LanguageCodeToName }
-                            ?: effectiveAppLocale.language.takeIf { it in LanguageCodeToName }
-                            ?: "en"
-                    )
+                    YouTube.locale = resolveContentLocale(
+                        contentCountry = contentCountry,
+                        contentLanguage = contentLanguage,
+                        countryCandidates = listOf(effectiveAppLocale.country, systemLocale.country),
+                        languageCandidates = listOf(effectiveAppLocale.toLanguageTag(), effectiveAppLocale.language),
+                    ).let { YouTubeLocale(gl = it.gl, hl = it.hl) }
                 }
         }
 

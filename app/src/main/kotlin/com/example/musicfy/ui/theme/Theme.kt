@@ -3,13 +3,7 @@
 package com.example.musicfy.ui.theme
 
 import android.graphics.Bitmap
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ProvideTextStyle
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
@@ -17,11 +11,10 @@ import androidx.compose.runtime.saveable.SaverScope
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalContext
 import androidx.palette.graphics.Palette
-import com.materialkolor.PaletteStyle
-import com.materialkolor.dynamiccolor.ColorSpec
-import com.materialkolor.rememberDynamicColorScheme
+import com.example.musicfy.core.designsystem.MusicfyBaseTheme
+import com.example.musicfy.core.designsystem.MusicfyDarkColorScheme
+import com.example.musicfy.core.designsystem.MusicfyLightColorScheme
 import com.materialkolor.score.Score
 
 val DefaultThemeColor = Color(0xFF8E8E8E)
@@ -42,50 +35,9 @@ fun MusicfyTheme(
     themeColor: Color = DefaultThemeColor,
     content: @Composable () -> Unit,
 ) {
-    val context = LocalContext.current
-
-    // Dynamic (Material You) colour is deliberately not used - the app ships its own palette.
-    // The branch is gone rather than dead-but-present: dynamic*ColorScheme is API 31.
-    val baseColorScheme = run {
-
-        if (darkTheme) {
-            darkColorScheme(
-                primary = Color(0xFFE0E0E0),
-                onPrimary = Color.Black,
-                primaryContainer = Color(0xFF333333),
-                onPrimaryContainer = Color.White,
-                secondary = Color(0xFFB0B0B0),
-                onSecondary = Color.Black,
-                secondaryContainer = Color(0xFF2C2C2C),
-                onSecondaryContainer = Color.White,
-                background = Color.Black,
-                onBackground = Color.White,
-                surface = Color.Black,
-                onSurface = Color.White,
-                surfaceVariant = Color(0xFF1A1A1A),
-                onSurfaceVariant = Color.White,
-                surfaceTint = Color.Black
-            )
-        } else {
-            lightColorScheme(
-                primary = Color.Black,
-                onPrimary = Color.White,
-                primaryContainer = Color(0xFFE0E0E0),
-                onPrimaryContainer = Color.Black,
-                secondary = Color(0xFF333333),
-                onSecondary = Color.White,
-                secondaryContainer = Color(0xFFCCCCCC),
-                onSecondaryContainer = Color.Black,
-                background = Color.White,
-                onBackground = Color.Black,
-                surface = Color.White,
-                onSurface = Color.Black,
-                surfaceVariant = Color(0xFFF0F0F0),
-                onSurfaceVariant = Color.Black,
-                surfaceTint = Color.White
-            )
-        }
-    }
+    // Dynamic (Material You) colour is deliberately not used - the app ships its own palette
+    // (core:designsystem). The branch is gone rather than dead-but-present: dynamic*ColorScheme is API 31.
+    val baseColorScheme = if (darkTheme) MusicfyDarkColorScheme else MusicfyLightColorScheme
 
     val colorScheme = remember(baseColorScheme, pureBlack, darkTheme) {
         if (darkTheme && pureBlack) {
@@ -95,15 +47,11 @@ fun MusicfyTheme(
         }
     }
 
-    MaterialTheme(
+    MusicfyBaseTheme(
         colorScheme = colorScheme,
         typography = AppTypography,
-    ) {
-        ProvideTextStyle(
-            value = AppTypography.bodyLarge,
-            content = content
-        )
-    }
+        content = content,
+    )
 }
 
 fun Bitmap.extractThemeColor(): Color {

@@ -11,6 +11,7 @@ import androidx.annotation.MainThread
 import androidx.collection.ArrayMap
 import com.music.innertube.YouTube
 import com.example.musicfy.BuildConfig
+import com.example.musicfy.core.resolver.BotGuardSession
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
@@ -35,7 +36,7 @@ class PoTokenWebView private constructor(
     context: Context,
 
     private val continuation: Continuation<PoTokenWebView>,
-) {
+) : BotGuardSession {
     private val webView = WebView(context)
     private val scope = MainScope()
     private val poTokenContinuations =
@@ -170,7 +171,7 @@ class PoTokenWebView private constructor(
         continuation.resume(this)
     }
 
-    suspend fun generatePoToken(identifier: String): String {
+    override suspend fun generatePoToken(identifier: String): String {
         return withContext(Dispatchers.Main) {
             try {
                 withTimeout(MINT_TIMEOUT_MS) {
@@ -231,7 +232,7 @@ class PoTokenWebView private constructor(
         popPoTokenContinuation(identifier)?.resume(poToken)
     }
 
-    val isExpired: Boolean
+    override val isExpired: Boolean
         get() = Instant.now().isAfter(expirationInstant)
 
     private fun addPoTokenEmitter(identifier: String, continuation: Continuation<String>) {
@@ -297,6 +298,8 @@ class PoTokenWebView private constructor(
         webView.removeAllViews()
         webView.destroy()
     }
+
+    override suspend fun dispose() = withContext(Dispatchers.Main) { close() }
 
     companion object {
         private const val TAG = "PoTokenWebView"
