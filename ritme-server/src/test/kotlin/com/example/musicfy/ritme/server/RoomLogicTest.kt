@@ -469,4 +469,30 @@ class RoomLogicTest {
         val changed = ok(apply(playingA, HOST, Command.SetSettings(RoomSettings(guestsCanControl = false, guestsCanAdd = false))))
         assertEquals(RoomSettings(guestsCanControl = false, guestsCanAdd = false), changed.settings)
     }
+
+    @Test
+    fun urlEntriesFollowTheSharedMediaUrlRules() {
+        fun add(u: String) = apply(playingA, HOST, Command.Add(listOf(NewEntry("", "Clip", "", null, 60_000, MediaKind.URL, u))))
+        listOf(
+            "https://user:pass@cdn.example/v.mp4",
+            "http://192.168.1.1/v.mp4",
+            "http://127.0.0.1:8080/v.mp4",
+            "https://localhost/v.mp4",
+            "http://[::1]/v.mp4",
+            "http://2130706433/v.mp4",
+            "https://cdn.example/v.mp4#t=5",
+            "https://cdn.example/a b.mp4",
+            "https://router/v.mp4",
+        ).forEach { assertEquals(it, ErrorCode.INVALID, rejected(add(it))) }
+        val good = "https://cdn.example.com:8443/live/index.m3u8?token=abc"
+        assertEquals(good, ok(add(good)).queue.last().url)
+    }
+
+    @Test
+    fun urlEntryThumbnailsFollowTheSameHostRules() {
+        val url = NewEntry("", "Clip", "", null, 60_000, MediaKind.URL, "https://cdn.example/v.mp4")
+        listOf("https://192.168.1.1/poster.jpg", "https://localhost/poster.jpg", "https://user@cdn.example/poster.jpg").forEach {
+            assertEquals(it, ErrorCode.INVALID, rejected(apply(playingA, HOST, Command.Add(listOf(url.copy(thumbnailUrl = it))))))
+        }
+    }
 }

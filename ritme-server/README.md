@@ -128,9 +128,17 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
 - The server accepts protocol versions `MIN_SUPPORTED_PROTOCOL_VERSION..PROTOCOL_VERSION`;
   `Welcome.protocolVersion` is the server's version.
 - Entries: YouTube kinds carry a `videoId` matching `[A-Za-z0-9_-]{1,64}` and no `url`; `URL`
-  entries carry an http(s) `url` (<= 2048 chars) and `videoId = ""`. `thumbnailUrl` is null or
-  https (<= 512 chars), for YouTube kinds only from `*.ytimg.com`, `*.googleusercontent.com` or
-  `*.ggpht.com`. `durationMs` is 0 (live) to 24 h.
+  entries carry a `url` that passes `MediaUrlRules` (`modules/ritme-protocol`) and `videoId = ""`:
+  http(s), at most 2048 chars, no whitespace (Unicode whitespace and U+FEFF included), control
+  characters, backslash or `#fragment`, no `user:pass@`, and no local host (`localhost`,
+  `*.localhost`, `*.local`, `*.internal`, `*.lan`, `*.home.arpa`, single-label names,
+  loopback/private/link-local/CGNAT/unspecified/multicast/reserved IPv4 and IPv6 literals, IPv6
+  literals embedding such an IPv4 address (`::ffff:`, `::ffff:0:`, NAT64 `64:ff9b::/96`, 6to4
+  `2002::/16`), the local-use NAT64 prefix `64:ff9b:1::/48`, or numeric hosts that are not a
+  dotted quad). The server never resolves or fetches the URL. `thumbnailUrl` is null or https
+  (<= 512 chars), for YouTube kinds only from `*.ytimg.com`, `*.googleusercontent.com` or
+  `*.ggpht.com`, for `URL` entries under the same host rules as the url. `durationMs` is 0 (live)
+  to 24 h.
 - Settings: `guestsCanControl` and `guestsCanAdd` (both default `true`). With `guestsCanAdd = false`
   only the host may `Add` (others get `FORBIDDEN`). `SetSettings` replaces all settings, so clients
   send every field, taking the others from the latest snapshot. A host on an older client that does
@@ -174,4 +182,6 @@ Exposure note: a room's members see each other's queue entries. `URL` entries an
 thumbnail are loaded by each member's device directly from the given host, so whoever adds a
 `URL` entry (or a non-YouTube thumbnail on a `URL` entry) learns the IP addresses of the members
 who play or display it. YouTube-kind thumbnails are restricted to YouTube's image hosts for this
-reason. Clients should only play `URL` entries from people they trust.
+reason. Clients should only play `URL` entries from people they trust. Local and private hosts
+are refused for URL entries and their thumbnails, so a member cannot point other members' devices
+at their own router or LAN.
