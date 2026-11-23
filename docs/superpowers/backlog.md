@@ -77,3 +77,8 @@ Keputusan pengguna: job packaging DMG/MSI di `desktop.yml` **baru dibuat setelah
 bisa memutar lagu (D2) **dan** mendukung Ritme: dengar bareng musik, nonton video YouTube, dan
 video URL. Sampai saat itu, DMG hanya dibuat manual untuk percobaan
 (`./gradlew :desktopApp:packageDmg -Pcompose.desktop.packaging.checkJdkVendor=false`).
+- Tambahan (2026-11-23): aplikasi desktop juga **wajib punya browser in-app untuk mencari video**,
+  seperti #3 di Android: address bar dengan input URL manual, deteksi video/stream di halaman, dan
+  konfirmasi sebelum "Tambah ke Ritme". Implementasinya memakai JCEF (sudah direncanakan di D2 untuk
+  BotGuard) di atas `:modules:ritme-media` dari #3. Dikerjakan bersama Ritme desktop, sebelum
+  installer CI.
