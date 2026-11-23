@@ -11,7 +11,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -103,6 +102,8 @@ internal fun RitmeEntryButton(ritme: RitmeUi, form: RitmeEntryForm) {
         text = stringResource(form.buttonLabel(state)),
         enabled = form.canSubmit(state.phase),
         onClick = { form.submit(ritme, saveName) },
+        // "Connecting…" / "Try again" are announced as the label changes.
+        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
     )
 }
 
@@ -132,7 +133,6 @@ internal fun RitmeEntryContent(ritme: RitmeUi, form: RitmeEntryForm, onJoined: (
     val busy = state.phase == RitmePhase.CONNECTING
     val error = RitmeEntryForm.errorOf(state)
     val done = KeyboardActions(onDone = { form.submit(ritme, saveName) })
-    val secondary = LocalContentColor.current.copy(alpha = 0.6f)
 
     Column(
         modifier = Modifier
@@ -141,11 +141,7 @@ internal fun RitmeEntryContent(ritme: RitmeUi, form: RitmeEntryForm, onJoined: (
             .padding(bottom = 12.dp),
     ) {
         SheetLabel(stringResource(if (form.joining) R.string.ritme_join_title else R.string.ritme_name))
-        Text(
-            text = stringResource(if (form.startWith != null) R.string.ritme_start_with_this else R.string.ritme_start_desc),
-            style = MaterialTheme.typography.bodyMedium,
-            color = secondary,
-        )
+        RitmeSecondaryText(stringResource(if (form.startWith != null && !form.joining) R.string.ritme_start_with_this else R.string.ritme_start_desc))
         Spacer(Modifier.height(22.dp))
         SheetLabel(stringResource(R.string.ritme_display_name))
         Spacer(Modifier.height(8.dp))
@@ -172,9 +168,8 @@ internal fun RitmeEntryContent(ritme: RitmeUi, form: RitmeEntryForm, onJoined: (
         }
         if (error != null) {
             Spacer(Modifier.height(12.dp))
-            Text(
+            RitmeSecondaryText(
                 text = stringResource(error),
-                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )

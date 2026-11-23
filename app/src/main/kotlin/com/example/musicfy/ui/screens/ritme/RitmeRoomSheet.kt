@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -65,16 +66,17 @@ import com.example.musicfy.ritme.protocol.Member
 import com.example.musicfy.ritme.protocol.QueueEntry
 import com.example.musicfy.ritme.protocol.RoomState
 import com.example.musicfy.ritme.session.RitmePermissions
-import com.example.musicfy.ui.component.AppSwitch
 import com.example.musicfy.ui.component.LocalPlayerBottomSheetState
 import com.example.musicfy.ui.component.LocalZoomOutOverlayState
 import com.example.musicfy.ui.component.Material3MenuGroup
 import com.example.musicfy.ui.component.Material3MenuItemData
+import com.example.musicfy.ui.component.PlayingIndicatorBox
 import com.example.musicfy.ui.component.PopupSheetHandle
 import com.example.musicfy.ui.component.PopupSheetState
 import com.example.musicfy.ui.component.SheetDivider
 import com.example.musicfy.ui.component.SheetHeaderButton
 import com.example.musicfy.ui.component.SheetLabel
+import com.example.musicfy.ui.player.LyricsHeaderArtX
 import com.example.musicfy.ui.screens.Screens
 import com.example.musicfy.ui.utils.resize
 
@@ -88,6 +90,20 @@ private val RowHighlightShape = RoundedCornerShape(14.dp)
 private const val RowArtPx = 144
 private val ActionBoxSize = 44.dp
 private val ActionIconSize = 22.dp
+
+/** PopupSheet's content side padding (and RitmeQueuePage's), which the rows sit inside. */
+private val SheetSidePadding = 20.dp
+/** QueueSongRow puts the cover's left edge at LyricsHeaderArtX from the screen edge; so do we. */
+private val RowArtStart = LyricsHeaderArtX - SheetSidePadding
+/** QueueSectionHeader's space above and below a section title. */
+private val SectionTitleTop = 16.dp
+private val SectionTitleBottom = 8.dp
+/** SheetHeader's gap before its round button. */
+private val HeaderButtonGap = 10.dp
+
+// One pushed Ritme sheet (QR, member actions, end confirmation) at a time over the room: a double
+// tap must not stack two. Main thread only; reset when that sheet has left (its onClosed).
+private var pushedSheetOpen = false
 
 /**
  * The room (spec 3.3): code with share/QR, members, now playing, up next, then the room's actions
@@ -120,8 +136,9 @@ internal fun RitmeRoomContent(
     val context = LocalContext.current
     val link = remember(room.code) { ritme.controller.shareLink(room.code) }
     val you = stringResource(R.string.ritme_you)
-    val secondary = LocalContentColor.current.copy(alpha = 0.6f)
-    fun addedBy(entry: QueueEntry): String = if (entry.addedBy == me) you else names[entry.addedBy] ?: "?"
+    // The member who added it may have left the room since.
+    val someone = stringResource(R.string.ritme_someone)
+    fun addedBy(entry: QueueEntry): String = if (entry.addedBy == me) you else names[entry.addedBy] ?: someone
 
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
@@ -132,17 +149,16 @@ internal fun RitmeRoomContent(
                 Column(Modifier.weight(1f)) {
                     SheetLabel(stringResource(R.string.ritme_room_title, room.code))
                     val connected = room.members.count { it.connected }
-                    Text(
+                    RitmeSecondaryText(
                         text = if (state.connection == ConnectionStatus.RECONNECTING) {
                             stringResource(R.string.ritme_reconnecting)
                         } else {
                             pluralStringResource(R.plurals.ritme_members, connected, connected)
                         },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = secondary,
                     )
                 }
-                // The song menu header's round buttons.
+                // The song menu header's round buttons, with its gap before them.
+                Spacer(Modifier.width(HeaderButtonGap))
                 val share = stringResource(R.string.ritme_share)
                 SheetHeaderButton(
                     icon = R.drawable.share,
@@ -152,7 +168,7 @@ internal fun RitmeRoomContent(
                         role = Role.Button
                     },
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(HeaderButtonGap))
                 val qr = stringResource(R.string.ritme_qr)
                 SheetHeaderButton(
                     icon = R.drawable.qr_code,
@@ -175,21 +191,18 @@ internal fun RitmeRoomContent(
         }
         item(key = "divider1") { SheetDivider() }
         item(key = "nowTitle") {
-            SheetLabel(stringResource(R.string.ritme_now_playing), modifier = Modifier.padding(bottom = 8.dp))
+            SheetLabel(stringResource(R.string.ritme_now_playing), modifier = Modifier.padding(bottom = SectionTitleBottom))
         }
         item(key = "now") {
             val current = queue.current
             if (current == null) {
-                Text(
-                    text = stringResource(R.string.ritme_empty_queue),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = secondary,
-                )
+                RitmeSecondaryText(stringResource(R.string.ritme_empty_queue))
             } else {
                 EntryRow(
                     entry = current,
                     addedBy = addedBy(current),
                     isCurrent = true,
+                    isPlaying = room.playback.isPlaying,
                     actions = RitmeRoomActions.forCurrent(room, me, current, online),
                     onPlay = {},
                     onRemove = { ritme.session.remove(current.entryId) },
@@ -200,7 +213,10 @@ internal fun RitmeRoomContent(
         }
         if (queue.upcoming.isNotEmpty()) {
             item(key = "nextTitle") {
-                SheetLabel(stringResource(R.string.ritme_up_next), modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
+                SheetLabel(
+                    stringResource(R.string.ritme_up_next),
+                    modifier = Modifier.padding(top = SectionTitleTop, bottom = SectionTitleBottom),
+                )
             }
         }
         items(queue.upcoming, key = { it.entryId }) { entry ->
@@ -209,6 +225,7 @@ internal fun RitmeRoomContent(
                 entry = entry,
                 addedBy = addedBy(entry),
                 isCurrent = false,
+                isPlaying = false,
                 actions = actions,
                 onPlay = { ritme.session.playEntry(entry.entryId) },
                 onRemove = { ritme.session.remove(entry.entryId) },
@@ -218,52 +235,56 @@ internal fun RitmeRoomContent(
         }
         item(key = "divider2") { SheetDivider() }
         item(key = "actions") {
-            // The same menu rows as the song, queue and player menus; a row is dimmed when its
-            // onClick is null.
+            // The same menu rows as the song, queue and player menus (Material3MenuGroup, 8 dp
+            // apart); a row is dimmed when its onClick is null. The switch row is that row's
+            // mirror with a real switch (RitmeMenuSwitchRow).
             val guestsCanControl = room.settings.guestsCanControl
-            Material3MenuGroup(
-                items = buildList {
-                    add(
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Material3MenuGroup(
+                    items = listOf(
                         Material3MenuItemData(
                             icon = { Icon(painterResource(R.drawable.playlist_add), contentDescription = null) },
                             title = { Text(stringResource(R.string.ritme_add_songs)) },
                             onClick = onAddSongs,
                         ),
+                    ),
+                )
+                if (isHost) {
+                    RitmeMenuSwitchRow(
+                        icon = {
+                            Icon(
+                                painterResource(if (guestsCanControl) R.drawable.lock_open else R.drawable.lock),
+                                contentDescription = null,
+                            )
+                        },
+                        title = stringResource(R.string.ritme_guests_can_control),
+                        checked = guestsCanControl,
+                        enabled = canManage,
+                        onCheckedChange = { ritme.session.setGuestsCanControl(it) },
                     )
-                    if (isHost) {
+                }
+                Material3MenuGroup(
+                    items = buildList {
                         add(
                             Material3MenuItemData(
-                                icon = {
-                                    Icon(
-                                        painterResource(if (guestsCanControl) R.drawable.lock_open else R.drawable.lock),
-                                        contentDescription = null,
-                                    )
-                                },
-                                title = { Text(stringResource(R.string.ritme_guests_can_control)) },
-                                onClick = if (canManage) ({ ritme.session.setGuestsCanControl(!guestsCanControl) }) else null,
-                                // Shows the room's setting; the whole row toggles it.
-                                trailingContent = { AppSwitch(checked = guestsCanControl, onCheckedChange = null, enabled = canManage) },
+                                icon = { Icon(painterResource(R.drawable.logout), contentDescription = null) },
+                                title = { Text(stringResource(R.string.ritme_leave)) },
+                                onClick = { ritme.session.leave() },
                             ),
                         )
-                    }
-                    add(
-                        Material3MenuItemData(
-                            icon = { Icon(painterResource(R.drawable.logout), contentDescription = null) },
-                            title = { Text(stringResource(R.string.ritme_leave)) },
-                            onClick = { ritme.session.leave() },
-                        ),
-                    )
-                    if (isHost) {
-                        add(
-                            Material3MenuItemData(
-                                icon = { Icon(painterResource(R.drawable.close), contentDescription = null) },
-                                title = { Text(stringResource(R.string.ritme_end)) },
-                                onClick = if (canManage) ({ popup.showEndConfirm(ritme) }) else null,
-                            ),
-                        )
-                    }
-                },
-            )
+                        if (isHost) {
+                            // Untinted, like the menus' Delete rows, which also lead to a confirmation.
+                            add(
+                                Material3MenuItemData(
+                                    icon = { Icon(painterResource(R.drawable.close), contentDescription = null) },
+                                    title = { Text(stringResource(R.string.ritme_end)) },
+                                    onClick = if (canManage) ({ popup.showEndConfirm(ritme) }) else null,
+                                ),
+                            )
+                        }
+                    },
+                )
+            }
         }
     }
 }
@@ -295,7 +316,6 @@ fun RitmeQueuePage(onClose: () -> Unit, navController: NavController, bottomPadd
 @Composable
 private fun MembersRow(room: RoomState, me: String?, online: Boolean, onMember: (Member) -> Unit, modifier: Modifier = Modifier) {
     val you = stringResource(R.string.ritme_you)
-    val host = stringResource(R.string.ritme_host)
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier
@@ -306,6 +326,7 @@ private fun MembersRow(room: RoomState, me: String?, online: Boolean, onMember: 
             // Host only: tap someone else for "Make host" / "Remove from Ritme".
             val actionable = RitmeRoomActions.forMember(room, me, member, online).any
             val label = if (member.id == me) you else member.name
+            val spoken = if (member.id == room.hostId) stringResource(R.string.ritme_member_host, label) else label
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -315,7 +336,7 @@ private fun MembersRow(room: RoomState, me: String?, online: Boolean, onMember: 
                     .clip(RowHighlightShape)
                     .clickable(enabled = actionable, role = Role.Button) { onMember(member) }
                     .semantics(mergeDescendants = true) {
-                        contentDescription = if (member.id == room.hostId) "$label, $host" else label
+                        contentDescription = spoken
                     }
                     .padding(vertical = 6.dp),
             ) {
@@ -336,6 +357,8 @@ private fun EntryRow(
     entry: QueueEntry,
     addedBy: String,
     isCurrent: Boolean,
+    /** The room is playing [entry] (only for the current row): QueueSongRow's playing bars. */
+    isPlaying: Boolean,
     actions: EntryActions,
     onPlay: () -> Unit,
     onRemove: () -> Unit,
@@ -360,34 +383,40 @@ private fun EntryRow(
                 role = Role.Button,
                 onClick = onPlay,
             )
-            .padding(start = 10.dp),
+            .padding(start = RowArtStart),
     ) {
-        AsyncImage(
-            model = artwork,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(RowArtSize)
-                .clip(RowArtShape)
-                .background(ink.copy(alpha = 0.10f)),
-        )
+        Box(modifier = Modifier.size(RowArtSize)) {
+            AsyncImage(
+                model = artwork,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RowArtShape)
+                    .background(ink.copy(alpha = 0.10f)),
+            )
+            // QueueScreen's NowPlayingIndicator (private there), driven by the room's playback.
+            if (isCurrent) {
+                PlayingIndicatorBox(
+                    isActive = true,
+                    playWhenReady = isPlaying,
+                    shape = RowArtShape,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
             Text(
                 text = entry.title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
+                fontSize = RitmeRowTitleSize,
+                lineHeight = RitmeRowTitleLineHeight,
+                fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            val by = stringResource(R.string.ritme_added_by, addedBy)
-            Text(
-                text = if (playable) "${entry.artist} · $by" else "${stringResource(R.string.ritme_unsupported)} · $by",
-                style = MaterialTheme.typography.bodySmall,
-                color = ink.copy(alpha = 0.6f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            val what = if (playable) entry.artist else stringResource(R.string.ritme_unsupported)
+            RitmeSecondaryText(stringResource(R.string.ritme_entry_subtitle, what, addedBy), maxLines = 1)
         }
         if (actions.moveUp != null) RowAction(R.drawable.arrow_upward, stringResource(R.string.ritme_move_up), onMoveUp)
         if (actions.moveDown != null) RowAction(R.drawable.arrow_downward, stringResource(R.string.ritme_move_down), onMoveDown)
@@ -424,10 +453,13 @@ private fun RowAction(icon: Int, description: String, onClick: () -> Unit) {
 private fun PopupSheetState.showWhileValid(
     ritme: RitmeUi,
     stillValid: (room: RoomState, me: String?) -> Boolean,
+    locked: Boolean = false,
     content: @Composable (room: RoomState, me: String?, online: Boolean, close: () -> Unit) -> Unit,
 ) {
+    if (pushedSheetOpen) return
+    pushedSheetOpen = true
     var handle: PopupSheetHandle? = null
-    handle = showWithHandle {
+    handle = showWithHandle(locked = locked, onClosed = { pushedSheetOpen = false }) {
         val state by ritme.session.state.collectAsState()
         val room = state.room
         val valid = room != null && stillValid(room, state.memberId)
@@ -461,7 +493,7 @@ private fun PopupSheetState.showRitmeQr(ritme: RitmeUi, link: String, code: Stri
                 RitmeQrCode(text = link, modifier = Modifier.fillMaxWidth(), contentDescription = link)
             }
             Spacer(Modifier.height(12.dp))
-            Text(link, style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.6f))
+            RitmeSecondaryText(link)
         }
     }
 }
@@ -516,7 +548,8 @@ private fun PopupSheetState.showMemberActions(ritme: RitmeUi, memberId: String) 
 }
 
 private fun PopupSheetState.showEndConfirm(ritme: RitmeUi) {
-    showWhileValid(ritme, stillValid = { room, me -> RitmePermissions.isHost(room, me) }) { room, me, online, close ->
+    // Locked, per docs/popup-sheet.skill.md for an irreversible choice: only End or Cancel close it.
+    showWhileValid(ritme, stillValid = { room, me -> RitmePermissions.isHost(room, me) }, locked = true) { room, me, online, close ->
         Column(
             modifier = Modifier
                 .fillMaxWidth()

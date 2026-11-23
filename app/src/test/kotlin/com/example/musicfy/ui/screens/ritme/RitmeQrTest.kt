@@ -52,4 +52,13 @@ class RitmeQrTest {
         // The top-left finder pattern starts right after the quiet zone.
         assertTrue(modules[RitmeQr.MARGIN, RitmeQr.MARGIN])
     }
+
+    @Test
+    fun theDrawnSideIsAWholeMultipleOfTheModuleCount() {
+        assertEquals(29 * 17, RitmeQr.snappedSidePx(availablePx = 500, modules = 29))
+        assertEquals(290, RitmeQr.snappedSidePx(availablePx = 290, modules = 29))
+        // Too small for one pixel per module: draw what fits rather than nothing.
+        assertEquals(20, RitmeQr.snappedSidePx(availablePx = 20, modules = 29))
+        assertEquals(0, RitmeQr.snappedSidePx(availablePx = 0, modules = 29))
+    }
 }

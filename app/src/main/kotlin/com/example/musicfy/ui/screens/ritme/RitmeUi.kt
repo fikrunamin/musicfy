@@ -57,22 +57,32 @@ fun RitmeSheetOpener(navController: NavController) {
 }
 
 // One of each at a time: a second tap on the pill (or a repeated deep link) must not stack a copy
-// of the sheet already showing. Main thread only; reset once that sheet has left. The popup state
+// of the sheet already showing. Main thread only; cleared once that sheet has left. The popup state
 // these sheets go on (LocalZoomOutOverlayState's default) outlives an activity, so these do too.
-private var entrySheetOpen = false
+/** The form of the entry sheet that is showing, so a deep link can fill in its code. */
+private var openEntryForm: RitmeEntryForm? = null
 private var roomSheetOpen = false
 
 fun PopupSheetState.showRitmeEntrySheet(ritme: RitmeUi, code: String?, startWith: List<MediaMetadata?>?) {
-    if (entrySheetOpen) return
-    entrySheetOpen = true
+    openEntryForm?.let { open ->
+        // Already showing: a link's code goes into it (not while an attempt is under way), and an
+        // error from the previous attempt no longer applies.
+        if (code != null && ritme.session.state.value.phase != RitmePhase.CONNECTING) {
+            ritme.session.dismiss()
+            open.joining = true
+            open.code = code
+        }
+        return
+    }
     // A failure left over from an earlier attempt is not this sheet's error.
     ritme.session.dismiss()
     val form = RitmeEntryForm(code, startWith)
+    openEntryForm = form
     var handle: PopupSheetHandle? = null
     handle = showWithHandle(
         buttonBar = { RitmeEntryButton(ritme, form) },
         onClosed = {
-            entrySheetOpen = false
+            if (openEntryForm === form) openEntryForm = null
             // Closed while still connecting: give that attempt up. After a failure: back to idle.
             when (ritme.session.state.value.phase) {
                 RitmePhase.CONNECTING -> ritme.session.leave()

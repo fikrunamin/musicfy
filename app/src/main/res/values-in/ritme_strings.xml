@@ -37,13 +37,13 @@
     <string name="ritme_connecting">Menghubungkan…</string>
     <string name="ritme_retry">Coba lagi</string>
     <string name="ritme_share">Bagikan</string>
+    <string name="ritme_qr">Tampilkan kode QR</string>
     <string name="ritme_share_text">Dengar bareng aku di Ritme: %1$s</string>
     <plurals name="ritme_members">
         <item quantity="other">%d anggota</item>
     </plurals>
     <string name="ritme_now_playing">Sedang diputar</string>
     <string name="ritme_up_next">Berikutnya</string>
-    <string name="ritme_added_by">oleh %1$s</string>
     <string name="ritme_you">Kamu</string>
     <string name="ritme_add_songs">Tambah lagu</string>
     <string name="ritme_guests_can_control">Anggota boleh kontrol</string>
@@ -55,9 +55,11 @@
     <string name="ritme_kick">Keluarkan</string>
     <string name="ritme_unsupported">Belum didukung</string>
     <string name="ritme_empty_queue">Belum ada yang diputar. Tambah lagu untuk mulai.</string>
-    <string name="ritme_host">Host</string>
     <string name="ritme_play_now">Putar sekarang</string>
     <string name="ritme_move_up">Naikkan</string>
     <string name="ritme_move_down">Turunkan</string>
     <string name="ritme_remove">Hapus</string>
+    <string name="ritme_member_host">%1$s, host</string>
+    <string name="ritme_entry_subtitle">%1$s · oleh %2$s</string>
+    <string name="ritme_someone">Seseorang</string>
 </resources>

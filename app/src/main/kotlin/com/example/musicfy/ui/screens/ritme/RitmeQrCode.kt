@@ -38,6 +38,15 @@ internal object RitmeQr {
         val size = matrix.width
         return QrModules(size, BooleanArray(size * size) { matrix.get(it % size, it / size) })
     }
+
+    /**
+     * The largest whole multiple of [modules] that fits in [availablePx], so every module is the
+     * same number of pixels; the rest is extra white margin. Never 0 while anything fits.
+     */
+    fun snappedSidePx(availablePx: Int, modules: Int): Int {
+        if (modules <= 0 || availablePx < modules) return availablePx.coerceAtLeast(0)
+        return availablePx / modules * modules
+    }
 }
 
 private fun QrModules.toBitmap(): ImageBitmap {
@@ -48,8 +57,8 @@ private fun QrModules.toBitmap(): ImageBitmap {
 /**
  * The room link as a QR code (spec 3.3). Black on white regardless of theme on purpose: phone
  * cameras need the contrast to scan it (the one allowed exception to the sheet palette). Encoded
- * off the main thread, one pixel per module, then scaled up without filtering so the modules stay
- * sharp-edged (separate rects per module leave anti-aliased seams between them).
+ * off the main thread, one pixel per module, then scaled up by a whole factor without filtering so
+ * the modules stay equal and sharp-edged (separate rects per module leave anti-aliased seams between them).
  */
 @Composable
 internal fun RitmeQrCode(text: String, modifier: Modifier = Modifier, contentDescription: String? = null) {
@@ -63,12 +72,16 @@ internal fun RitmeQrCode(text: String, modifier: Modifier = Modifier, contentDes
             .then(if (contentDescription != null) Modifier.semantics { this.contentDescription = contentDescription } else Modifier),
     ) {
         val bitmap = image ?: return@Canvas
+        // Whole pixels per module, centred: unequal modules (some n px, some n+1) are harder to scan.
+        val available = minOf(size.width, size.height).toInt()
+        val side = RitmeQr.snappedSidePx(available, bitmap.width)
+        val inset = (available - side) / 2
         drawImage(
             image = bitmap,
             srcOffset = IntOffset.Zero,
             srcSize = IntSize(bitmap.width, bitmap.height),
-            dstOffset = IntOffset.Zero,
-            dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+            dstOffset = IntOffset(inset, inset),
+            dstSize = IntSize(side, side),
             filterQuality = FilterQuality.None,
         )
     }
