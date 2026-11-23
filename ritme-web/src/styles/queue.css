@@ -37,8 +37,10 @@
   justify-content: center;
 }
 
+/* Aligned with the text column on wide screens; wraps, and drops the inset on phones so it never overflows 390 px. */
 .row-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 0 0 8px 56px;
@@ -46,6 +48,13 @@
 
 .queue-panel:has(.thumb-wide) .row-actions {
   padding-left: 90px;
+}
+
+@media (max-width: 440px) {
+  .row-actions,
+  .queue-panel:has(.thumb-wide) .row-actions {
+    padding-left: 0;
+  }
 }
 
 .row-play {

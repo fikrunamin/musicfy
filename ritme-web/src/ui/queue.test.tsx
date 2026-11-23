@@ -158,6 +158,57 @@ describe('QueueList layout', () => {
   });
 });
 
+describe('QueueList edge cases', () => {
+  const props = { unplayable: {}, online: true, pageIsHttps: true } as const;
+  const base = [entry('a'), entry('b'), entry('c')];
+
+  it('shows no menu and no action bar while offline, even for a member with control', () => {
+    render(<QueueList session={fakeSession()} room={room({ queue: base, currentEntryId: 'a' })} memberId="m1" {...props} online={false} />);
+    expect(screen.queryByRole('button', { name: /^Aksi:/ })).toBeNull();
+    expect(document.querySelector('.row-actions')).toBeNull();
+  });
+
+  it('full variant: current row has equalizer bars and no menu; played rows get play and remove but no move', () => {
+    const queue = [entry('p'), entry('a'), entry('b')];
+    render(<QueueList session={fakeSession()} room={room({ queue, currentEntryId: 'a' })} memberId="m1" {...props} variant="full" />);
+    const current = screen.getByText('Lagu a').closest('.row-current');
+    expect(current?.querySelector('.eq')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Aksi: Lagu a' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Sedang diputar' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Sudah diputar (1)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aksi: Lagu p' }));
+    expect(screen.getByRole('button', { name: 'Putar sekarang: Lagu p' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Hapus: Lagu p' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Naikkan/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Turunkan/ })).toBeNull();
+  });
+
+  it('does not reopen a bar that closed because its actions vanished', () => {
+    const view = (memberId: string, guestsCanControl: boolean, queue = base) => (
+      <QueueList session={fakeSession()} room={room({ queue, currentEntryId: 'a', settings: { guestsCanControl, guestsCanAdd: true } })} memberId={memberId} {...props} />
+    );
+    const { rerender } = render(view('m1', true));
+    fireEvent.click(screen.getByRole('button', { name: 'Aksi: Lagu c' }));
+    expect(document.querySelector('.row-actions')).toBeTruthy();
+    // Control revoked from a guest who did not add c: its menu and bar go away.
+    rerender(view('m2', false));
+    expect(screen.queryByRole('button', { name: 'Aksi: Lagu c' })).toBeNull();
+    // Control returns: the bar stays closed until the member opens it again.
+    rerender(view('m2', true));
+    expect(document.querySelector('.row-actions')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Aksi: Lagu c' }).getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('does not reopen a bar whose row was removed and comes back', () => {
+    const view = (queue: typeof base) => <QueueList session={fakeSession()} room={room({ queue, currentEntryId: 'a' })} memberId="m1" {...props} />;
+    const { rerender } = render(view(base));
+    fireEvent.click(screen.getByRole('button', { name: 'Aksi: Lagu c' }));
+    rerender(view([entry('a'), entry('b')]));
+    rerender(view(base));
+    expect(document.querySelector('.row-actions')).toBeNull();
+  });
+});
+
 describe('Thumb', () => {
   const thumbQueue = (thumbnailUrl: string | null) =>
     render(

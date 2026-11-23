@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { type QueueEntry, type RoomState, isLive } from '../protocol';
 import { canControl, canRemove, moveDownTarget, moveUpTarget, splitQueue } from '../session/permissions';
 import type { SessionApi } from '../session/session';
@@ -131,6 +131,16 @@ export function QueueList(props: Props) {
   const [showPlayed, setShowPlayed] = useState(false);
   const full = variant === 'full';
   const mixed = room.queue.some(isVideoEntry);
+  // A bar whose row is gone, or whose actions vanished (control revoked, offline), must not reopen by itself later.
+  const openEntry = openId === null ? null : room.queue.find((e) => e.entryId === openId);
+  const openStillValid =
+    !!openEntry &&
+    openEntry.entryId !== current?.entryId &&
+    props.online &&
+    (canControl(room, props.memberId) || canRemove(room, props.memberId, openEntry));
+  useEffect(() => {
+    if (openId !== null && !openStillValid) setOpenId(null);
+  }, [openId, openStillValid]);
   const row = (entry: QueueEntry, kind: 'current' | 'upcoming' | 'played') => (
     <Row
       key={entry.entryId}

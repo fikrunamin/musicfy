@@ -69,4 +69,7 @@ test('E queue: row actions, played, empty @queue', async ({ context }, info) => 
   await a.getByRole('button', { name: 'Berikutnya', exact: true }).click();
   await a.getByRole('button', { name: `Aksi: ${SHOT_SONGS[2].title}` }).click();
   await shot(a, info, 'E-queue-actions');
+  // A middle row shows Putar sekarang, up, down and delete together: the widest bar.
+  await a.getByRole('button', { name: `Aksi: ${SHOT_SONGS[3].title}` }).click(); // closes the first bar, opens this one
+  await shot(a, info, 'E-queue-actions-middle');
 });

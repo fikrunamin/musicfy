@@ -123,7 +123,8 @@ export async function endRooms(context: BrowserContext) {
       await end.click({ timeout: 3000 });
       await page.getByRole('alertdialog').getByRole('button', { name: 'Akhiri', exact: true }).click({ timeout: 3000 });
       await expect(page.getByRole('heading', { level: 1, name: /^Ritme · / })).toHaveCount(0, { timeout: 3000 });
-    } catch {
+    } catch (error) {
+      console.warn(`endRooms: could not end the room on ${page.url()}: ${error instanceof Error ? error.message : String(error)}`);
       // Leave it to the server's idle cleanup.
     }
   }
