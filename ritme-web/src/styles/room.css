@@ -80,10 +80,18 @@
   color: var(--muted);
 }
 
+/* The avatar stack is the "N anggota" button that opens the members sheet (handoff G). */
 .room-members {
   display: inline-flex;
   align-items: center;
   min-height: var(--target);
+  min-width: var(--target);
+  padding: 0 4px;
+  border: none;
+  border-radius: var(--r-pill);
+  background: none;
+  color: inherit;
+  cursor: pointer;
 }
 
 /* Segmented control: faint track, the active side on the accent (handoff C/D). */

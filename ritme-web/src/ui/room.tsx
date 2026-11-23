@@ -14,6 +14,7 @@ import { MembersPanel } from './members';
 import { NowPlaying } from './now-playing';
 import { QueueList } from './queue';
 import { SearchPanel } from './search';
+import { share } from './share';
 import { Sheet } from './sheet';
 import { t } from './strings';
 
@@ -21,24 +22,6 @@ interface Props {
   session: SessionApi;
   state: SessionState & { room: RoomState };
   prefs: KeyValueStore;
-}
-
-export async function share(code: string, session: SessionApi): Promise<void> {
-  const url = `${location.origin}/r/${code}`;
-  if (navigator.share) {
-    try {
-      await navigator.share({ title: t.appName, text: t.shareText, url });
-      return;
-    } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') return;
-    }
-  }
-  try {
-    await navigator.clipboard.writeText(url);
-    session.notify('linkCopied');
-  } catch {
-    window.prompt(t.share, url);
-  }
 }
 
 const showQueue = () => document.getElementById('queue-title')?.scrollIntoView({ block: 'start' });
@@ -56,6 +39,7 @@ export function RoomScreen({ session, state, prefs }: Props) {
   const entry = currentEntry(room);
   const mayAdd = canAdd(room, memberId);
   const [adding, setAdding] = useState(false);
+  const [showingMembers, setShowingMembers] = useState(false);
   const main = useRef<HTMLElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
   /**
@@ -98,10 +82,10 @@ export function RoomScreen({ session, state, prefs }: Props) {
               {online ? t.synced : t.reconnecting}
             </p>
           </div>
-          <span class="room-members" title={t.members(room.members.length)}>
+          <button type="button" class="room-members" onClick={() => setShowingMembers(true)}>
             <AvatarStack names={room.members.map((m) => m.name)} />
             <span class="visually-hidden">{t.members(room.members.length)}</span>
-          </span>
+          </button>
           <IconButton icon="ios_share" label={t.share} variant="filled" onClick={() => void share(room.code, session)} />
         </header>
 
@@ -109,18 +93,16 @@ export function RoomScreen({ session, state, prefs }: Props) {
         <NowPlaying {...shared} mode={mode} onShowQueue={showQueue} />
         {/* "Tambah lagu" is hidden, not disabled, while the host keeps guests from adding (spec 8). */}
         <QueueList {...shared} onAdd={mayAdd ? () => setAdding(true) : undefined} />
-        <MembersPanel session={session} room={room} memberId={memberId} online={online} />
-
-        {/* Ending the room lives in the members panel's host section, right above. */}
-        <footer class="room-footer">
-          <button type="button" class="btn" onClick={() => session.leave()}>
-            {t.leave}
-          </button>
-        </footer>
       </main>
       {adding && mayAdd && (
         <Sheet labelledBy="add-title" class="add-sheet" onClose={() => setAdding(false)} returnFocus={addReturn}>
           <SearchPanel session={session} online={online} pageIsHttps={https} onClose={() => setAdding(false)} />
+        </Sheet>
+      )}
+      {/* Leaving and ending the room live in the members sheet, under the share card (handoff G). */}
+      {showingMembers && (
+        <Sheet labelledBy="members-title" class="members-sheet" onClose={() => setShowingMembers(false)} returnFocus={title}>
+          <MembersPanel session={session} room={room} memberId={memberId} online={online} variant="sheet" onClose={() => setShowingMembers(false)} />
         </Sheet>
       )}
     </>

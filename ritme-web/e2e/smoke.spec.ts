@@ -1,5 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
-import { SONG, VIDEO, addSong, isolate, openRoom, showAdd } from './fixtures';
+import { SONG, VIDEO, addSong, closeSheet, isolate, openRoom, showAdd, showMembers } from './fixtures';
 
 test('two tabs in one room: the song tab A adds shows up in tab B', async ({ context }) => {
   await isolate(context);
@@ -68,9 +68,10 @@ test('the host can stop guests from adding', async ({ context }) => {
   await isolate(context);
   const { a, b } = await openRoom(context);
   await expect(b.getByRole('button', { name: 'Tambah lagu' })).toBeVisible();
-  await a.getByRole('switch', { name: 'Anggota boleh menambah' }).click();
+  await (await showMembers(a)).getByRole('switch', { name: 'Anggota boleh menambah' }).click();
   await expect(b.getByRole('button', { name: 'Tambah lagu' })).toHaveCount(0);
+  await closeSheet(a);
   await expect(a.getByRole('button', { name: 'Tambah lagu' })).toBeVisible();
-  await a.getByRole('switch', { name: 'Anggota boleh menambah' }).click();
+  await (await showMembers(a)).getByRole('switch', { name: 'Anggota boleh menambah' }).click();
   await expect(b.getByRole('button', { name: 'Tambah lagu' })).toBeVisible();
 });

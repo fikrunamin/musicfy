@@ -1,0 +1,216 @@
+/* G, the members sheet (handoff J5QAxI/k9N6F): switch cards, member rows, share card, leave/end. */
+
+.members-panel,
+.members-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.members-header h2 {
+  font-size: var(--fs-section);
+}
+
+.members-count {
+  margin-left: auto;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+/* Host setting cards: title 15, hint 13, the switch on the right. The card is the label. */
+.switch-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 10px 12px 10px 18px;
+  border-radius: var(--r-input);
+  background: var(--surface2);
+  cursor: pointer;
+}
+
+.switch-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.switch-title {
+  font-size: var(--fs-body);
+}
+
+.switch-hint {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+/* The switch: a 52 × 44 target; ::before draws the 32 px track, ::after the knob. */
+.switch-input {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 52px;
+  height: 44px;
+  margin: 0;
+  border: none;
+  border-radius: var(--r-pill);
+  background: none;
+  cursor: pointer;
+}
+
+.switch-input::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 6px;
+  height: 32px;
+  border-radius: var(--r-pill);
+  background: var(--surface3);
+  box-shadow: inset 0 0 0 2px var(--muted);
+}
+
+.switch-input::after {
+  content: '';
+  position: absolute;
+  top: 14px;
+  left: 8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.switch-input:checked::before {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.switch-input:checked::after {
+  top: 10px;
+  left: 24px;
+  width: 24px;
+  height: 24px;
+  background: var(--on-accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .switch-input::before,
+  .switch-input::after {
+    transition: background-color 150ms ease, left 150ms ease, top 150ms ease, width 150ms ease, height 150ms ease;
+  }
+}
+
+/* High contrast: the drawn track would lose its colours, so fall back to the native control. */
+@media (forced-colors: active) {
+  .switch-input {
+    appearance: auto;
+    -webkit-appearance: auto;
+    width: 24px;
+    height: 24px;
+  }
+
+  .switch-input::before,
+  .switch-input::after {
+    display: none;
+  }
+}
+
+/* Member rows: 60 px, 44 px avatar, name 15 with "(kamu)" and the Host badge, status 13. */
+.members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.member {
+  min-height: var(--row-h);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.member-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.member-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--fs-body);
+}
+
+.member-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-status {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+.member-actions {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.member-away .avatar,
+.member-away .member-text {
+  opacity: 0.5;
+}
+
+/* Share card: caption, the code at 40 px, the link, and the round accent "Salin link". */
+.share-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 18px;
+  border-radius: var(--r-stage);
+  background: var(--surface2);
+}
+
+.share-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.share-caption,
+.share-link {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+.share-code {
+  font-size: 40px;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.share-link {
+  overflow-wrap: anywhere;
+}
+
+.members-leave {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}

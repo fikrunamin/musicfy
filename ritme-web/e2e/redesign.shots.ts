@@ -89,3 +89,24 @@ test('F add sheet: results, no results @add', async ({ context }, info) => {
   await expect(a.getByText('Tidak ada hasil.', { exact: true })).toBeVisible();
   await shot(a, info, 'F-add-empty');
 });
+
+test('G members sheet: host and guest @members', async ({ context }, info) => {
+  const { a, b } = await openRoom(context);
+  await addSong(a, 'x', SHOT_SONGS[0].title); // something playing behind the sheet, as in J5QAxI
+  // A third member who then drops out, for the "terputus" row.
+  const c = await context.newPage();
+  await c.goto(a.url());
+  await c.getByLabel('Nama tampilan').fill('Rani');
+  await c.getByRole('button', { name: 'Gabung' }).click();
+  await expect(c.getByRole('heading', { level: 1 })).toHaveText(/^Ritme · /);
+  await c.close();
+  const host = await showMembers(a);
+  await expect(host.locator('.members')).toContainText('terputus');
+  await expect(host.getByRole('switch', { name: 'Anggota boleh kontrol' })).toBeChecked();
+  await expect(host.getByRole('button', { name: 'Keluarkan: Sari' })).toBeVisible();
+  await shot(a, info, 'G-members-host');
+  const guest = await showMembers(b);
+  await expect(guest.getByText('Bagikan kode')).toBeVisible();
+  await expect(guest.getByRole('switch')).toHaveCount(0);
+  await shot(b, info, 'G-members-guest');
+});

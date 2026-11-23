@@ -78,13 +78,6 @@
   margin: 0;
 }
 
-.room-footer {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
 .now-row,
 .queue-row {
   display: flex;
@@ -144,50 +137,6 @@
   display: flex;
   gap: 8px;
   margin-bottom: 12px;
-}
-
-.members {
-  list-style: none;
-  margin: 0 0 12px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.member {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.member-away {
-  opacity: 0.6;
-}
-
-.member-name {
-  flex: 1;
-  min-width: 0;
-}
-
-.member-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.switch {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 44px;
-  cursor: pointer;
-}
-
-.switch input {
-  width: 22px;
-  height: 22px;
-  accent-color: var(--accent);
 }
 
 .visually-hidden {

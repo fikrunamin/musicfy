@@ -100,10 +100,14 @@ describe('RoomScreen', () => {
     expect(screen.getByRole('button', { name: 'Mode remote', pressed: true })).toBeTruthy();
   });
 
-  it('has a single End room button for the host (in the members panel) and Leave in the footer', () => {
+  it('has a single End room button for the host and Leave, both in the members sheet', () => {
     render(<RoomScreen session={fakeSession(state)} state={state} prefs={memoryStore()} />);
+    expect(screen.queryByRole('button', { name: /^Akhiri/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '2 anggota' }));
+    const sheet = screen.getByRole('dialog', { name: 'Anggota' });
     expect(screen.getAllByRole('button', { name: /^Akhiri/ }).map((b) => b.textContent)).toEqual(['Akhiri Ritme untuk semua']);
-    expect(screen.getByRole('button', { name: 'Keluar Ritme' })).toBeTruthy();
+    expect(sheet.contains(screen.getByRole('button', { name: 'Akhiri Ritme untuk semua' }))).toBe(true);
+    expect(sheet.contains(screen.getByRole('button', { name: 'Keluar Ritme' }))).toBe(true);
   });
 
   it('shows the reconnecting banner and status while offline', () => {

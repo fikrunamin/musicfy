@@ -26,9 +26,9 @@ describe('MembersPanel', () => {
     const native = noNativeConfirm();
     const session = fakeSession();
     render(<MembersPanel session={session} room={room()} memberId="m1" online />);
-    fireEvent.click(screen.getByRole('button', { name: 'Jadikan host' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Jadikan host: Sari' }));
     expect(session.transferHost).toHaveBeenCalledWith('m2');
-    fireEvent.click(screen.getByRole('button', { name: 'Keluarkan' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Keluarkan: Sari' }));
     expect(session.kick).not.toHaveBeenCalled();
     confirmIn('Keluarkan Sari dari Ritme?', 'Keluarkan');
     expect(session.kick).toHaveBeenCalledWith('m2');
@@ -44,7 +44,7 @@ describe('MembersPanel', () => {
     const session = fakeSession();
     const r = room();
     const { rerender } = render(<MembersPanel session={session} room={r} memberId="m1" online />);
-    const opener = screen.getByRole('button', { name: 'Keluarkan' });
+    const opener = screen.getByRole('button', { name: 'Keluarkan: Sari' });
     opener.focus();
     fireEvent.click(opener);
     confirmIn('Keluarkan Sari dari Ritme?', 'Keluarkan');
@@ -58,12 +58,12 @@ describe('MembersPanel', () => {
     const session = fakeSession();
     const r = room();
     const { rerender } = render(<MembersPanel session={session} room={r} memberId="m1" online />);
-    const opener = screen.getByRole('button', { name: 'Keluarkan' });
+    const opener = screen.getByRole('button', { name: 'Keluarkan: Sari' });
     opener.focus();
     fireEvent.click(opener);
     confirmIn('Keluarkan Sari dari Ritme?', 'Keluarkan');
     // the kick failed: members did not change. An unrelated update arrives while focus is on a control.
-    const other = screen.getByRole('button', { name: 'Jadikan host' });
+    const other = screen.getByRole('button', { name: 'Jadikan host: Sari' });
     other.focus();
     rerender(<MembersPanel session={session} room={{ ...r, members: r.members.map((m) => ({ ...m })) }} memberId="m1" online />);
     expect(document.activeElement).toBe(other);
@@ -76,7 +76,7 @@ describe('MembersPanel', () => {
   it('does not kick or end the room when the host declines the confirmation', () => {
     const session = fakeSession();
     render(<MembersPanel session={session} room={room()} memberId="m1" online />);
-    fireEvent.click(screen.getByRole('button', { name: 'Keluarkan' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Keluarkan: Sari' }));
     confirmIn('Keluarkan Sari dari Ritme?', 'Batal');
     fireEvent.click(screen.getByRole('button', { name: 'Akhiri Ritme untuk semua' }));
     confirmIn('Akhiri Ritme untuk semua anggota?', 'Batal');
@@ -98,7 +98,7 @@ describe('MembersPanel', () => {
 
   it('shows guests the list only', () => {
     render(<MembersPanel session={fakeSession()} room={room()} memberId="m2" online />);
-    expect(screen.queryByRole('button', { name: 'Keluarkan' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Keluarkan/ })).toBeNull();
     expect(screen.queryByRole('switch')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Akhiri Ritme untuk semua' })).toBeNull();
     expect(screen.getByText('(kamu)')).toBeTruthy();
