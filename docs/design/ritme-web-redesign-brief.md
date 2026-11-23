@@ -400,3 +400,63 @@ Queue rows for videos: 16:9 thumbnail (~78×44, 8px radius) with "Video"/"LIVE" 
 "Tambah" and "Putar berikutnya", errors "Link tidak dikenali", "Video ini tidak bisa diputar di
 web". Show dark and light.
 ```
+
+---
+
+## 13. Tambahan: video dari internet (bukan YouTube)
+
+Bagian ini menambah ke bagian 12 dan tidak mengubah layar yang sudah jadi.
+
+**Konteks:** selain video YouTube, antrean bisa berisi **link video langsung dari internet**: file
+video (mp4/webm) atau streaming (termasuk siaran langsung). **Mode teater (K), layar penuh (J), dan
+layar video HP (I) berlaku sama** untuk video jenis ini, dengan aturan satu panggung yang sama.
+
+**Bedanya dengan YouTube:**
+- Aturan "pemutar wajib terlihat" hanya berlaku untuk YouTube. Untuk video dari internet tidak ada
+  kewajiban itu, tapi **tetap pakai desain satu panggung** supaya konsisten.
+- Video dari internet tidak punya thumbnail dan channel seperti YouTube. Siapkan **placeholder**
+  untuk thumbnail: frame gelap 16:9 dengan ikon film kecil dan nama domain.
+
+**Yang perlu didesain:**
+1. **Info sumber.** Di bawah judul, ganti "nama channel" dengan **nama domain sumber**, misalnya
+   "dari example.com", plus ikon tautan kecil. Judul bisa diambil dari nama file atau diisi
+   pengguna. Siapkan juga versi judul panjang yang terpotong rapi.
+2. **Lencana jenis.** Di baris antrean dan di dekat judul: "Video" untuk file, **"LIVE"** untuk
+   siaran langsung (tanpa bar progres; tombol seek redup).
+3. **Pratinjau di sheet "Tambah video" (L)** saat link non-YouTube ditempel: thumbnail placeholder,
+   domain sumber, kolom opsional **"Judul (opsional)"**, dan durasi kalau diketahui. Kalau durasi
+   tidak diketahui, tampilkan "Durasi tidak diketahui".
+4. **Pesan error di sheet L:**
+   - "Link ini halaman web, bukan file video. Tempel link video langsung (mp4, webm, atau m3u8)."
+   - "Halaman harus https untuk link http"
+   - "Video ini tidak bisa diputar di web"
+5. **Saat video tidak bisa diputar di tengah room.** Penyebabnya bisa server sumber yang menolak
+   diputar dari situs lain, link kedaluwarsa, atau konten berproteksi (Netflix dan sejenisnya tidak
+   mungkin). Tampilkan state di slot panggung: frame gelap, ikon peringatan halus, teks
+   **"Video ini tidak bisa diputar di web"**, dan tombol kecil **"Lewati"** yang hanya muncul untuk
+   yang punya izin kontrol. Baris antreannya ditandai dengan teks yang sama.
+6. **Tips kecil di sheet L:** "Link halaman situs film tidak bisa diputar langsung. Fitur deteksi
+   video dari situs ada di aplikasi Musicfy." Ini mengarah ke fitur browser di aplikasi nanti.
+
+**Yang dikirim:** varian layar I dan K untuk video dari internet (dengan domain sumber dan lencana),
+pratinjau sheet L untuk link non-YouTube (normal dan error), state "tidak bisa diputar" di slot
+panggung, dan baris antrean untuk video dari internet. Tema gelap dan terang.
+
+**Prompt tambahan siap tempel:**
+
+```
+Extend the Ritme video screens for direct internet video links (not YouTube): mp4/webm files and
+HLS streams incl. live. Same one-stage layouts as before (mobile video screen, landscape
+fullscreen, desktop theater mode). Differences: no YouTube thumbnail/channel — use a dark 16:9
+placeholder with a small film icon and the source domain; under the title show "dari example.com"
+with a small link icon (title may come from the file name or an optional user-entered title;
+show truncation for long titles). Badges: "Video" for files, "LIVE" for live streams (no progress
+bar, seek dimmed). In the "Tambah video" sheet, the preview for a non-YouTube link shows the
+placeholder, domain, an optional field "Judul (opsional)" and duration or "Durasi tidak diketahui";
+error states: "Link ini halaman web, bukan file video. Tempel link video langsung (mp4, webm, atau
+m3u8).", "Halaman harus https untuk link http", "Video ini tidak bisa diputar di web"; plus a small
+tip "Link halaman situs film tidak bisa diputar langsung. Fitur deteksi video dari situs ada di
+aplikasi Musicfy.". Also design an in-stage "can't play" state: dark frame, subtle warning icon,
+"Video ini tidak bisa diputar di web" and a small "Lewati" button for users with control. Dark and
+light themes.
+```
