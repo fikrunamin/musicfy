@@ -170,8 +170,19 @@ describe('the stage after the tap gate', () => {
     fireEvent.click(gate());
     await Promise.resolve();
     const slot = document.querySelector('.stage')!;
-    expect([...slot.children].map((c) => c.className)).toEqual(['player']);
+    // Only the artwork layer may share the stage, and only under the player (before it in the tree).
+    expect([...slot.children].map((c) => c.className)).toEqual(['stage-art', 'player']);
+    expect(slot.lastElementChild?.className).toBe('player');
     expect((slot.querySelector('.player') as HTMLElement).hidden).toBe(false);
+    const art = slot.firstElementChild as HTMLImageElement;
+    expect(art.tagName).toBe('IMG');
+    expect(art.getAttribute('aria-hidden')).toBe('true');
+    expect(art.getAttribute('alt')).toBe('');
+    expect(art.getAttribute('referrerpolicy')).toBe('no-referrer');
+    expect(art.children).toHaveLength(0);
+    // Nothing in the stage can take a tap or focus, and no label is drawn: the player is the stage.
+    expect(slot.querySelectorAll('button, a, input, select, textarea, label, [tabindex], [role]')).toHaveLength(0);
+    expect(slot.textContent).toBe('');
   });
 
   it('keeps the same player element when the entry changes shape (song -> video)', async () => {
@@ -179,10 +190,17 @@ describe('the stage after the tap gate', () => {
     const view = render(stage(s, playing(), 'listen'));
     fireEvent.click(gate());
     await Promise.resolve();
-    const player = document.querySelector('.player');
-    view.rerender(stage(s, { ...playing({ kind: 'YOUTUBE_VIDEO' }), version: 2 }, 'listen'));
+    const player = document.querySelector('.player')!;
+    const index = () => [...player.parentElement!.children].indexOf(player);
+    expect(index()).toBe(1);
+    // With artwork now: the art layer is the same element, filled in; the player keeps its index.
+    view.rerender(stage(s, { ...playing({ kind: 'YOUTUBE_VIDEO', thumbnailUrl: 'https://i.ytimg.com/vi/a/hqdefault.jpg' }), version: 2 }, 'listen'));
     expect(document.querySelector('.stage')?.classList.contains('stage-wide')).toBe(true);
     expect(document.querySelector('.player')).toBe(player);
+    expect(index()).toBe(1);
+    view.rerender(stage(s, { ...playing({ kind: 'YOUTUBE_VIDEO' }), version: 3 }, 'listen'));
+    expect(document.querySelector('.player')).toBe(player);
+    expect(index()).toBe(1);
     expect(mocks.log.filter((l) => l === 'new')).toHaveLength(1);
   });
 

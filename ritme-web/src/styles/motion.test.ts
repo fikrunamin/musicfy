@@ -93,6 +93,15 @@ describe('motion.css', () => {
     expect(rule('.sheet-scrim')).toMatch(/animation:\s*fade-in\s+280ms\s+ease-out\s*;/);
   });
 
+  it('gives the sheet rise an end it can interpolate to (top: 100% -> auto is discrete and snaps)', () => {
+    const zero = /(^|[\s;{])top:\s*0(px)?\s*(;|$)/;
+    const inFrames = /(^|[\s}])(to|100%)\s*\{([^}]*)\}/.exec(keyframes('sheet-in')!);
+    const onSheet = sheets.some((name) =>
+      rules(read(name)).some(([selectors, decls]) => selectors.split(',').some((s) => s.trim() === '.sheet') && zero.test(decls)),
+    );
+    expect(Boolean(inFrames && zero.test(inFrames[3])) || onSheet).toBe(true);
+  });
+
   it('never gives a sheet or its layer a containing block: the kick/end dialog inside stays fixed to the viewport', () => {
     // transform, translate, scale, rotate, perspective, filter, backdrop-filter, contain and
     // will-change on an ancestor would pin the position: fixed ConfirmDialog to the sheet instead.
@@ -116,6 +125,22 @@ describe('motion.css', () => {
     const frames = keyframes('player-in')!;
     expect(frames).toMatch(/opacity:\s*0/);
     expect(frames.replace(/opacity:\s*[\d.]+;?/g, '').replace(/from|to|[{}\s]/g, '')).toBe('');
+    // The box under the iframe is clear, so the art shows through until the video paints (not black).
+    const player = rules(read('room.css')).find(([sel]) => sel === '.player')![1];
+    expect(player).toMatch(/background:\s*transparent/);
+  });
+
+  it('keeps the stage art under the player: nothing lifts it, nothing on it takes a tap', () => {
+    let seen = false;
+    for (const name of sheets) {
+      for (const [selectors, decls] of rules(read(name))) {
+        if (!/\.stage-art(?![\w-])/.test(selectors)) continue;
+        seen = true;
+        expect(decls, `${name}: ${selectors}`).not.toMatch(/z-index|position:\s*(fixed|sticky)/);
+      }
+    }
+    expect(seen).toBe(true);
+    expect(rules(read('room.css')).some(([sel, decls]) => sel === '.stage-art' && /pointer-events:\s*none/.test(decls))).toBe(true);
   });
 
   it('crossfades covers and the backdrop in 600 ms', () => {
@@ -150,8 +175,16 @@ describe('motion.css', () => {
 
   it('runs the marquee on the current row by itself and on others on hover or focus, at the measured pace', () => {
     expect(allowed).toMatch(/\.meta-clip\[data-marquee='auto'\]\s*>\s*\.meta-track/);
-    expect(allowed).toMatch(/\.row:hover\s+\.meta-clip\[data-marquee='hover'\]\s*>\s*\.meta-track/);
     expect(allowed).toMatch(/\.row:focus-within\s+\.meta-clip\[data-marquee='hover'\]\s*>\s*\.meta-track/);
+    // Hover only where a pointer can hover: a tap on a touch screen leaves :hover stuck on the row.
+    const at = allowed.indexOf('@media (hover: hover)');
+    expect(at).toBeGreaterThanOrEqual(0);
+    const hover = blockAt(allowed, at);
+    expect(hover).toMatch(/\.row:hover\s+\.meta-clip\[data-marquee='hover'\]\s*>\s*\.meta-track/);
+    expect(hover).toMatch(/\.meta-clip\[data-marquee='hover'\]:hover\s*>\s*\.meta-track/);
+    expect(hover).toMatch(/animation:\s*marquee\s/);
+    const rest = allowed.slice(0, at) + allowed.slice(allowed.indexOf(hover, at) + hover.length + 1);
+    expect(rest.replace(/\/\*[\s\S]*?\*\//g, '')).not.toMatch(/:hover/);
     expect(allowed).not.toMatch(/data-marquee='off'/);
     // One pass takes --marquee-duration (30 px/s, at least 4 s); the cycle adds the pauses and the way back.
     expect(allowed).toMatch(/animation:\s*marquee\s+calc\(var\(--marquee-duration\)\s*\*\s*2\)\s+linear\s+infinite/);
@@ -159,5 +192,11 @@ describe('motion.css', () => {
     expect(frames).toMatch(/0%,\s*20%\s*\{\s*transform:\s*translateX\(0\)/);
     expect(frames).toMatch(/70%,\s*90%\s*\{\s*transform:\s*translateX\(calc\(-1\s*\*\s*var\(--marquee-distance\)\)\)/);
     expect(frames).toMatch(/100%\s*\{\s*transform:\s*translateX\(0\)/);
+    // The text keeps its ellipsis while it rests (it may shrink), and its full width while it moves.
+    const resting = keyframes('marquee-rest')!;
+    expect(resting).toMatch(/0%,\s*20%\s*\{\s*flex-shrink:\s*1/);
+    expect(resting).toMatch(/20\.1%,\s*100%\s*\{\s*flex-shrink:\s*0/);
+    expect(allowed).toMatch(/:last-child[^{]*\{\s*animation:\s*marquee-rest\s+calc\(var\(--marquee-duration\)\s*\*\s*2\)\s+linear\s+infinite/);
+    expect(allowed).not.toMatch(/:last-child[^{]*\{[^}]*text-overflow:\s*clip/);
   });
 });

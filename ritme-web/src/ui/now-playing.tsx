@@ -28,9 +28,6 @@ interface Props {
 
 const LOCKED_HINT_ID = 'controls-locked-hint';
 
-/** A CSS url() for an https thumbnail: the parsed href has no raw quote or newline; backslashes are encoded too. */
-const cssUrl = (src: string) => `url("${new URL(src).href.replace(/\\/g, '%5C')}")`;
-
 /** What the stage shows when there is no player to show (remote mode, before the tap, nothing playing). */
 function CoverLayer({ entry, gated, entering }: { entry: QueueEntry | null; gated: boolean; entering: boolean }) {
   const fade = entering && 'xfade-in';
@@ -113,10 +110,13 @@ export function NowPlaying({ session, room, memberId, unplayable, online, pageIs
         )}
       </div>
 
-      {/* The artwork is also the stage's own background, under everything: when the tap gate opens,
+      {/* The artwork is also the stage's first layer, under everything: when the tap gate opens,
           the player fades in (400 ms, its own opacity) over it, so the cover crossfades to the
-          player with nothing laid on top of the player. */}
-      <div class={cx('stage', wide ? 'stage-wide' : 'stage-square')} style={stageArt ? { backgroundImage: cssUrl(stageArt) } : undefined}>
+          player with nothing laid on top of the player. An <img> so it loads without a Referer
+          (a CSS background cannot); always rendered, empty and hidden without artwork, so the
+          player after it keeps its place in the tree. */}
+      <div class={cx('stage', wide ? 'stage-wide' : 'stage-square')}>
+        <img class="stage-art" src={stageArt ?? undefined} hidden={!stageArt} alt="" aria-hidden="true" referrerpolicy="no-referrer" />
         {mode === 'listen' ? (
           <ListenStage
             session={session}

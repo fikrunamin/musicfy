@@ -77,6 +77,8 @@ export function useMarquee(clip: RefObject<HTMLElement>, current: boolean) {
 export const CROSSFADE_MS = 600;
 
 interface Layer<T> {
+  /** Unique per layer (the same picture can come back while its old layer still fades out). */
+  id: number;
   key: string;
   value: T;
   entering: boolean;
@@ -92,33 +94,43 @@ interface CrossfadeProps<T> {
 
 /**
  * Renders the current value as a layer; when the key changes, the new layer goes on top with
- * `entering` and the old one stays under it until the fade is over, then goes. At most one old
- * layer is kept. No wrapper element: the layers are the caller's own (absolutely placed) nodes.
- * With reduced motion the new layer simply replaces the old one.
+ * `entering` and the ones under it stay. A layer whose 600 ms are over is opaque, so it stops
+ * entering and every layer under it goes. A fade that a new value interrupts therefore keeps
+ * running under the new one: nothing jumps or vanishes mid-fade. No wrapper element: the layers
+ * are the caller's own (absolutely placed) nodes. With reduced motion the new layer simply
+ * replaces the old ones.
  */
 export function Crossfade<T>({ value, keyOf, children }: CrossfadeProps<T>) {
   const reducedMotion = usePrefersReducedMotion();
   const key = keyOf(value);
-  const layers = useRef<Layer<T>[] | null>(null);
+  const state = useRef<{ layers: Layer<T>[]; next: number } | null>(null);
+  const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
   const [, settle] = useReducer((n: number) => n + 1, 0);
-  if (layers.current === null) layers.current = [{ key, value, entering: false }];
-  const top = layers.current[layers.current.length - 1];
+  if (state.current === null) state.current = { layers: [{ id: 0, key, value, entering: false }], next: 1 };
+  const s = state.current;
+  let top = s.layers[s.layers.length - 1];
   if (top.key !== key) {
-    layers.current = reducedMotion ? [{ key, value, entering: false }] : [{ ...top, entering: false }, { key, value, entering: true }];
+    top = { id: s.next++, key, value, entering: !reducedMotion };
+    s.layers = reducedMotion ? [top] : [...s.layers, top];
   } else {
     top.value = value;
-    if (reducedMotion && layers.current.length > 1) layers.current = [{ ...top, entering: false }];
+    if (reducedMotion && s.layers.length > 1) s.layers = [{ ...top, entering: false }];
   }
 
+  const enteringId = top.entering ? top.id : -1;
   useEffect(() => {
-    if (layers.current!.length < 2) return;
-    const id = setTimeout(() => {
-      const last = layers.current![layers.current!.length - 1];
-      layers.current = [{ ...last, entering: false }];
+    if (enteringId < 0) return;
+    const timer = setTimeout(() => {
+      timers.current.delete(timer);
+      const layers = state.current!.layers;
+      const at = layers.findIndex((layer) => layer.id === enteringId);
+      if (at < 0) return;
+      state.current!.layers = [{ ...layers[at], entering: false }, ...layers.slice(at + 1)];
       settle(0);
     }, CROSSFADE_MS);
-    return () => clearTimeout(id);
-  }, [key]);
+    timers.current.add(timer);
+  }, [enteringId]);
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
-  return <>{layers.current.map((layer) => <Fragment key={layer.key}>{children(layer.value, layer.entering)}</Fragment>)}</>;
+  return <>{s.layers.map((layer) => <Fragment key={layer.id}>{children(layer.value, layer.entering)}</Fragment>)}</>;
 }

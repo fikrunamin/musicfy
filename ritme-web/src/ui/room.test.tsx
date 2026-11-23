@@ -137,6 +137,23 @@ describe('RoomScreen across the desktop breakpoint', () => {
   });
 });
 
+describe('RoomScreen and third-party images', () => {
+  it('draws no http(s) image as an inline CSS background: those requests cannot be made without a Referer', async () => {
+    const thumb = 'https://i.ytimg.com/vi/a/hqdefault.jpg';
+    const r = { ...playingRoom, queue: playingRoom.queue.map((e) => ({ ...e, thumbnailUrl: thumb })) };
+    for (const desktop of [false, true]) {
+      const { unmount } = renderRoom(desktop, r);
+      await tapGate();
+      const all = [...document.querySelectorAll<HTMLElement>('*')];
+      expect(all.filter((el) => /url\(\s*["']?\s*https?:/i.test(el.getAttribute('style') ?? ''))).toEqual([]);
+      const imgs = all.filter((el): el is HTMLImageElement => el.tagName === 'IMG' && /^https?:/i.test(el.getAttribute('src') ?? ''));
+      expect(imgs.length).toBeGreaterThan(0);
+      for (const img of imgs) expect(img.getAttribute('referrerpolicy'), img.outerHTML).toBe('no-referrer');
+      unmount();
+    }
+  });
+});
+
 describe('RoomScreen on desktop', () => {
   it('shows add and members as inline panels beside the full queue, with no sheet openers', () => {
     renderRoom(true);

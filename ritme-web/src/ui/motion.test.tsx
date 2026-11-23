@@ -230,25 +230,54 @@ describe('Crossfade', () => {
     expect(layers()).toEqual(['b']);
   });
 
-  it('keeps at most one old layer when images change quickly, and restarts the 600 ms', () => {
+  it('lets a fade that is cut short finish under the next one: no layer jumps or vanishes mid-fade', () => {
     vi.useFakeTimers();
     const view = render(<Img src="a" />);
     view.rerender(<Img src="b" />);
     act(() => void vi.advanceTimersByTime(300));
+    const b = document.querySelector('[data-src="b"]');
     view.rerender(<Img src="c" />);
+    // b keeps fading in (same element, still xfade-in) over a; c fades in over both.
+    expect(layers()).toEqual(['a', 'b+in', 'c+in']);
+    expect(document.querySelector('[data-src="b"]')).toBe(b);
+    // b's own 600 ms are over: it is opaque now, so a under it goes.
+    act(() => void vi.advanceTimersByTime(300));
     expect(layers()).toEqual(['b', 'c+in']);
-    act(() => void vi.advanceTimersByTime(CROSSFADE_MS - 1));
+    act(() => void vi.advanceTimersByTime(CROSSFADE_MS - 301));
     expect(layers()).toEqual(['b', 'c+in']);
     act(() => void vi.advanceTimersByTime(1));
     expect(layers()).toEqual(['c']);
   });
 
-  it('does not duplicate a layer when the old image comes back during the fade', () => {
+  it('stays bounded when images keep changing faster than the fade', () => {
+    vi.useFakeTimers();
+    const view = render(<Img src="i0" />);
+    for (let i = 1; i <= 10; i++) {
+      view.rerender(<Img src={`i${i}`} />);
+      act(() => void vi.advanceTimersByTime(250));
+      expect(layers().length).toBeLessThanOrEqual(1 + Math.ceil(CROSSFADE_MS / 250));
+    }
+    act(() => void vi.advanceTimersByTime(CROSSFADE_MS));
+    expect(layers()).toEqual(['i10']);
+  });
+
+  it('leaves no timer behind when it unmounts mid-fade', () => {
+    vi.useFakeTimers();
+    const view = render(<Img src="a" />);
+    view.rerender(<Img src="b" />);
+    act(() => void vi.advanceTimersByTime(300));
+    view.rerender(<Img src="c" />);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('fades the old image back in when it comes back during the fade, then keeps one layer', () => {
     vi.useFakeTimers();
     const view = render(<Img src="a" />);
     view.rerender(<Img src="b" />);
     view.rerender(<Img src="a" />);
-    expect(layers()).toEqual(['b', 'a+in']);
+    expect(layers()).toEqual(['a', 'b+in', 'a+in']);
     act(() => void vi.advanceTimersByTime(CROSSFADE_MS));
     expect(layers()).toEqual(['a']);
   });
@@ -318,15 +347,29 @@ describe('crossfades in the room', () => {
     expect([...document.querySelectorAll('.stage > .stage-cover')].map((c) => c.getAttribute('src'))).toEqual([thumb('b')]);
   });
 
-  it('puts the cover under the stage itself, so the player fades in over it with nothing on top', () => {
+  it('puts the artwork under everything in the stage as a no-referrer image, not a CSS background', () => {
     const r = room({ queue: [entry('a', { thumbnailUrl: thumb('a') })], currentEntryId: 'a' });
     render(<NowPlaying session={fakeSession()} room={r} memberId="m1" unplayable={{}} online pageIsHttps mode="remote" />);
-    expect(document.querySelector<HTMLElement>('.stage')!.style.backgroundImage).toBe(`url("${thumb('a')}")`);
+    const stage = document.querySelector<HTMLElement>('.stage')!;
+    const art = stage.firstElementChild as HTMLImageElement;
+    expect(art.className).toBe('stage-art');
+    expect(art.tagName).toBe('IMG');
+    expect(art.getAttribute('src')).toBe(thumb('a'));
+    expect(art.getAttribute('referrerpolicy')).toBe('no-referrer');
+    expect(art.getAttribute('alt')).toBe('');
+    expect(art.getAttribute('aria-hidden')).toBe('true');
+    expect(art.hidden).toBe(false);
+    expect(stage.style.backgroundImage).toBe('');
   });
 
-  it('gives the stage no background image without https artwork', () => {
+  it('keeps the art layer in its place, empty and hidden, without https artwork', () => {
     const r = room({ queue: [entry('a', { thumbnailUrl: 'http://i.ytimg.com/vi/a/hqdefault.jpg' })], currentEntryId: 'a' });
     render(<NowPlaying session={fakeSession()} room={r} memberId="m1" unplayable={{}} online pageIsHttps mode="remote" />);
-    expect(document.querySelector<HTMLElement>('.stage')!.style.backgroundImage).toBe('');
+    const stage = document.querySelector<HTMLElement>('.stage')!;
+    const art = stage.firstElementChild as HTMLImageElement;
+    expect(art.className).toBe('stage-art');
+    expect(art.hasAttribute('src')).toBe(false);
+    expect(art.hidden).toBe(true);
+    expect(stage.style.backgroundImage).toBe('');
   });
 });

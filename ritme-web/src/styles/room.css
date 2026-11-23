@@ -186,9 +186,6 @@
   background: var(--surface2);
   /* YouTube: the player is at least 200 x 200 px. */
   min-height: 200px;
-  /* The current artwork (inline style), under everything: the player fades in over it. */
-  background-size: cover;
-  background-position: center;
 }
 
 .stage-square {
@@ -202,6 +199,21 @@
 .stage > * {
   position: absolute;
   inset: 0;
+}
+
+/*
+ * The current artwork, first in the stage and so under everything (no z-index): the player fades
+ * in over it. An <img> with referrerpolicy="no-referrer", never a CSS background (which sends a Referer).
+ */
+.stage-art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.stage-art[hidden] {
+  display: none;
 }
 
 .stage-cover {
@@ -219,7 +231,8 @@
 }
 
 .player {
-  background: #000;
+  /* Transparent: the art under it shows until the iframe paints (its page is black). */
+  background: transparent;
   min-width: 200px;
   min-height: 200px;
 }
@@ -235,6 +248,11 @@
   height: 100%;
   border: 0;
   display: block;
+}
+
+/* A direct-link video letterboxes on black, as before. */
+.player video {
+  background: #000;
 }
 
 .stage-gate {

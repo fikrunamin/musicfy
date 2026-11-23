@@ -8,8 +8,8 @@
  * and any of those on an ancestor would pin it to the sheet instead of the viewport. The sheet
  * rises by `top` (relative offset), which creates no containing block.
  *
- * The YouTube player is never covered: it fades in by its own opacity, over the artwork the stage
- * carries as its background (now-playing.tsx).
+ * The YouTube player is never covered: it fades in by its own opacity, over the artwork layer that
+ * sits first in the stage, under it (now-playing.tsx: an <img referrerpolicy="no-referrer">).
  */
 
 @keyframes fade-in {
@@ -18,10 +18,16 @@
   }
 }
 
-/* From one layer height below its place: the sheet starts fully out of view (max-height < 100%). */
+/*
+ * From one layer height below its place: the sheet starts fully out of view (max-height < 100%).
+ * It needs an explicit end: .sheet has no `top`, and 100% -> auto is discrete (it would snap).
+ */
 @keyframes sheet-in {
   from {
     top: 100%;
+  }
+  to {
+    top: 0;
   }
 }
 
@@ -76,7 +82,8 @@
 
 /*
  * One cycle is twice --marquee-duration (one pass at ~30 px/s, at least 4 s; motion.tsx): rest at
- * the start, scroll to the end, pause, come back.
+ * the start, scroll to the end, pause, come back. marquee-rest runs on the text alongside it: while
+ * the text rests it may shrink, so its ellipsis shows; while it moves it keeps its full width.
  */
 @keyframes marquee {
   0%, 20% {
@@ -87,6 +94,15 @@
   }
   100% {
     transform: translateX(0);
+  }
+}
+
+@keyframes marquee-rest {
+  0%, 20% {
+    flex-shrink: 1;
+  }
+  20.1%, 100% {
+    flex-shrink: 0;
   }
 }
 
@@ -108,7 +124,11 @@
     animation: toast-in 200ms ease-out;
   }
 
-  /* Cover to player: 400 ms, every time the player is shown (display: none restarts it). */
+  /*
+   * Cover to player: 400 ms, every time the player is shown (display: none restarts it). The
+   * .player box is transparent (room.css), so until the iframe paints its own black the art layer
+   * under it shows through instead of a black square.
+   */
   .player {
     animation: player-in 400ms ease-out;
   }
@@ -157,10 +177,11 @@
     animation: status-spin 1s linear infinite;
   }
 
-  /* Marquee: no ellipsis while it runs; .meta-clip still clips. */
+  /*
+   * Marquee: .meta-clip clips while the track moves; the text keeps its ellipsis while it rests
+   * (marquee-rest). Hover only where a pointer hovers: a tap leaves :hover stuck on touch screens.
+   */
   .meta-clip[data-marquee='auto'] > .meta-track,
-  .meta-clip[data-marquee='hover']:hover > .meta-track,
-  .row:hover .meta-clip[data-marquee='hover'] > .meta-track,
   .row:focus-within .meta-clip[data-marquee='hover'] > .meta-track {
     overflow: visible;
     text-overflow: clip;
@@ -168,11 +189,22 @@
   }
 
   .meta-clip[data-marquee='auto'] > .meta-track > :last-child,
-  .meta-clip[data-marquee='hover']:hover > .meta-track > :last-child,
-  .row:hover .meta-clip[data-marquee='hover'] > .meta-track > :last-child,
   .row:focus-within .meta-clip[data-marquee='hover'] > .meta-track > :last-child {
-    overflow: visible;
-    text-overflow: clip;
+    animation: marquee-rest calc(var(--marquee-duration) * 2) linear infinite;
+  }
+
+  @media (hover: hover) {
+    .meta-clip[data-marquee='hover']:hover > .meta-track,
+    .row:hover .meta-clip[data-marquee='hover'] > .meta-track {
+      overflow: visible;
+      text-overflow: clip;
+      animation: marquee calc(var(--marquee-duration) * 2) linear infinite;
+    }
+
+    .meta-clip[data-marquee='hover']:hover > .meta-track > :last-child,
+    .row:hover .meta-clip[data-marquee='hover'] > .meta-track > :last-child {
+      animation: marquee-rest calc(var(--marquee-duration) * 2) linear infinite;
+    }
   }
 
   /* Small state changes. */
