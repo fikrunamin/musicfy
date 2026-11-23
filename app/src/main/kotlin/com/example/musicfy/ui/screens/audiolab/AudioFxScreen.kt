@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -409,7 +410,9 @@ private val SpeedPresets = listOf(
 private fun SpeedCard(viewModel: AudioLabViewModel) {
     val playback by viewModel.playback.collectAsState()
     val reverb by viewModel.reverb.collectAsState()
-    EffectCard(
+    // In a Ritme room the speed belongs to the room: dimmed, and every control says "Not available during Ritme".
+    val ritmeActive by viewModel.ritmeActive.collectAsState()
+    Box(Modifier.alpha(if (ritmeActive) 0.38f else 1f)) { EffectCard(
         picture = { SpeedPicture(playback) },
         header = {
             Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -477,7 +480,7 @@ private fun SpeedCard(viewModel: AudioLabViewModel) {
                 }
             }
         },
-    )
+    ) }
 }
 
 @Composable
