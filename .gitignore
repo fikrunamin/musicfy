@@ -79,3 +79,7 @@ app/persistent-debug.keystore
 output-metadata.json
 vcs.xml
 lint/
+
+# Desktop natives fetched/built locally (scripts/desktop/fetch-libvlc.sh, :desktop:integration:buildNativeHelpers)
+desktopApp/resources/*/vlc/
+desktopApp/resources/*/native/

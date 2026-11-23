@@ -10,6 +10,6 @@ interface AppDirs {
     /** Disposable cache (images, stream cache). */
     val cache: File
 
-    /** Downloaded songs. Always `data/download` so both platforms agree. */
+    /** Downloaded songs. Android: filesDir/download. Desktop: DesktopAppDirs.localData/download. */
     val downloads: File
 }
