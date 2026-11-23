@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canControl, canRemove, isHost, moveDownTarget, moveUpTarget, splitQueue } from './permissions';
+import { canAdd, canControl, canRemove, isHost, moveDownTarget, moveUpTarget, splitQueue } from './permissions';
 import { entry, room } from '../testing/builders';
 
 describe('permissions', () => {
@@ -17,6 +17,14 @@ describe('permissions', () => {
     expect(canRemove(locked, 'm2', entry('e1', { addedBy: 'm2' }))).toBe(true);
     expect(canRemove(locked, 'm2', entry('e1', { addedBy: 'm1' }))).toBe(false);
     expect(canRemove(room(), 'm2', entry('e1', { addedBy: 'm1' }))).toBe(true);
+  });
+
+  it('host can always add; guests only while guestsCanAdd', () => {
+    const noAdds = room({ settings: { guestsCanControl: true, guestsCanAdd: false } });
+    expect(canAdd(room(), 'm2')).toBe(true);
+    expect(canAdd(noAdds, 'm2')).toBe(false);
+    expect(canAdd(noAdds, 'm1')).toBe(true);
+    expect(canAdd(noAdds, null)).toBe(false);
   });
 });
 

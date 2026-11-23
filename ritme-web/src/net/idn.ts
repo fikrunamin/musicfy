@@ -2,8 +2,10 @@
  * Display-only decoding of IDN hosts (`xn--bcher-kva.example` -> `bücher.example`). Links and
  * entries always carry the punycode form; only text shown to people is decoded. Like browsers'
  * address bars, a label stays punycode when decoding fails, when it decodes to anything but
- * letters, marks, digits and hyphens (emoji, symbols, invisible characters), or when it mixes
- * Latin with Cyrillic or Greek (the common homograph trick).
+ * letters, marks, digits and hyphens (emoji, symbols, invisible characters), when it mixes
+ * Latin with Cyrillic or Greek (the common homograph trick), or when all its letters are Cyrillic
+ * or Greek under an ASCII top-level domain (a whole-script look-alike such as "аррӏе.com"; Chrome
+ * shows those as punycode too). Under a TLD such as .рф or .ελ they are decoded.
  */
 
 const BASE = 36;
@@ -72,19 +74,25 @@ function decodePunycode(input: string): string | null {
 const LABEL_CHARACTERS = /^[\p{L}\p{M}\p{N}-]+$/u;
 const LATIN = /\p{Script=Latin}/u;
 const CONFUSABLE_WITH_LATIN = /[\p{Script=Cyrillic}\p{Script=Greek}]/u;
+/** A letter of any script but Cyrillic and Greek. */
+const OTHER_LETTER = /(?![\p{Script=Cyrillic}\p{Script=Greek}])\p{L}/u;
 
-function displayLabel(label: string): string {
+function displayLabel(label: string, asciiTld: boolean): string {
   if (!/^xn--/i.test(label)) return label;
   const decoded = decodePunycode(label.slice(4));
   if (decoded === null || decoded === '' || !LABEL_CHARACTERS.test(decoded)) return label;
   if (LATIN.test(decoded) && CONFUSABLE_WITH_LATIN.test(decoded)) return label;
+  if (asciiTld && CONFUSABLE_WITH_LATIN.test(decoded) && !OTHER_LETTER.test(decoded)) return label;
   return decoded.normalize('NFC');
 }
 
 /** `host` with its punycode labels decoded for display (see the file comment). */
 export function displayDomain(host: string): string {
   if (host.startsWith('[')) return host;
-  return host.split('.').map(displayLabel).join('.');
+  const labels = host.split('.');
+  const tld = labels.filter((l) => l !== '').at(-1) ?? '';
+  const asciiTld = /^[\x21-\x7e]+$/.test(tld) && !/^xn--/i.test(tld);
+  return labels.map((l) => displayLabel(l, asciiTld)).join('.');
 }
 
 /** The host of `url` without "www." and a trailing dot, decoded for display; null when unparsable. */

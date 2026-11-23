@@ -37,6 +37,10 @@ npm run e2e        # Playwright: builds and starts the real server on :47821 ser
   paused and start at the server's anchor; drift over 300 ms is fixed by seeking, at most every
   5 s (room seeks, track changes and returning to the tab re-sync at once; the end of an ad is
   checked immediately). Live entries are never seeked.
+- An unknown duration means LIVE: an entry with `durationMs` 0 (a live stream, or a direct link
+  whose length the metadata probe could not read) is shown as LIVE and gets no sync seek at all,
+  neither when it loads nor for drift. It only follows play and pause, so members watching it can
+  drift apart.
 - The web client never reports track ends and never changes the room by itself.
 
 ## URL entries
@@ -47,7 +51,8 @@ through `src/net/video-link.ts` (YouTube links: `fixtures/rules/youtube-links.js
 link the rules refuse is never sent. What is sent is exactly what `toUrlEntry` returns: the
 WHATWG-normalized url (punycode host, no fragment) and the punycode domain as artist. Only text
 shown on screen decodes IDN hosts (`src/net/idn.ts`, "dari bücher.example"), and a label that
-mixes Latin with Cyrillic/Greek or decodes to symbols stays punycode. For a `URL` entry the shown
+mixes Latin with Cyrillic/Greek, is all Cyrillic or all Greek under an ASCII TLD (`аррӏе.com`), or
+decodes to symbols stays punycode. For a `URL` entry the shown
 domain comes from its url, not from the artist text another client sent. Titles are checked like
 the server does (`src/net/visible-text.ts`, a port of `RoomLogic.hasVisible(cleanText())`), so an
 Add is never refused for a title that only looks filled.

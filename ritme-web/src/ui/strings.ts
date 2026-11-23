@@ -93,6 +93,7 @@ export const t = {
   makeHost: 'Jadikan host',
   kick: 'Keluarkan',
   guestsCanControl: 'Anggota boleh kontrol',
+  guestsCanAdd: 'Anggota boleh menambah',
   leave: 'Keluar Ritme',
   confirmEnd: 'Akhiri Ritme untuk semua anggota?',
   endRoom: 'Akhiri Ritme untuk semua',
@@ -101,6 +102,7 @@ export const t = {
 
 export const noticeText: Record<NoticeKey, string> = {
   forbidden: 'Host mengunci kontrol',
+  addForbidden: 'Host menutup penambahan lagu',
   rateLimited: 'Terlalu cepat, coba lagi sebentar',
   queueFull: 'Antrean penuh',
   invalid: 'Permintaan tidak valid',

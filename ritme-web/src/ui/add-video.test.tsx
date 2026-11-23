@@ -67,6 +67,15 @@ describe('AddVideoPanel', () => {
     expect(session.add).toHaveBeenCalledWith(expect.objectContaining({ kind: 'YOUTUBE_MUSIC', durationMs: 0 }), true);
   });
 
+  it('shows a music.youtube.com preview with a square thumbnail, like a song in the queue', async () => {
+    render(<AddVideoPanel session={fakeSession()} online pageIsHttps fetchImpl={respond(200)} />);
+    submit('https://music.youtube.com/watch?v=aqz-KE-bpKQ');
+    await screen.findByText('Blender · 10:35');
+    const img = document.querySelector('img.thumb');
+    expect(img?.classList.contains('thumb-wide')).toBe(false);
+    expect(img?.getAttribute('width')).toBe('48');
+  });
+
   it.each<[number, string]>([
     [404, 'Video tidak ditemukan'],
     [429, 'Terlalu banyak permintaan, coba lagi sebentar'],
@@ -238,6 +247,74 @@ describe('AddVideoPanel', () => {
     expect(seenSignal?.aborted).toBe(true);
     expect(errors).not.toHaveBeenCalled();
     errors.mockRestore();
+  });
+
+  it('editing the link cancels the lookup in flight and clears the preview', async () => {
+    let seenSignal: AbortSignal | undefined;
+    const fetchImpl = vi.fn((_url: string, init?: RequestInit) => {
+      seenSignal = init?.signal ?? undefined;
+      return new Promise<Response>(() => {});
+    }) as unknown as typeof fetch;
+    render(<AddVideoPanel session={fakeSession()} online pageIsHttps fetchImpl={fetchImpl} />);
+    submit('https://youtu.be/aqz-KE-bpKQ');
+    await waitFor(() => expect(seenSignal).toBeDefined());
+    expect(screen.getByRole('button', { name: 'Memuat…' })).toBeTruthy();
+    fireEvent.input(screen.getByLabelText('Tempel link video'), { target: { value: 'https://youtu.be/aqz-KE-bpK' } });
+    expect(seenSignal?.aborted).toBe(true);
+    expect((screen.getByRole('button', { name: 'Pratinjau' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('editing the link after a preview removes it, so the old link cannot be added', async () => {
+    const session = fakeSession();
+    const probe = probing({ kind: 'ready', durationMs: 3_000, live: false });
+    render(<AddVideoPanel session={session} online pageIsHttps probe={probe} />);
+    submit('https://cdn.example.com/a.mp4');
+    await screen.findByText('dari cdn.example.com · 0:03');
+    fireEvent.input(screen.getByLabelText('Tempel link video'), { target: { value: 'https://cdn.example.com/b.mp4' } });
+    expect(screen.queryByRole('button', { name: /^Tambah:/ })).toBeNull();
+    expect(screen.queryByLabelText('Judul (opsional)')).toBeNull();
+    expect(session.add).not.toHaveBeenCalled();
+  });
+
+  it('pasting a link cancels the probe in flight and clears the preview', async () => {
+    const readText = vi.fn(async () => 'https://cdn.example.com/b.mp4');
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { readText } });
+    const probe = vi.fn((_url: string, _options: ProbeOptions) => new Promise<ProbeOutcome>(() => {}));
+    render(<AddVideoPanel session={fakeSession()} online pageIsHttps probe={probe} />);
+    submit('https://cdn.example.com/a.mp4');
+    await screen.findByText('dari cdn.example.com · Memuat…');
+    fireEvent.click(screen.getByRole('button', { name: 'Tempel dari papan klip' }));
+    await waitFor(() => expect((screen.getByLabelText('Tempel link video') as HTMLInputElement).value).toBe('https://cdn.example.com/b.mp4'));
+    expect(probe.mock.calls[0][1].signal?.aborted).toBe(true);
+    expect(screen.queryByText(/cdn\.example\.com/)).toBeNull();
+  });
+
+  it('announces loading, the preview and an unplayable link in one polite live region', async () => {
+    let finish: (outcome: ProbeOutcome) => void = () => {};
+    const probe = vi.fn(
+      (_url: string, _options: ProbeOptions) =>
+        new Promise<ProbeOutcome>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const { container } = render(<AddVideoPanel session={fakeSession()} online pageIsHttps probe={probe} />);
+    const regions = () => container.querySelectorAll('[aria-live="polite"]');
+    expect(regions()).toHaveLength(1);
+    const region = regions()[0];
+    expect(region.textContent).toBe('');
+    submit('https://cdn.example.com/a.mov');
+    await waitFor(() => expect(region.textContent).toBe('Memuat…'));
+    finish({ kind: 'unplayable' });
+    await waitFor(() => expect(region.textContent).toBe('a.mov · dari cdn.example.com · Durasi tidak diketahui. Video ini tidak bisa diputar di web'));
+    expect(regions()).toHaveLength(1);
+    expect(regions()[0]).toBe(region);
+  });
+
+  it('announces a YouTube preview in the live region', async () => {
+    const { container } = render(<AddVideoPanel session={fakeSession()} online pageIsHttps fetchImpl={respond(200)} />);
+    submit('https://youtu.be/aqz-KE-bpKQ');
+    await screen.findByText('Blender · 10:35');
+    expect(container.querySelector('[aria-live="polite"]')?.textContent).toBe('Big Buck Bunny · Blender · 10:35');
   });
 
   it('pastes from the clipboard with an icon button and does not preview by itself', async () => {

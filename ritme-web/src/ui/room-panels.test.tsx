@@ -23,6 +23,8 @@ describe('MembersPanel', () => {
     expect(session.kick).toHaveBeenCalledWith('m2');
     fireEvent.click(screen.getByRole('switch', { name: 'Anggota boleh kontrol' }));
     expect(session.setGuestsCanControl).toHaveBeenCalledWith(false);
+    fireEvent.click(screen.getByRole('switch', { name: 'Anggota boleh menambah' }));
+    expect(session.setGuestsCanAdd).toHaveBeenCalledWith(false);
   });
 
   it('does not kick or end the room when the host declines the confirmation', () => {

@@ -57,6 +57,17 @@ export function MembersPanel({ session, room, memberId, online }: Props) {
         </label>
       )}
       {host && (
+        <label class="switch">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={room.settings.guestsCanAdd}
+            onChange={(e) => session.setGuestsCanAdd(e.currentTarget.checked)}
+          />
+          <span>{t.guestsCanAdd}</span>
+        </label>
+      )}
+      {host && (
         <button
           type="button"
           class="btn btn-danger btn-block"

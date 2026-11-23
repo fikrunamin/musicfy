@@ -1,7 +1,7 @@
 import type { ConnectionEvent, ConnectionStatus, EndReason } from '../net/connection';
 import type { ErrorCode, RoomState } from '../protocol';
 
-export type NoticeKey = 'forbidden' | 'rateLimited' | 'queueFull' | 'invalid' | 'failed' | 'linkCopied';
+export type NoticeKey = 'forbidden' | 'addForbidden' | 'rateLimited' | 'queueFull' | 'invalid' | 'failed' | 'linkCopied';
 
 export interface Notice {
   id: number;

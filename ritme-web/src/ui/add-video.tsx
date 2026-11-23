@@ -62,18 +62,20 @@ function PasteIcon() {
 
 interface PreviewRowProps {
   thumbnailUrl: string | null;
+  /** 16:9 for videos; a song (music.youtube.com) keeps the square thumbnail it gets in the queue. */
+  wide: boolean;
   title: string;
   meta: string[];
   enabled: boolean;
   onAdd: (playNext: boolean) => void;
 }
 
-/** One preview, laid out exactly like a search result row (16:9 thumbnail). */
-function PreviewRow({ thumbnailUrl, title, meta, enabled, onAdd }: PreviewRowProps) {
+/** One preview, laid out exactly like a search result row, with the thumbnail its queue row will have. */
+function PreviewRow({ thumbnailUrl, wide, title, meta, enabled, onAdd }: PreviewRowProps) {
   return (
     <ul class="queue">
       <li class="queue-row">
-        <Thumb url={thumbnailUrl} wide />
+        <Thumb url={thumbnailUrl} wide={wide} />
         <div class="queue-text">
           <span class="title">{title}</span>
           <span class="muted small">{meta.filter(Boolean).join(' · ')}</span>
@@ -95,6 +97,39 @@ function PreviewRow({ thumbnailUrl, title, meta, enabled, onAdd }: PreviewRowPro
       </li>
     </ul>
   );
+}
+
+/** What the youtube preview row shows under its title. */
+function youtubeMeta(preview: { info: VideoInfo; entry: NewEntry }): string[] {
+  return [preview.entry.artist, preview.info.live ? t.live : formatMs(preview.entry.durationMs)];
+}
+
+/** What the direct preview row shows under its title. */
+function directMeta(link: DirectVideoLink, probe: ProbeOutcome | null): string[] {
+  return [t.fromDomain(displayDomain(link.domain)), directDuration(probe)];
+}
+
+/**
+ * The text of the one polite live region: "loading", then the preview (and, for a link this
+ * browser cannot play, that warning). Errors are announced by their own role="alert". The typed
+ * title is left out so editing it does not announce on every keystroke.
+ */
+function announcement(preview: Preview): string {
+  switch (preview.kind) {
+    case 'idle':
+    case 'error':
+      return '';
+    case 'loading':
+      return t.loadingPreview;
+    case 'youtube':
+      return [preview.entry.title, ...youtubeMeta(preview)].filter(Boolean).join(' · ');
+    case 'direct': {
+      if (preview.probe === null) return t.loadingPreview;
+      const title = urlEntryTitle(preview.link, '') ?? preview.link.fileName;
+      const row = [title, ...directMeta(preview.link, preview.probe)].filter(Boolean).join(' · ');
+      return preview.probe.kind === 'unplayable' ? `${row}. ${t.videoUnplayableWeb}` : row;
+    }
+  }
 }
 
 /**
@@ -119,8 +154,20 @@ export function AddVideoPanel({ session, online, pageIsHttps, fetchImpl, probe }
     [],
   );
 
-  /** False once a newer submit or leaving the tab cancelled this lookup: its outcome is dropped. */
+  /** False once a newer submit, an edit of the link or leaving the tab cancelled this lookup: its outcome is dropped. */
   const current = (controller: AbortController) => inflight.current === controller && !controller.signal.aborted;
+
+  /**
+   * A typed or pasted link replaces the old one: the lookup in flight is cancelled and the preview
+   * cleared, so "Tambah" can never add a link other than the one in the field.
+   */
+  const changeLink = (value: string) => {
+    setText(value);
+    inflight.current?.abort();
+    inflight.current = null;
+    setTitle('');
+    setPreview({ kind: 'idle' });
+  };
 
   const onSubmit = async (e: Event) => {
     e.preventDefault();
@@ -154,7 +201,7 @@ export function AddVideoPanel({ session, online, pageIsHttps, fetchImpl, probe }
   const paste = async () => {
     try {
       const pasted = (await navigator.clipboard.readText()).trim();
-      if (pasted !== '') setText(pasted.slice(0, MAX_MEDIA_URL_LENGTH));
+      if (pasted !== '') changeLink(pasted.slice(0, MAX_MEDIA_URL_LENGTH));
     } catch {
       // permission refused or nothing readable: the field stays as it was
     }
@@ -190,7 +237,7 @@ export function AddVideoPanel({ session, online, pageIsHttps, fetchImpl, probe }
           value={text}
           maxLength={MAX_MEDIA_URL_LENGTH}
           placeholder={t.videoLinkPlaceholder}
-          onInput={(e) => setText(e.currentTarget.value)}
+          onInput={(e) => changeLink(e.currentTarget.value)}
         />
         {canReadClipboard() && (
           <button type="button" class="icon-btn" aria-label={t.pasteLink} title={t.pasteLink} onClick={() => void paste()}>
@@ -209,8 +256,9 @@ export function AddVideoPanel({ session, online, pageIsHttps, fetchImpl, probe }
       {preview.kind === 'youtube' && (
         <PreviewRow
           thumbnailUrl={preview.entry.thumbnailUrl}
+          wide={preview.entry.kind !== 'YOUTUBE_MUSIC'}
           title={preview.entry.title}
-          meta={[preview.entry.artist, preview.info.live ? t.live : formatMs(preview.entry.durationMs)]}
+          meta={youtubeMeta(preview)}
           enabled={online}
           onAdd={add}
         />
@@ -229,18 +277,18 @@ export function AddVideoPanel({ session, online, pageIsHttps, fetchImpl, probe }
           </label>
           <PreviewRow
             thumbnailUrl={null}
+            wide
             title={urlEntryTitle(preview.link, title) ?? preview.link.fileName}
-            meta={[t.fromDomain(displayDomain(preview.link.domain)), directDuration(preview.probe)]}
+            meta={directMeta(preview.link, preview.probe)}
             enabled={online && directEntry(preview) !== null}
             onAdd={add}
           />
-          {preview.probe?.kind === 'unplayable' && (
-            <p class="muted small" role="status">
-              {t.videoUnplayableWeb}
-            </p>
-          )}
+          {preview.probe?.kind === 'unplayable' && <p class="muted small">{t.videoUnplayableWeb}</p>}
         </div>
       )}
+      <p class="visually-hidden" role="status" aria-live="polite">
+        {announcement(preview)}
+      </p>
       <p class="muted small">{t.videoTip}</p>
     </>
   );

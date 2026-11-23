@@ -74,7 +74,7 @@ test('a YouTube link and a direct mp4 link from the Video tab reach the other ta
   await a.getByRole('button', { name: 'Video', exact: true }).click();
   await a.getByLabel('Tempel link video').fill(`https://youtu.be/${VIDEO.videoId}?t=42`);
   await a.getByRole('button', { name: 'Pratinjau' }).click();
-  await expect(a.getByText(`${VIDEO.channel} · 10:35`)).toBeVisible();
+  await expect(a.getByText(`${VIDEO.channel} · 10:35`, { exact: true })).toBeVisible();
   await a.getByRole('button', { name: `Tambah: ${VIDEO.title}` }).click();
   await expect(b.locator('section.now-playing')).toContainText(VIDEO.title);
 
@@ -82,7 +82,7 @@ test('a YouTube link and a direct mp4 link from the Video tab reach the other ta
   await context.route('https://media.example/**', (route) => route.fulfill({ status: 404, body: '' }));
   await a.getByLabel('Tempel link video').fill('https://media.example/clips/sample.mp4');
   await a.getByRole('button', { name: 'Pratinjau' }).click();
-  await expect(a.getByText('Video ini tidak bisa diputar di web')).toBeVisible({ timeout: 15_000 });
+  await expect(a.getByText('Video ini tidak bisa diputar di web', { exact: true })).toBeVisible({ timeout: 15_000 });
   await a.getByLabel('Judul (opsional)').fill('Klip contoh');
   await a.getByRole('button', { name: 'Tambah: Klip contoh' }).click();
 
@@ -90,4 +90,15 @@ test('a YouTube link and a direct mp4 link from the Video tab reach the other ta
   await expect(queue).toContainText('Klip contoh');
   await expect(queue).toContainText('dari media.example');
   await expect(queue.locator('.thumb-wide')).toHaveCount(1);
+});
+
+test('the host can stop guests from adding', async ({ context }) => {
+  await isolate(context);
+  const { a, b } = await openRoom(context);
+  await expect(b.getByRole('heading', { name: 'Tambah lagu' })).toBeVisible();
+  await a.getByRole('switch', { name: 'Anggota boleh menambah' }).click();
+  await expect(b.getByRole('heading', { name: 'Tambah lagu' })).toHaveCount(0);
+  await expect(a.getByRole('heading', { name: 'Tambah lagu' })).toBeVisible();
+  await a.getByRole('switch', { name: 'Anggota boleh menambah' }).click();
+  await expect(b.getByRole('heading', { name: 'Tambah lagu' })).toBeVisible();
 });
