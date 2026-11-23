@@ -74,6 +74,6 @@
     <string name="ritme_server_url">Server URL</string>
     <string name="ritme_server_url_reset">Restore default</string>
     <string name="ritme_save">Save</string>
-    <string name="ritme_server_url_invalid">Enter a full address that starts with https:// or http://</string>
+    <string name="ritme_server_url_invalid">Enter a valid server address, like https://ritme.example.com</string>
     <string name="ritme_settings_note">Changes apply to the next Ritme you start or join.</string>
 </resources>

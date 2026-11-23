@@ -12,6 +12,7 @@ import com.example.musicfy.ritme.net.RitmeTimers
 import com.example.musicfy.ritme.protocol.Command
 import com.example.musicfy.ritme.protocol.NewEntry
 import com.example.musicfy.ritme.protocol.RoomSettings
+import com.example.musicfy.ritme.protocol.RoomState
 import com.example.musicfy.ritme.sync.ClockSync
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,6 +54,19 @@ class RitmeSession @Inject constructor(
     private val pendingOverflow = ArrayDeque<List<NewEntry>>()
     private var overflowTimer: RitmeTimer? = null
 
+    /**
+     * The server URL this session was started or joined with. Share links use it, so a server URL
+     * changed in Settings mid-room only applies to the next Ritme.
+     */
+    var serverUrl: String? = null
+        private set
+
+    /** True from [create] until that room's first Welcome (or the end of the attempt). */
+    private var awaitingCreatedRoom = false
+
+    /** Called once per room this device created, on its first Welcome (never on a resume). Main thread. */
+    var onRoomCreated: ((RoomState) -> Unit)? = null
+
     fun serverNow(): Long {
         threadCheck.check()
         return clock.serverNow(timers.now())
@@ -60,6 +74,7 @@ class RitmeSession @Inject constructor(
 
     fun create(serverUrl: String, name: String, initial: InitialQueue) {
         val c = begin(serverUrl) ?: return
+        awaitingCreatedRoom = true
         pendingOverflow.addAll(initial.overflow)
         c.start(JoinIntent.Create(name, initial.first, initial.startIndex, initial.startPositionMs))
     }
@@ -99,15 +114,17 @@ class RitmeSession @Inject constructor(
         return canSend() && conn?.trackEnded(entryId) == true
     }
 
-    private fun begin(serverUrl: String): ConnectionLike? {
+    private fun begin(url: String): ConnectionLike? {
         threadCheck.check()
         val phase = _state.value.phase
         if (phase == RitmePhase.CONNECTING || phase == RitmePhase.IN_ROOM) return null
+        serverUrl = url
+        awaitingCreatedRoom = false
         clock.reset()
         clearOverflow()
         _state.value = RitmeReducer.start(_state.value)
         lateinit var c: ConnectionLike
-        c = connector.connect(RitmeLinks.socketUrl(serverUrl)) { event -> if (conn === c) onEvent(event) }
+        c = connector.connect(RitmeLinks.socketUrl(url)) { event -> if (conn === c) onEvent(event) }
         conn = c
         return c
     }
@@ -132,12 +149,19 @@ class RitmeSession @Inject constructor(
             }
             is ConnectionEvent.Ended -> {
                 conn = null
+                awaitingCreatedRoom = false
                 clearOverflow()
             }
             else -> Unit
         }
         _state.value = RitmeReducer.reduce(_state.value, event)
-        if (event is ConnectionEvent.Welcome) scheduleOverflow(event.welcome.state.code)
+        if (event is ConnectionEvent.Welcome) {
+            scheduleOverflow(event.welcome.state.code)
+            if (awaitingCreatedRoom) {
+                awaitingCreatedRoom = false
+                onRoomCreated?.invoke(event.welcome.state)
+            }
+        }
     }
 
     /**

@@ -66,6 +66,6 @@
     <string name="ritme_server_url">URL server</string>
     <string name="ritme_server_url_reset">Kembalikan default</string>
     <string name="ritme_save">Simpan</string>
-    <string name="ritme_server_url_invalid">Masukkan alamat lengkap yang diawali https:// atau http://</string>
+    <string name="ritme_server_url_invalid">Masukkan alamat server yang valid, misalnya https://ritme.example.com</string>
     <string name="ritme_settings_note">Perubahan berlaku untuk Ritme berikutnya yang kamu mulai atau ikuti.</string>
 </resources>

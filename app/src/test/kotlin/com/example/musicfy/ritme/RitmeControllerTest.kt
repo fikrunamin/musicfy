@@ -248,6 +248,40 @@ class RitmeControllerTest {
         assertEquals(RitmeSheetRequest.Kind.Entry(code = "K7M2QX"), other.sheetRequest.value?.kind)
     }
 
+    @Test
+    fun theShareLinkKeepsTheServerTheRoomWasJoinedOn() {
+        val changing = object : RitmeSettings {
+            override var serverUrl = "http://192.168.1.5:8080"
+            override val displayName = "Budi"
+        }
+        val other = RitmeController(session, RitmeGate(), toasts, changing)
+        other.joinRoom("K7M2QX", "Budi")
+        connector.last.welcome(paused, memberId = "m2")
+        // Settings changed mid-room: only the next Ritme uses the new server.
+        changing.serverUrl = "https://ritme.example.com"
+        assertEquals("http://192.168.1.5:8080/r/K7M2QX", other.shareLink("K7M2QX"))
+    }
+
+    @Test
+    fun theHostOfANewRoomGetsTheRoomSheetOnceAndJoinersDoNot() {
+        controller.startRoom("Budi")
+        assertNull(controller.sheetRequest.value)
+        connector.last.welcome(paused, memberId = "m1")
+        val opened = controller.sheetRequest.value!!
+        assertEquals(RitmeSheetRequest.Kind.Room, opened.kind)
+        controller.consumeSheetRequest(opened.id)
+        // a resume (another Welcome on the same session) does not open it again
+        connector.last.welcome(paused.copy(version = 2), memberId = "m1")
+        assertNull(controller.sheetRequest.value)
+    }
+
+    @Test
+    fun joiningSomeoneElsesRoomDoesNotOpenTheRoomSheet() {
+        controller.joinRoom("K7M2QX", "Budi")
+        connector.last.welcome(paused, memberId = "m2")
+        assertNull(controller.sheetRequest.value)
+    }
+
     // Carry-forward: no optimistic local play. A control-holder's Play is the room command only;
     // the device starts when the next snapshot says the room plays.
     @Test

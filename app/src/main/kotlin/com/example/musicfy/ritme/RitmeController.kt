@@ -59,6 +59,11 @@ class RitmeController @Inject constructor(
 
     init {
         gate.handler = ::handle
+        // The host of a room just created gets the room sheet right away, to share the link (once:
+        // never on a resume). Joining someone else's room opens nothing; the pill is enough.
+        session.onRoomCreated = { room ->
+            if (RitmePermissions.isHost(room, session.state.value.memberId)) request(RitmeSheetRequest.Kind.Room)
+        }
     }
 
     fun openSheet() = request(if (session.state.value.inRoom) RitmeSheetRequest.Kind.Room else RitmeSheetRequest.Kind.Entry())
@@ -88,7 +93,8 @@ class RitmeController @Inject constructor(
         _sheetRequest.value = RitmeSheetRequest(++requestIds, kind)
     }
 
-    fun shareLink(code: String): String = RitmeLinks.shareLink(settings.serverUrl, code)
+    /** The room's link on the server this session was started or joined with, not the current setting. */
+    fun shareLink(code: String): String = RitmeLinks.shareLink(session.serverUrl ?: settings.serverUrl, code)
 
     /** Creates a room from [startWith], or else from the local queue (current song onward, play order). */
     fun startRoom(name: String, startWith: List<MediaMetadata?>? = null) {

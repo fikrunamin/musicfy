@@ -282,6 +282,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var navController: NavHostController
     private var pendingIntent: Intent? = null
 
+    /** Recreated from saved state (rotation, or after process death, which redelivers the launch intent). */
+    private var restoredFromState = false
+
     private var playerConnection by mutableStateOf<PlayerConnection?>(null)
 
     /** Bumped when launched from an update notification; the composition opens the version sheet. */
@@ -369,6 +372,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen().handOffToLaunchIntro { introPlays }
         super.onCreate(savedInstanceState)
+        restoredFromState = savedInstanceState != null
         introRequested = savedInstanceState == null && intent?.action == Intent.ACTION_MAIN
         if (introRequested) LaunchGate.begin() else LaunchGate.skip()
         if (savedInstanceState == null && intent?.action == com.example.musicfy.ui.screens.update.ActionOpenUpdate) {
@@ -843,7 +847,9 @@ class MainActivity : ComponentActivity() {
                         handleDeepLinkIntent(pendingIntent!!, navController)
                         pendingIntent = null
                     } else {
-                        handleDeepLinkIntent(intent, navController)
+                        // A restored activity's launch intent was handled before: a Ritme link in
+                        // it must not open the join sheet again.
+                        handleDeepLinkIntent(intent, navController, ritmeLinks = !restoredFromState)
                     }
                 }
 
@@ -913,7 +919,11 @@ class MainActivity : ComponentActivity() {
                     com.example.musicfy.ui.screens.update.UpdateNotificationOpener(
                         requests = openUpdateRequests,
                     )
-                    com.example.musicfy.ui.screens.ritme.RitmeSheetOpener(navController = navController)
+                    // Not over the first-run setup: a deep link's request waits in the controller's
+                    // StateFlow and opens once setup is done.
+                    if (setupCompleted && onboardedHere && !forceShowSetup) {
+                        com.example.musicfy.ui.screens.ritme.RitmeSheetOpener(navController = navController)
+                    }
                     com.example.musicfy.ui.screens.donate.DonatePromptScheduler(
                         enabled = setupCompleted && onboardedHere && !forceShowSetup,
                     )
@@ -1371,9 +1381,9 @@ class MainActivity : ComponentActivity() {
         return true
     }
 
-    private fun handleDeepLinkIntent(intent: Intent, navController: NavHostController) {
+    private fun handleDeepLinkIntent(intent: Intent, navController: NavHostController, ritmeLinks: Boolean = true) {
         if (importSharedAudio(intent)) return
-        if (com.example.musicfy.ritme.RitmeConfig.ENABLED) {
+        if (ritmeLinks && com.example.musicfy.ritme.RitmeConfig.ENABLED) {
             // musicfy://ritme/{code}, https://<server>/r/{code}, or shared text holding either: the
             // join form opens with the code filled in; joining still takes a tap.
             val text = intent.data?.toString() ?: intent.getStringExtra(Intent.EXTRA_TEXT)

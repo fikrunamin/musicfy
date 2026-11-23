@@ -94,10 +94,9 @@ fun PopupSheetState.showRitmeEntrySheet(ritme: RitmeUi, code: String?, startWith
         RitmeEntryContent(
             ritme = ritme,
             form = form,
-            onJoined = {
-                handle?.dismiss()
-                ritme.controller.openSheet()
-            },
+            // In the room: this sheet's job is done. The host of a new room gets the room sheet
+            // from RitmeController (once per created room); a joiner just sees the pill.
+            onJoined = { handle?.dismiss() },
         )
     }
 }
