@@ -4418,3 +4418,19 @@ An Android phone in the same room shows the URL entry as "Belum didukung" until 
 - `setGuestsCanAdd` exists on `SessionApi`, `fakeSession` and Android `RitmeSession`. `canAdd` follows the same rule in TS and Kotlin.
 - `NoticeKey`: web `'addForbidden'` is covered by `noticeText`; Android `ADD_FORBIDDEN` is covered by `RitmeTexts.notice` and `ritme_toast_add_locked`.
 - Web `Session.send` now returns `string | null`; every existing caller ignores the result.
+
+---
+
+## Task 9: tambahan dari review akhir (2026-11-23)
+
+- Step 1: ekspektasi Playwright sekarang `4 passed`, karena ada tes mid-join baru.
+- Step 7: tambah pengecekan mid-join/reload untuk ab2c0a6. Di tengah video YouTube, reload browser tamu
+  dan gabung dari browser ketiga. Keduanya harus lanjut di dekat posisi room, tanpa "Tidak bisa diputar
+  di web". Lalu cek pause/resume, Next ke video lain, dan entri LIVE (`jfKfPfyJRdk`).
+- Step 7: kalau ada APK lama, join ke room yang host web-nya mematikan "Anggota boleh menambah". Menambah
+  lagu harus memunculkan toast "Not allowed". Fitur lain tetap normal.
+- Step 6: `/api/video` yang menjawab 502 sementara `/api/search` jalan **bukan alasan rollback**. Putuskan
+  bersama pengguna, dan jangan retry berulang. Cek `docker logs` untuk baris "video backend answered 400".
+- Setelah deploy: `docker stats --no-stream` harus jauh di bawah 1408 MiB.
+- Catatan dokumen: Decision 7 (toast `ritme_toast_forbidden`) sudah digantikan oleh Decision 13
+  (`ADD_FORBIDDEN` / `ritme_toast_add_locked`).
