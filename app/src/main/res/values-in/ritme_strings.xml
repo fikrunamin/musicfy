@@ -21,6 +21,7 @@
     <string name="ritme_toast_closed">Ritme diakhiri host</string>
     <string name="ritme_toast_lost">Terputus dari Ritme</string>
     <string name="ritme_toast_forbidden">Tidak diizinkan di Ritme ini</string>
+    <string name="ritme_toast_add_locked">Host menutup penambahan lagu</string>
     <string name="ritme_toast_queue_full">Antrean Ritme penuh</string>
 
     <string name="ritme_error_unreachable">Tidak bisa terhubung ke server Ritme</string>
@@ -53,6 +54,7 @@
     <string name="ritme_you">Kamu</string>
     <string name="ritme_add_songs">Tambah lagu</string>
     <string name="ritme_guests_can_control">Anggota boleh kontrol</string>
+    <string name="ritme_guests_can_add">Anggota boleh menambah</string>
     <string name="ritme_leave">Keluar Ritme</string>
     <string name="ritme_end">Akhiri Ritme</string>
     <string name="ritme_end_confirm_title">Akhiri Ritme ini untuk semua?</string>

@@ -27,6 +27,8 @@ export type ErrorCode = (typeof ERROR_CODES)[number];
 
 export interface RoomSettings {
   guestsCanControl: boolean;
+  /** Members other than the host may Add (default true; older servers omit it). */
+  guestsCanAdd: boolean;
 }
 
 export interface Member {
@@ -155,7 +157,10 @@ function encodeCommand(cmd: Command): Command {
     case 'Move':
       return { type: 'Move', entryId: cmd.entryId, afterEntryId: cmd.afterEntryId };
     case 'SetSettings':
-      return { type: 'SetSettings', settings: { guestsCanControl: cmd.settings.guestsCanControl } };
+      return {
+        type: 'SetSettings',
+        settings: { guestsCanControl: cmd.settings.guestsCanControl, guestsCanAdd: cmd.settings.guestsCanAdd },
+      };
     case 'Kick':
       return { type: 'Kick', memberId: cmd.memberId };
     case 'TransferHost':
@@ -254,9 +259,9 @@ function lenientEnum<T extends string>(values: readonly T[], raw: unknown, fallb
 }
 
 function parseSettings(v: unknown): RoomSettings {
-  if (v === undefined) return { guestsCanControl: true };
+  if (v === undefined) return { guestsCanControl: true, guestsCanAdd: true };
   const o = obj(v);
-  return { guestsCanControl: bool(o, 'guestsCanControl', true) };
+  return { guestsCanControl: bool(o, 'guestsCanControl', true), guestsCanAdd: bool(o, 'guestsCanAdd', true) };
 }
 
 function parseMember(v: unknown): Member {

@@ -4,6 +4,7 @@ import com.example.musicfy.ritme.protocol.RitmeJson
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -13,15 +14,11 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.content.TextContent
 import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 
 @Serializable
 data class SearchResult(
@@ -41,16 +38,33 @@ fun defaultHttpClient(): HttpClient = HttpClient(OkHttp) {
     install(HttpTimeout) { requestTimeoutMillis = 10_000 }
 }
 
+/** The WEB_REMIX client's headers, as YouTube Music's web app sends them (search and video info). */
+internal fun HttpRequestBuilder.innerTubeHeaders() {
+    header(HttpHeaders.UserAgent, InnerTubeSearchBackend.USER_AGENT)
+    header("X-Goog-Api-Format-Version", "1")
+    header("X-YouTube-Client-Name", InnerTubeSearchBackend.CLIENT_ID)
+    header("X-YouTube-Client-Version", InnerTubeSearchBackend.CLIENT_VERSION)
+    header("X-Origin", InnerTubeSearchBackend.ORIGIN)
+    header(HttpHeaders.Referrer, "${InnerTubeSearchBackend.ORIGIN}/")
+}
+
+/** `"context": {"client": {WEB_REMIX, hl en, gl US}}`, the first key of every request body. */
+internal fun JsonObjectBuilder.putWebRemixContext() {
+    putJsonObject("context") {
+        putJsonObject("client") {
+            put("clientName", InnerTubeSearchBackend.CLIENT_NAME)
+            put("clientVersion", InnerTubeSearchBackend.CLIENT_VERSION)
+            put("hl", "en")
+            put("gl", "US")
+        }
+    }
+}
+
 /** One InnerTube `search` call, songs only. Metadata only: no stream URLs are ever requested. */
 class InnerTubeSearchBackend(private val http: HttpClient) : SearchBackend {
     override suspend fun fetch(query: String): String {
         val response = http.post(URL) {
-            header(HttpHeaders.UserAgent, USER_AGENT)
-            header("X-Goog-Api-Format-Version", "1")
-            header("X-YouTube-Client-Name", CLIENT_ID)
-            header("X-YouTube-Client-Version", CLIENT_VERSION)
-            header("X-Origin", ORIGIN)
-            header(HttpHeaders.Referrer, "$ORIGIN/")
+            innerTubeHeaders()
             setBody(TextContent(requestBody(query), ContentType.Application.Json))
         }
         check(response.status.isSuccess()) { "InnerTube search failed: ${response.status.value}" }
@@ -71,14 +85,7 @@ class InnerTubeSearchBackend(private val http: HttpClient) : SearchBackend {
         const val SONGS_FILTER = "EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D"
 
         fun requestBody(query: String): String = buildJsonObject {
-            putJsonObject("context") {
-                putJsonObject("client") {
-                    put("clientName", CLIENT_NAME)
-                    put("clientVersion", CLIENT_VERSION)
-                    put("hl", "en")
-                    put("gl", "US")
-                }
-            }
+            putWebRemixContext()
             put("query", query)
             put("params", SONGS_FILTER)
         }.toString()
@@ -86,7 +93,8 @@ class InnerTubeSearchBackend(private val http: HttpClient) : SearchBackend {
 }
 
 object InnerTubeSearchParser {
-    private val durationPattern = Regex("""^\d{1,2}(:\d{2}){1,2}$""")
+    /** `m:ss` or `h:mm:ss`, as InnerTube writes lengths. */
+    internal val DURATION = Regex("""^\d{1,2}(:\d{2}){1,2}$""")
     private const val ARTIST_PAGE = "MUSIC_PAGE_TYPE_ARTIST"
 
     fun parse(json: String): List<SearchResult> {
@@ -111,76 +119,32 @@ object InnerTubeSearchParser {
             }
             .mapNotNull { it.at("text").asString() }
         val artist = artists.ifEmpty { listOfNotNull(details.firstOrNull()?.at("text").asString()) }.joinToString(", ")
-        val duration = details.mapNotNull { it.at("text").asString() }.lastOrNull { durationPattern.matches(it) } ?: return null
+        val duration = details.mapNotNull { it.at("text").asString() }.lastOrNull { DURATION.matches(it) } ?: return null
         val thumbnail = item.at("thumbnail", "musicThumbnailRenderer", "thumbnail", "thumbnails").asArray().lastOrNull()?.at("url").asString()
         return SearchResult(videoId, title, artist, parseDuration(duration), thumbnail)
     }
 
     private fun column(item: JsonElement, index: Int): List<JsonElement> =
         item.at("flexColumns", index, "musicResponsiveListItemFlexColumnRenderer", "text", "runs").asArray()
-
-    private fun JsonElement?.at(vararg path: Any): JsonElement? = path.fold(this) { node, key ->
-        when (key) {
-            is String -> (node as? JsonObject)?.get(key)
-            is Int -> (node as? JsonArray)?.getOrNull(key)
-            else -> null
-        }
-    }
-
-    private fun JsonElement?.asArray(): List<JsonElement> = (this as? JsonArray).orEmpty()
-
-    private fun JsonElement?.asString(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
 }
 
-/** The global upstream budget is spent: the endpoint answers 503. */
-class SearchOverloadedException : RuntimeException("search upstream budget exhausted")
-
 /**
- * Cached, single-flight search. Identical uncached queries running at the same time share one
- * upstream call, and all upstream calls together stay under [globalPerMinute].
+ * Cached, single-flight search: identical uncached queries running at the same time share one
+ * upstream call, and every uncached query spends a token of the [budget] that video info shares.
  */
 class SearchService(
     private val backend: SearchBackend,
-    private val clock: Clock,
-    private val ttlMs: Long = 10 * 60_000L,
-    private val maxEntries: Int = 1_000,
+    clock: Clock,
+    ttlMs: Long = 10 * 60_000L,
+    maxEntries: Int = 1_000,
     globalPerMinute: Int = Limits.SEARCH_GLOBAL_PER_MINUTE,
+    budget: UpstreamBudget = UpstreamBudget(globalPerMinute, clock),
 ) {
-    private class Cached(val at: Long, val results: List<SearchResult>)
-
-    private val lock = Any()
-    private val cache = object : LinkedHashMap<String, Cached>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Cached>): Boolean = size > maxEntries
-    }
-    private val inFlight = HashMap<String, CompletableDeferred<List<SearchResult>>>()
-    private val upstream = RateLimiter(globalPerMinute, globalPerMinute / 60.0, clock)
+    private val cache = SingleFlightCache<String, List<SearchResult>>(clock, budget, maxEntries) { ttlMs }
 
     suspend fun search(query: String): List<SearchResult> {
-        val key = query.trim().lowercase()
-        val call = CompletableDeferred<List<SearchResult>>()
-        val shared = synchronized(lock) {
-            cache[key]?.takeIf { clock.now() - it.at < ttlMs }?.let { return it.results }
-            inFlight[key] ?: run {
-                if (!upstream.tryAcquire()) throw SearchOverloadedException()
-                inFlight[key] = call
-                null
-            }
-        }
-        if (shared != null) return shared.await()
-        try {
-            val results = InnerTubeSearchParser.parse(backend.fetch(query.trim())).take(MAX_RESULTS)
-            synchronized(lock) {
-                cache[key] = Cached(clock.now(), results)
-                inFlight.remove(key)
-            }
-            call.complete(results)
-            return results
-        } catch (e: Throwable) {
-            synchronized(lock) { inFlight.remove(key) }
-            // Waiters get a plain failure (502), never this caller's cancellation.
-            call.completeExceptionally(if (e is CancellationException) IllegalStateException("search cancelled") else e)
-            throw e
-        }
+        val trimmed = query.trim()
+        return cache.get(trimmed.lowercase()) { InnerTubeSearchParser.parse(backend.fetch(trimmed)).take(MAX_RESULTS) }
     }
 
     companion object {

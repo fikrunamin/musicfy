@@ -1,0 +1,481 @@
+{
+ "queueDatas": [
+  {
+   "content": {
+    "playlistPanelVideoRenderer": {
+     "title": {
+      "runs": [
+       {
+        "text": "lofi hip hop radio 📚 - beats to relax/study to"
+       }
+      ]
+     },
+     "longBylineText": {
+      "runs": [
+       {
+        "text": "Lofi Girl",
+        "navigationEndpoint": {
+         "browseEndpoint": {
+          "browseId": "UCSJ4gkVC6NrvII8umztf0Ow",
+          "browseEndpointContextSupportedConfigs": {
+           "browseEndpointContextMusicConfig": {
+            "pageType": "MUSIC_PAGE_TYPE_USER_CHANNEL"
+           }
+          }
+         }
+        }
+       },
+       {
+        "text": " • "
+       },
+       {
+        "text": "651M views"
+       },
+       {
+        "text": " • "
+       },
+       {
+        "text": "3.4M likes"
+       }
+      ]
+     },
+     "thumbnail": {
+      "thumbnails": [
+       {
+        "url": "https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3meb1PEizaB4Q2pL_CGWLwNi0ynQg",
+        "width": 400,
+        "height": 225
+       },
+       {
+        "url": "https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault.jpg?sqp=-oaymwEWCOADEI4CIAQqCggAEOADGC0guwJIWg&rs=AMzJL3lW4oV_HHou-RuHLfQ8--UkCYSk_g",
+        "width": 480,
+        "height": 270
+       }
+      ]
+     },
+     "lengthText": {
+      "runs": [
+       {
+        "text": "33,778:11:52"
+       }
+      ],
+      "accessibility": {
+       "accessibilityData": {
+        "label": "33,778 hours, 11 minutes, 52 seconds"
+       }
+      }
+     },
+     "selected": false,
+     "navigationEndpoint": {
+      "watchEndpoint": {
+       "videoId": "jfKfPfyJRdk",
+       "params": "OAHyAQIIAQ%3D%3D",
+       "watchEndpointMusicSupportedConfigs": {
+        "watchEndpointMusicConfig": {
+         "hasPersistentPlaylistPanel": true,
+         "musicVideoType": "MUSIC_VIDEO_TYPE_UGC"
+        }
+       }
+      }
+     },
+     "videoId": "jfKfPfyJRdk",
+     "shortBylineText": {
+      "runs": [
+       {
+        "text": "Lofi Girl"
+       }
+      ]
+     },
+     "menu": {
+      "menuRenderer": {
+       "items": [
+        {
+         "menuNavigationItemRenderer": {
+          "text": {
+           "runs": [
+            {
+             "text": "Start mix"
+            }
+           ]
+          },
+          "icon": {
+           "iconType": "MIX"
+          },
+          "navigationEndpoint": {
+           "watchEndpoint": {
+            "videoId": "jfKfPfyJRdk",
+            "playlistId": "RDAMVMjfKfPfyJRdk",
+            "params": "wAEB",
+            "loggingContext": {
+             "vssLoggingContext": {
+              "serializedContextData": "GhFSREFNVk1qZktmUGZ5SlJkaw%3D%3D"
+             }
+            },
+            "watchEndpointMusicSupportedConfigs": {
+             "watchEndpointMusicConfig": {
+              "musicVideoType": "MUSIC_VIDEO_TYPE_UGC"
+             }
+            }
+           }
+          }
+         }
+        },
+        {
+         "menuServiceItemRenderer": {
+          "text": {
+           "runs": [
+            {
+             "text": "Play next"
+            }
+           ]
+          },
+          "icon": {
+           "iconType": "QUEUE_PLAY_NEXT"
+          },
+          "serviceEndpoint": {
+           "queueAddEndpoint": {
+            "queueTarget": {
+             "videoId": "jfKfPfyJRdk",
+             "onEmptyQueue": {
+              "watchEndpoint": {
+               "videoId": "jfKfPfyJRdk",
+               "playerParams": "0gcJCbMBfxgHrFLt"
+              }
+             }
+            },
+            "queueInsertPosition": "INSERT_AFTER_CURRENT_VIDEO",
+            "commands": [
+             {
+              "addToToastAction": {
+               "item": {
+                "notificationTextRenderer": {
+                 "successResponseText": {
+                  "runs": [
+                   {
+                    "text": "Song will play next"
+                   }
+                  ]
+                 }
+                }
+               }
+              }
+             }
+            ]
+           }
+          }
+         }
+        },
+        {
+         "menuServiceItemRenderer": {
+          "text": {
+           "runs": [
+            {
+             "text": "Add to queue"
+            }
+           ]
+          },
+          "icon": {
+           "iconType": "ADD_TO_REMOTE_QUEUE"
+          },
+          "serviceEndpoint": {
+           "queueAddEndpoint": {
+            "queueTarget": {
+             "videoId": "jfKfPfyJRdk",
+             "onEmptyQueue": {
+              "watchEndpoint": {
+               "videoId": "jfKfPfyJRdk"
+              }
+             }
+            },
+            "queueInsertPosition": "INSERT_AT_END",
+            "commands": [
+             {
+              "addToToastAction": {
+               "item": {
+                "notificationTextRenderer": {
+                 "successResponseText": {
+                  "runs": [
+                   {
+                    "text": "Song added to queue"
+                   }
+                  ]
+                 }
+                }
+               }
+              }
+             }
+            ]
+           }
+          }
+         }
+        },
+        {
+         "toggleMenuServiceItemRenderer": {
+          "defaultText": {
+           "runs": [
+            {
+             "text": "Add to liked songs"
+            }
+           ]
+          },
+          "defaultIcon": {
+           "iconType": "FAVORITE"
+          },
+          "defaultServiceEndpoint": {
+           "modalEndpoint": {
+            "modal": {
+             "modalWithTitleAndButtonRenderer": {
+              "title": {
+               "runs": [
+                {
+                 "text": "Like this song"
+                }
+               ]
+              },
+              "content": {
+               "runs": [
+                {
+                 "text": "Improve recommendations and save music after signing in"
+                }
+               ]
+              },
+              "button": {
+               "buttonRenderer": {
+                "style": "STYLE_BLUE_TEXT",
+                "isDisabled": false,
+                "text": {
+                 "runs": [
+                  {
+                   "text": "Sign in"
+                  }
+                 ]
+                },
+                "navigationEndpoint": {
+                 "signInEndpoint": {
+                  "hack": true
+                 }
+                }
+               }
+              }
+             }
+            }
+           }
+          },
+          "toggledText": {
+           "runs": [
+            {
+             "text": "Remove from liked songs"
+            }
+           ]
+          },
+          "toggledIcon": {
+           "iconType": "UNFAVORITE"
+          }
+         }
+        },
+        {
+         "menuServiceItemDownloadRenderer": {
+          "serviceEndpoint": {
+           "offlineVideoEndpoint": {
+            "videoId": "jfKfPfyJRdk",
+            "onAddCommand": {
+             "getDownloadActionCommand": {
+              "videoId": "jfKfPfyJRdk",
+              "params": "CAI%3D"
+             }
+            }
+           }
+          },
+          "badgeIcon": {
+           "iconType": "PREMIUM_STANDALONE_CAIRO"
+          }
+         }
+        },
+        {
+         "menuNavigationItemRenderer": {
+          "text": {
+           "runs": [
+            {
+             "text": "Save to playlist"
+            }
+           ]
+          },
+          "icon": {
+           "iconType": "ADD_TO_PLAYLIST"
+          },
+          "navigationEndpoint": {
+           "modalEndpoint": {
+            "modal": {
+             "modalWithTitleAndButtonRenderer": {
+              "title": {
+               "runs": [
+                {
+                 "text": "Save this for later"
+                }
+               ]
+              },
+              "content": {
+               "runs": [
+                {
+                 "text": "Make playlists and share them after signing in"
+                }
+               ]
+              },
+              "button": {
+               "buttonRenderer": {
+                "style": "STYLE_BLUE_TEXT",
+                "isDisabled": false,
+                "text": {
+                 "runs": [
+                  {
+                   "text": "Sign in"
+                  }
+                 ]
+                },
+                "navigationEndpoint": {
+                 "signInEndpoint": {
+                  "hack": true
+                 }
+                }
+               }
+              }
+             }
+            }
+           }
+          }
+         }
+        },
+        {
+         "menuServiceItemRenderer": {
+          "text": {
+           "runs": [
+            {
+             "text": "Remove from queue"
+            }
+           ]
+          },
+          "icon": {
+           "iconType": "REMOVE"
+          },
+          "serviceEndpoint": {
+           "removeFromQueueEndpoint": {
+            "videoId": "jfKfPfyJRdk",
+            "commands": [
+             {
+              "addToToastAction": {
+               "item": {
+                "notificationTextRenderer": {
+                 "successResponseText": {
+                  "runs": [
+                   {
+                    "text": "Item removed from queue"
+                   }
+                  ]
+                 }
+                }
+               }
+              }
+             }
+            ]
+           }
+          }
+         }
+        },
+        {
+         "menuNavigationItemRenderer": {
+          "text": {
+           "runs": [
+            {
+             "text": "Share"
+            }
+           ]
+          },
+          "icon": {
+           "iconType": "SHARE"
+          },
+          "navigationEndpoint": {
+           "shareEntityEndpoint": {
+            "serializedShareEntity": "CgtqZktmUGZ5SlJkaw%3D%3D",
+            "sharePanelType": "SHARE_PANEL_TYPE_UNIFIED_SHARE_PANEL"
+           }
+          }
+         }
+        },
+        {
+         "menuServiceItemRenderer": {
+          "text": {
+           "runs": [
+            {
+             "text": "Report"
+            }
+           ]
+          },
+          "icon": {
+           "iconType": "FLAG"
+          },
+          "serviceEndpoint": {
+           "modalEndpoint": {
+            "modal": {
+             "modalWithTitleAndButtonRenderer": {
+              "title": {
+               "runs": [
+                {
+                 "text": "Need to report the video?"
+                }
+               ]
+              },
+              "content": {
+               "runs": [
+                {
+                 "text": "Sign in to report inappropriate content."
+                }
+               ]
+              },
+              "button": {
+               "buttonRenderer": {
+                "style": "STYLE_BLUE_TEXT",
+                "isDisabled": false,
+                "text": {
+                 "runs": [
+                  {
+                   "text": "Sign in"
+                  }
+                 ]
+                },
+                "navigationEndpoint": {
+                 "signInEndpoint": {
+                  "hack": true
+                 }
+                }
+               }
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ],
+       "accessibility": {
+        "accessibilityData": {
+         "label": "Action menu"
+        }
+       }
+      }
+     },
+     "canReorder": true,
+     "queueNavigationEndpoint": {
+      "queueAddEndpoint": {
+       "queueTarget": {
+        "videoId": "jfKfPfyJRdk"
+       },
+       "queueInsertPosition": "INSERT_AT_END",
+       "params": "Q0FJJTNE"
+      }
+     }
+    }
+   }
+  }
+ ],
+ "queueContextParams": "WgIgAXgB"
+}

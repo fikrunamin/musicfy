@@ -482,4 +482,42 @@ class RitmeControllerTest {
         assertNull(controller.sheetRequest.value)
         assertEquals(List<RitmeToast>(2) { RitmeToast.NotAvailable }, toasts.shown)
     }
+
+    @Test
+    fun guestsCannotAddWhileTheHostTurnedAddingOff() {
+        inRoom(playing.copy(settings = RoomSettings(guestsCanAdd = false)), memberId = "m2")
+        controller.handle(RitmeLocalAction.AddItems(listOf(song("a")), playNext = false))
+        controller.handle(RitmeLocalAction.PlayQueue(listOf(song("b"))))
+        assertTrue(commands.isEmpty())
+        assertEquals(
+            listOf<RitmeToast>(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN), RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN)),
+            toasts.shown,
+        )
+    }
+
+    @Test
+    fun theHostAddsEvenWhileGuestsMayNot() {
+        inRoom(playing.copy(settings = RoomSettings(guestsCanAdd = false)), memberId = "m1")
+        controller.handle(RitmeLocalAction.AddItems(listOf(song("a")), playNext = false))
+        assertEquals(1, commands.size)
+    }
+
+    @Test
+    fun theAddSwitchGoesThroughRoomCommand() {
+        inRoom(playing, memberId = "m1")
+        assertTrue(controller.roomCommand { setGuestsCanAdd(false) })
+        connector.last.emit(ConnectionEvent.Status(ConnectionStatus.RECONNECTING))
+        assertFalse(controller.roomCommand { setGuestsCanAdd(true) })
+        assertEquals(RitmeToast.Reconnecting, toasts.shown.last())
+    }
+
+    @Test
+    fun aListAddWhileGuestsMayNotAddSaysSoAndSendsNothing() {
+        inRoom(playing.copy(settings = RoomSettings(guestsCanAdd = false)), memberId = "m2")
+        controller.handle(RitmeLocalAction.AddAll((1..450).map { song("s$it") }))
+        timers.advanceBy(RitmeSession.OVERFLOW_DELAY_MS + 10 * RitmeSession.OVERFLOW_GAP_MS)
+        assertTrue(commands.isEmpty())
+        assertEquals(0, session.owedEntries)
+        assertEquals(listOf<RitmeToast>(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN)), toasts.shown)
+    }
 }

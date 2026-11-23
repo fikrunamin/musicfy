@@ -139,10 +139,10 @@ class RitmeController @Inject constructor(
             is RitmeLocalAction.Seek -> control(room, me) { session.seek(action.positionMs) }
             RitmeLocalAction.Next -> control(room, me) { session.next() }
             RitmeLocalAction.Previous -> control(room, me) { session.previous() }
-            is RitmeLocalAction.AddItems -> add(action.songs, action.playNext)
+            is RitmeLocalAction.AddItems -> add(room, me, action.songs, action.playNext)
             is RitmeLocalAction.PlayQueue ->
-                if (action.songs.isEmpty()) notifier.show(RitmeToast.NotAvailable) else add(action.songs, playNext = false)
-            is RitmeLocalAction.AddAll -> addAll(room, action.songs)
+                if (action.songs.isEmpty()) notifier.show(RitmeToast.NotAvailable) else add(room, me, action.songs, playNext = false)
+            is RitmeLocalAction.AddAll -> addAll(room, me, action.songs)
             RitmeLocalAction.QueueEdit,
             RitmeLocalAction.Shuffle,
             RitmeLocalAction.Repeat,
@@ -189,9 +189,11 @@ class RitmeController @Inject constructor(
      * by the session. The server's [RitmeEntries.MAX_QUEUE] counts every entry, played ones too, and
      * refuses a whole Add past it, so the room's queue and what this session still owes it (overflow
      * not sent yet, Adds not yet in a snapshot) are both taken. Local files are skipped; only local
-     * files: the skipped toast. A list cut short says the rest did not fit.
+     * files: the skipped toast. A list cut short says the rest did not fit. Without add rights it is
+     * refused up front, like a single add.
      */
-    private fun addAll(room: RoomState, songs: List<MediaMetadata?>) {
+    private fun addAll(room: RoomState, me: String?, songs: List<MediaMetadata?>) {
+        if (!addAllowed(room, me)) return
         val space = RitmeEntries.MAX_QUEUE - room.queue.size - session.owedEntries
         if (space <= 0) {
             notifier.show(RitmeToast.CommandFailed(NoticeKey.QUEUE_FULL))
@@ -212,7 +214,8 @@ class RitmeController @Inject constructor(
         )
     }
 
-    private fun add(songs: List<MediaMetadata?>, playNext: Boolean) {
+    private fun add(room: RoomState, me: String?, songs: List<MediaMetadata?>, playNext: Boolean) {
+        if (!addAllowed(room, me)) return
         val batches = RitmeEntries.toAddBatches(songs)
         if (batches.count == 0) {
             notifier.show(if (batches.skipped > 0) RitmeToast.SkippedLocal(batches.skipped) else RitmeToast.NotAvailable)
@@ -224,5 +227,12 @@ class RitmeController @Inject constructor(
         val ordered = if (stacked) batches.batches.asReversed() else batches.batches
         val sent = ordered.all { session.add(it, playNext) }
         notifier.show(if (sent) RitmeToast.Added(batches.count) else RitmeToast.Reconnecting)
+    }
+
+    /** The server would answer FORBIDDEN; say it right away, with the same message (spec 8). */
+    private fun addAllowed(room: RoomState, me: String?): Boolean {
+        if (RitmePermissions.canAdd(room, me)) return true
+        notifier.show(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN))
+        return false
     }
 }

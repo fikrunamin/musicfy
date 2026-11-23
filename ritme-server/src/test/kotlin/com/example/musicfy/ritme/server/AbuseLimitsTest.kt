@@ -178,8 +178,9 @@ class AbuseLimitsTest {
     fun anInboundFrameFloodClosesTheSocket() = testApplication {
         application { ritmeModule(testDeps(socketLimits = SocketLimits(framesPerSecond = 5, frameBurst = 5))) }
         wsClient().ritme("8.8.8.8") {
-            // Binary frames get no answer, so only the frame limiter can end this socket.
-            repeat(20) { send(Frame.Binary(true, byteArrayOf(1))) }
+            // Binary frames get no answer, so only the frame limiter can end this socket. The server
+            // may close the socket mid-burst; a send on the cancelled channel then throws.
+            for (i in 1..20) if (runCatching { send(Frame.Binary(true, byteArrayOf(1))) }.isFailure) break
             assertTrue(closedByServer())
         }
     }

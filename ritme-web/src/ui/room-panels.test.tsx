@@ -23,6 +23,8 @@ describe('MembersPanel', () => {
     expect(session.kick).toHaveBeenCalledWith('m2');
     fireEvent.click(screen.getByRole('switch', { name: 'Anggota boleh kontrol' }));
     expect(session.setGuestsCanControl).toHaveBeenCalledWith(false);
+    fireEvent.click(screen.getByRole('switch', { name: 'Anggota boleh menambah' }));
+    expect(session.setGuestsCanAdd).toHaveBeenCalledWith(false);
   });
 
   it('does not kick or end the room when the host declines the confirmation', () => {
@@ -57,7 +59,7 @@ describe('MembersPanel', () => {
 describe('NowPlaying', () => {
   const playingRoom = (guestsCanControl: boolean) =>
     room({
-      settings: { guestsCanControl },
+      settings: { guestsCanControl, guestsCanAdd: true },
       queue: [entry('e1', { title: 'Lagu Satu' })],
       currentEntryId: 'e1',
       playback: { isPlaying: true, positionMs: 0, anchorServerTimeMs: 0 },
@@ -86,6 +88,13 @@ describe('NowPlaying', () => {
     expect(screen.getByRole('slider', { name: 'Posisi lagu' }).getAttribute('aria-valuetext')).toBe('1:23');
   });
 
+  it('shows a video with a 16:9 thumbnail, and a direct link with the domain it comes from', () => {
+    const url = entry('e1', { kind: 'URL', videoId: '', url: 'https://www.xn--bcher-kva.example/a.mp4', artist: 'youtube.com', title: 'Klip' });
+    render(<NowPlaying session={fakeSession()} room={room({ queue: [url], currentEntryId: 'e1' })} memberId="m1" unplayable={{}} online pageIsHttps />);
+    expect(document.querySelectorAll('.now-row .thumb-wide')).toHaveLength(1);
+    expect(screen.getByText('dari bücher.example · oleh Kamu')).toBeTruthy();
+  });
+
   it('shows LIVE instead of a seek bar for live entries', () => {
     const live = room({ queue: [entry('e1', { durationMs: 0 })], currentEntryId: 'e1' });
     render(<NowPlaying session={fakeSession()} room={live} memberId="m1" unplayable={{}} online pageIsHttps />);
@@ -96,6 +105,32 @@ describe('NowPlaying', () => {
 
 describe('SearchPanel', () => {
   const song = { videoId: 'dQw4w9WgXcQ', title: 'Never Gonna Give You Up', artist: 'Rick Astley', durationMs: 213_000, thumbnailUrl: null };
+
+  it('switches between the Lagu and Video tabs', () => {
+    render(<SearchPanel session={fakeSession()} online />);
+    expect(screen.getByRole('heading', { name: 'Tambah lagu' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Video' }));
+    expect(screen.getByRole('heading', { name: 'Tambah video' })).toBeTruthy();
+    expect(screen.getByLabelText('Tempel link video')).toBeTruthy();
+    expect(screen.queryByLabelText('Cari lagu')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Lagu' }));
+    expect(screen.getByLabelText('Cari lagu')).toBeTruthy();
+  });
+
+  it('refuses http media links on an https page by default and allows them when told the page is http', async () => {
+    const probe = vi.fn(async () => ({ kind: 'timeout' as const }));
+    const { unmount } = render(<SearchPanel session={fakeSession()} online probe={probe} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Video' }));
+    fireEvent.input(screen.getByLabelText('Tempel link video'), { target: { value: 'http://cdn.example.com/a.mp4' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Pratinjau' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('Halaman harus https untuk link http');
+    unmount();
+    render(<SearchPanel session={fakeSession()} online pageIsHttps={false} probe={probe} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Video' }));
+    fireEvent.input(screen.getByLabelText('Tempel link video'), { target: { value: 'http://cdn.example.com/a.mp4' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Pratinjau' }));
+    expect(await screen.findByText('dari cdn.example.com · Durasi tidak diketahui')).toBeTruthy();
+  });
 
   it('searches on submit and adds a result to the end or as next', async () => {
     const session = fakeSession();

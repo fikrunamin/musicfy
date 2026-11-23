@@ -6,7 +6,7 @@ import com.example.musicfy.ritme.protocol.RoomState
 
 enum class RitmePhase { IDLE, CONNECTING, IN_ROOM, ENDED }
 
-enum class NoticeKey { FORBIDDEN, RATE_LIMITED, QUEUE_FULL, INVALID, FAILED }
+enum class NoticeKey { FORBIDDEN, ADD_FORBIDDEN, RATE_LIMITED, QUEUE_FULL, INVALID, FAILED }
 
 /** A server-side rejection to show once; [id] grows so equal keys still count as new. */
 data class RitmeNotice(val id: Long, val key: NoticeKey)

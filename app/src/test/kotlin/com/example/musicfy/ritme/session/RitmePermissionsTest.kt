@@ -58,4 +58,13 @@ class RitmePermissionsTest {
         assertNull(RitmePermissions.moveDownTarget(open, "d")) // last
         assertNull(RitmePermissions.moveDownTarget(open, "b")) // the current entry never moves
     }
+
+    @Test
+    fun theHostAlwaysAddsAndGuestsOnlyWhileAllowed() {
+        val noAdds = open.copy(settings = RoomSettings(guestsCanAdd = false))
+        assertTrue(RitmePermissions.canAdd(open, "m2"))
+        assertFalse(RitmePermissions.canAdd(noAdds, "m2"))
+        assertTrue(RitmePermissions.canAdd(noAdds, "m1"))
+        assertFalse(RitmePermissions.canAdd(noAdds, null))
+    }
 }
