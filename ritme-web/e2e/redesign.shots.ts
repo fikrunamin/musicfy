@@ -1,5 +1,5 @@
-import { type Page, test } from '@playwright/test';
-import { addSong, isolate, openRoom } from './fixtures';
+import { type Page, expect, test } from '@playwright/test';
+import { addSong, isolate, openRoom, showMembers } from './fixtures';
 import { SHOT_SONGS, shot, withArtwork } from './shots';
 
 /**
@@ -32,4 +32,15 @@ test('C listen, D remote, E queue @room', async ({ context }, info) => {
   await b.getByRole('button', { name: 'Mode remote' }).click();
   await shot(b, info, 'D-remote');
   await shot(a, info, 'E-queue-host');
+});
+
+test('toast, confirm dialog @overlays', async ({ context }, info) => {
+  const { a } = await openRoom(context);
+  await a.getByRole('button', { name: 'Bagikan' }).click();
+  await expect(a.getByRole('status').filter({ hasText: 'Link disalin' })).toBeVisible();
+  await shot(a, info, 'H-toast');
+  const members = await showMembers(a);
+  await members.getByRole('button', { name: /^Keluarkan/ }).first().click();
+  await expect(a.getByRole('alertdialog')).toBeVisible();
+  await shot(a, info, 'G-confirm-kick');
 });

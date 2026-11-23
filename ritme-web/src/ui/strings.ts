@@ -72,6 +72,7 @@ export const t = {
   addToQueue: 'Tambah',
   playNext: 'Putar berikutnya',
   close: 'Tutup',
+  cancel: 'Batal',
 
   addVideo: 'Tambah video',
   addKindGroup: 'Yang ditambahkan',
@@ -98,6 +99,7 @@ export const t = {
   confirmEnd: 'Akhiri Ritme untuk semua anggota?',
   endRoom: 'Akhiri Ritme untuk semua',
   confirmKick: (name: string) => `Keluarkan ${name} dari Ritme?`,
+  endConfirm: 'Akhiri',
 } as const;
 
 export const noticeText: Record<NoticeKey, string> = {

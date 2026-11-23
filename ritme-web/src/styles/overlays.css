@@ -1,0 +1,129 @@
+/* Sheets and dialogs (handoff "Sheet": r28 top, handle; dialog cards from flow H). */
+body.modal-open {
+  overflow: hidden;
+}
+
+.sheet-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: #00000080;
+}
+
+.sheet {
+  position: relative;
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface);
+  color: var(--text);
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  padding: 12px var(--gutter) max(24px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sheet:focus {
+  outline: none;
+}
+
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface3);
+  align-self: center;
+  flex-shrink: 0;
+}
+
+.sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: var(--target);
+}
+
+.sheet-header h2 {
+  font-size: var(--fs-title);
+}
+
+/* Desktop: the sheet becomes a centred panel. */
+@media (min-width: 1024px) {
+  .sheet-layer {
+    justify-content: center;
+    align-items: center;
+  }
+
+  .sheet {
+    width: min(480px, calc(100vw - 48px));
+    border-radius: var(--r-card);
+    padding-bottom: 24px;
+  }
+
+  .sheet-handle {
+    display: none;
+  }
+}
+
+.dialog-layer {
+  justify-content: center;
+  align-items: center;
+  padding: var(--gutter);
+  z-index: 30;
+}
+
+.dialog {
+  position: relative;
+  width: min(100%, 400px);
+  background: var(--surface);
+  border-radius: var(--r-card);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.dialog-title {
+  font-size: var(--fs-section);
+}
+
+.dialog-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* Toast (flow H): top of the screen, r16, icon + text, above sheets. */
+.toast-region {
+  position: fixed;
+  left: var(--gutter);
+  right: var(--gutter);
+  top: max(16px, env(safe-area-inset-top));
+  z-index: 40;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.toast {
+  width: min(100%, 420px);
+  min-height: var(--btn-h);
+  padding: 12px 18px;
+  border-radius: var(--r-input);
+  background: var(--surface2);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  box-shadow: 0 8px 24px #00000040;
+}

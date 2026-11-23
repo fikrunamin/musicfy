@@ -1,7 +1,11 @@
+import { useState } from 'preact/hooks';
 import type { RoomState } from '../protocol';
 import { isHost } from '../session/permissions';
 import type { SessionApi } from '../session/session';
+import { ConfirmDialog, behindModal } from './sheet';
 import { t } from './strings';
+
+type Confirming = { kind: 'kick'; id: string; name: string } | { kind: 'end' } | null;
 
 interface Props {
   session: SessionApi;
@@ -12,8 +16,10 @@ interface Props {
 
 export function MembersPanel({ session, room, memberId, online }: Props) {
   const host = online && isHost(room, memberId);
+  const [confirming, setConfirming] = useState<Confirming>(null);
   return (
     <section class="card" aria-labelledby="members-title">
+      <div {...behindModal(confirming !== null)}>
       <h2 id="members-title">
         {t.membersTitle} <span class="muted">· {room.members.length}</span>
       </h2>
@@ -35,9 +41,7 @@ export function MembersPanel({ session, room, memberId, online }: Props) {
                     {t.makeHost}
                   </button>
                 )}
-                <button type="button" class="btn btn-small btn-danger" onClick={() => {
-                    if (confirm(t.confirmKick(m.name))) session.kick(m.id);
-                  }}>
+                <button type="button" class="btn btn-small btn-danger" onClick={() => setConfirming({ kind: 'kick', id: m.id, name: m.name })}>
                   {t.kick}
                 </button>
               </span>
@@ -71,12 +75,33 @@ export function MembersPanel({ session, room, memberId, online }: Props) {
         <button
           type="button"
           class="btn btn-danger btn-block"
-          onClick={() => {
-            if (confirm(t.confirmEnd)) session.endRoom();
-          }}
+          onClick={() => setConfirming({ kind: 'end' })}
         >
           {t.endRoom}
         </button>
+      )}
+      </div>
+      {confirming?.kind === 'kick' && (
+        <ConfirmDialog
+          title={t.confirmKick(confirming.name)}
+          confirmLabel={t.kick}
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => {
+            session.kick(confirming.id);
+            setConfirming(null);
+          }}
+        />
+      )}
+      {confirming?.kind === 'end' && (
+        <ConfirmDialog
+          title={t.confirmEnd}
+          confirmLabel={t.endConfirm}
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => {
+            session.endRoom();
+            setConfirming(null);
+          }}
+        />
       )}
     </section>
   );

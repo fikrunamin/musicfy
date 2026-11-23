@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { entry, room } from '../testing/builders';
 import { fakeSession } from '../testing/fake-session';
@@ -13,38 +13,54 @@ afterEach(() => {
 });
 
 describe('MembersPanel', () => {
+  /** The confirmation is an in-page alertdialog, never window.confirm. */
+  const noNativeConfirm = () => {
+    const native = vi.fn(() => true);
+    vi.stubGlobal('confirm', native);
+    return native;
+  };
+  const confirmIn = (question: string, action: string) =>
+    fireEvent.click(within(screen.getByRole('alertdialog', { name: question })).getByRole('button', { name: action }));
+
   it('gives the host member actions and the control switch', () => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
+    const native = noNativeConfirm();
     const session = fakeSession();
     render(<MembersPanel session={session} room={room()} memberId="m1" online />);
     fireEvent.click(screen.getByRole('button', { name: 'Jadikan host' }));
     expect(session.transferHost).toHaveBeenCalledWith('m2');
     fireEvent.click(screen.getByRole('button', { name: 'Keluarkan' }));
+    expect(session.kick).not.toHaveBeenCalled();
+    confirmIn('Keluarkan Sari dari Ritme?', 'Keluarkan');
     expect(session.kick).toHaveBeenCalledWith('m2');
+    expect(screen.queryByRole('alertdialog')).toBeNull();
     fireEvent.click(screen.getByRole('switch', { name: 'Anggota boleh kontrol' }));
     expect(session.setGuestsCanControl).toHaveBeenCalledWith(false);
     fireEvent.click(screen.getByRole('switch', { name: 'Anggota boleh menambah' }));
     expect(session.setGuestsCanAdd).toHaveBeenCalledWith(false);
+    expect(native).not.toHaveBeenCalled();
   });
 
   it('does not kick or end the room when the host declines the confirmation', () => {
-    vi.stubGlobal('confirm', vi.fn(() => false));
     const session = fakeSession();
     render(<MembersPanel session={session} room={room()} memberId="m1" online />);
     fireEvent.click(screen.getByRole('button', { name: 'Keluarkan' }));
+    confirmIn('Keluarkan Sari dari Ritme?', 'Batal');
     fireEvent.click(screen.getByRole('button', { name: 'Akhiri Ritme untuk semua' }));
+    confirmIn('Akhiri Ritme untuk semua anggota?', 'Batal');
     expect(session.kick).not.toHaveBeenCalled();
     expect(session.endRoom).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
   });
 
   it('ends the room for everyone after confirming', () => {
-    const ask = vi.fn(() => true);
-    vi.stubGlobal('confirm', ask);
+    const native = noNativeConfirm();
     const session = fakeSession();
     render(<MembersPanel session={session} room={room()} memberId="m1" online />);
     fireEvent.click(screen.getByRole('button', { name: 'Akhiri Ritme untuk semua' }));
-    expect(ask).toHaveBeenCalledWith('Akhiri Ritme untuk semua anggota?');
+    expect(session.endRoom).not.toHaveBeenCalled();
+    confirmIn('Akhiri Ritme untuk semua anggota?', 'Akhiri');
     expect(session.endRoom).toHaveBeenCalled();
+    expect(native).not.toHaveBeenCalled();
   });
 
   it('shows guests the list only', () => {
