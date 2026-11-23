@@ -68,7 +68,7 @@ export function RoomScreen({ session, state, prefs }: Props) {
       <ListenPanel session={session} room={room} unplayable={unplayable} mode={mode} onModeChange={changeMode} pageIsHttps={https} />
       <NowPlaying {...shared} />
       <QueueList {...shared} />
-      <SearchPanel session={session} online={online} />
+      <SearchPanel session={session} online={online} pageIsHttps={https} />
       <MembersPanel session={session} room={room} memberId={memberId} online={online} />
 
       {/* Ending the room lives in the members panel's host section, right above. */}

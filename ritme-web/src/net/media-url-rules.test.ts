@@ -31,13 +31,24 @@ describe('checkMediaUrl (same fixture as MediaUrlRulesTest.kt)', () => {
     expect(checkMediaUrl(base + 'a'.repeat(MAX_MEDIA_URL_LENGTH - base.length + 1))).toBe('TOO_LONG');
   });
 
-  it('refuses exactly the characters JS /[\\s\\p{Cc}\\\\]/u matches (the Kotlin list)', () => {
-    const forbidden = /[\s\p{Cc}\\]/u;
+  it('refuses exactly the characters of Kotlin MediaUrlRules.isForbiddenCharacter (whole BMP)', () => {
+    // Mirrors the Kotlin list literally, so a drift of the TS regex shows up here.
+    const kotlinForbidden = (c: number): boolean =>
+      c <= 0x20 ||
+      (c >= 0x7f && c <= 0xa0) ||
+      c === 0x5c ||
+      c === 0x1680 ||
+      (c >= 0x2000 && c <= 0x200a) ||
+      c === 0x2028 ||
+      c === 0x2029 ||
+      c === 0x202f ||
+      c === 0x205f ||
+      c === 0x3000 ||
+      c === 0xfeff;
     for (let c = 0; c <= 0xffff; c++) {
       if (c >= 0xd800 && c <= 0xdfff) continue;
-      const ch = String.fromCharCode(c);
-      const verdict = checkMediaUrl(`https://cdn.example.com/a${ch}b`);
-      if (forbidden.test(ch)) expect(verdict, `U+${c.toString(16)}`).toBe('FORBIDDEN_CHARACTER');
+      const verdict = checkMediaUrl(`https://cdn.example.com/a${String.fromCharCode(c)}b`);
+      if (kotlinForbidden(c)) expect(verdict, `U+${c.toString(16)}`).toBe('FORBIDDEN_CHARACTER');
       else expect(verdict, `U+${c.toString(16)}`).not.toBe('FORBIDDEN_CHARACTER');
     }
   });

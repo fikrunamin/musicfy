@@ -72,6 +72,17 @@ describe('toVideoEntry', () => {
     expect(toVideoEntry({ ...info, title: 'x'.repeat(400) }, false)?.title).toHaveLength(300);
     expect(toVideoEntry({ ...info, title: '   ' }, false)).toBeNull();
   });
+
+  it('refuses a title the server sees as blank (invisible characters only)', () => {
+    expect(toVideoEntry({ ...info, title: '\u200B\u200D\u2060' }, false)).toBeNull();
+    expect(toVideoEntry({ ...info, title: '\u3164\u0301' }, false)).toBeNull();
+    expect(toVideoEntry({ ...info, title: '\u200B\u200Dx' }, false)?.title).toBe('\u200B\u200Dx');
+  });
+
+  it('never cuts a surrogate pair in half when trimming to 300', () => {
+    const title = `${'x'.repeat(299)}\u{1F3B5}`;
+    expect(toVideoEntry({ ...info, title }, false)?.title).toBe('x'.repeat(299));
+  });
 });
 
 describe('toUrlEntry', () => {
@@ -100,6 +111,11 @@ describe('toUrlEntry', () => {
     expect(toUrlEntry({ ...link, fileName: '' }, '', 0)?.title).toBe('cdn.example.com');
     expect(toUrlEntry(link, '', 90_000_000)?.durationMs).toBe(86_400_000);
     expect(toUrlEntry(link, '', Number.NaN)?.durationMs).toBe(0);
+  });
+
+  it('skips a typed title the server would see as blank', () => {
+    expect(toUrlEntry(link, '\u200B\u2800 ', 0)?.title).toBe('clip.mp4');
+    expect(toUrlEntry({ ...link, fileName: '\u200B' }, '', 0)?.title).toBe('cdn.example.com');
   });
 
   it('refuses a link the server would refuse', () => {

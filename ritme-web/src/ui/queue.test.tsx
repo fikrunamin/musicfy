@@ -25,6 +25,34 @@ function renderQueue(memberId: string, guestsCanControl: boolean, unplayable: Re
 }
 
 describe('QueueList', () => {
+  it('shows video entries with a 16:9 thumbnail and a Video badge', () => {
+    const videos = [
+      entry('a'),
+      entry('v', { kind: 'YOUTUBE_VIDEO', title: 'Klip' }),
+      entry('u', { kind: 'URL', videoId: '', url: 'https://cdn.example.com/c.mp4', title: 'File' }),
+    ];
+    render(
+      <QueueList session={fakeSession()} room={room({ queue: videos, currentEntryId: 'a' })} memberId="m1" unplayable={{}} online pageIsHttps />,
+    );
+    expect(document.querySelectorAll('.thumb-wide')).toHaveLength(2);
+    expect(screen.getAllByText('Video')).toHaveLength(2);
+  });
+
+  it('badges a live video LIVE instead of Video and shows where a direct link comes from', () => {
+    const videos = [
+      entry('a'),
+      entry('v', { kind: 'YOUTUBE_VIDEO', title: 'Siaran', artist: 'Kanal', durationMs: 0 }),
+      entry('u', { kind: 'URL', videoId: '', url: 'https://www.xn--bcher-kva.example/c.m3u8', artist: 'spoof.example', title: 'File', durationMs: 0 }),
+    ];
+    render(
+      <QueueList session={fakeSession()} room={room({ queue: videos, currentEntryId: 'a' })} memberId="m1" unplayable={{}} online pageIsHttps />,
+    );
+    expect(screen.queryByText('Video')).toBeNull();
+    expect(screen.getAllByText('LIVE')).toHaveLength(2);
+    expect(screen.getByText('Kanal · oleh Kamu')).toBeTruthy();
+    expect(screen.getByText('dari bücher.example · oleh Kamu')).toBeTruthy();
+  });
+
   it('shows only own remove buttons to a guest when control is locked', () => {
     renderQueue('m2', false);
     expect(screen.queryByRole('button', { name: /^Putar sekarang/ })).toBeNull();

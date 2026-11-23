@@ -2,6 +2,7 @@ import type { NewEntry } from '../protocol';
 import { checkMediaUrl } from './media-url-rules';
 import { MAX_DURATION_MS, MAX_TEXT_LENGTH, validThumbnail } from './search';
 import type { DirectVideoLink } from './video-link';
+import { hasVisibleText } from './visible-text';
 
 /** GET /api/video?id= (ritme-server Video.kt VideoInfo). */
 export interface VideoInfo {
@@ -64,19 +65,30 @@ export async function fetchVideoInfo(
   }
 }
 
+/** Trimmed and cut to the server's 300 UTF-16 units, never ending on half a surrogate pair. */
+function boundedText(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= MAX_TEXT_LENGTH) return trimmed;
+  const last = trimmed.charCodeAt(MAX_TEXT_LENGTH - 1);
+  return trimmed.slice(0, last >= 0xd800 && last <= 0xdbff ? MAX_TEXT_LENGTH - 1 : MAX_TEXT_LENGTH);
+}
+
 function clampDuration(ms: number): number {
   return Number.isFinite(ms) ? Math.min(Math.max(0, Math.round(ms)), MAX_DURATION_MS) : 0;
 }
 
-/** A YouTube video as an Add entry the server accepts; null when the id or title is unusable. */
+/**
+ * A YouTube video as an Add entry the server accepts; null when the id is unusable or the title
+ * has nothing the server counts as visible (it would refuse the whole Add).
+ */
 export function toVideoEntry(info: VideoInfo, music: boolean): NewEntry | null {
   if (!VIDEO_ID.test(info.videoId)) return null;
-  const title = info.title.trim().slice(0, MAX_TEXT_LENGTH);
-  if (title === '') return null;
+  const title = boundedText(info.title);
+  if (!hasVisibleText(title)) return null;
   return {
     videoId: info.videoId,
     title,
-    artist: info.channel.trim().slice(0, MAX_TEXT_LENGTH),
+    artist: boundedText(info.channel),
     thumbnailUrl: validThumbnail(info.thumbnailUrl),
     durationMs: info.live ? 0 : clampDuration(info.durationMs),
     kind: music ? 'YOUTUBE_MUSIC' : 'YOUTUBE_VIDEO',
@@ -85,18 +97,30 @@ export function toVideoEntry(info: VideoInfo, music: boolean): NewEntry | null {
 }
 
 /**
- * A direct link as a URL entry: the typed title, else the file name, else the domain; the domain
- * as artist; never a thumbnail (no image from an arbitrary host for every member). Null when the
- * server would refuse the url.
+ * The title a direct link is added under: the typed title, else the file name, else the domain,
+ * whichever first has something the server counts as visible; null when none has.
+ */
+export function urlEntryTitle(link: DirectVideoLink, title: string): string | null {
+  for (const candidate of [title, link.fileName, link.domain]) {
+    const text = boundedText(candidate);
+    if (hasVisibleText(text)) return text;
+  }
+  return null;
+}
+
+/**
+ * A direct link as a URL entry: the title from urlEntryTitle, the domain as artist, never a
+ * thumbnail (no image from an arbitrary host for every member). Null when the server would refuse
+ * the url or no title is usable.
  */
 export function toUrlEntry(link: DirectVideoLink, title: string, durationMs: number): NewEntry | null {
   if (checkMediaUrl(link.url) !== null) return null;
-  const name = (title.trim() || link.fileName || link.domain).slice(0, MAX_TEXT_LENGTH);
-  if (name === '') return null;
+  const name = urlEntryTitle(link, title);
+  if (name === null) return null;
   return {
     videoId: '',
     title: name,
-    artist: link.domain.slice(0, MAX_TEXT_LENGTH),
+    artist: boundedText(link.domain),
     thumbnailUrl: null,
     durationMs: clampDuration(durationMs),
     kind: 'URL',

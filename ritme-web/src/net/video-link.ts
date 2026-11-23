@@ -15,7 +15,10 @@ export interface DirectVideoLink {
   hls: boolean;
   /** Last path segment, decoded: the default title. */
   fileName: string;
-  /** Host without "www.": shown as the source and sent as the entry's artist. */
+  /**
+   * Host without "www." and a trailing dot, punycode for IDNs: sent as the entry's artist and
+   * shown (decoded, see idn.ts) as where the video comes from.
+   */
   domain: string;
 }
 
@@ -51,10 +54,15 @@ function parseWebUrl(text: string): URL | null {
   }
 }
 
+/** `/embed/videoseries?list=` embeds a playlist; "videoseries" has the shape of a video id. */
+const PLAYLIST_EMBED = 'videoseries';
+
 /**
  * The video in a YouTube link: watch?v=, youtu.be/, /shorts/, /live/, /embed/ on youtube.com
- * (www., m., music.) and youtube-nocookie.com, and vnd.youtube:. Timestamps (t=) and playlists
- * (list=) are ignored. Cases: modules/ritme-protocol/fixtures/rules/youtube-links.json.
+ * (www., m., music.) and youtube-nocookie.com, and vnd.youtube:. Hosts may end in a dot
+ * (`youtube.com.`) and the path keywords are matched case-insensitively (`/SHORTS/`); the id
+ * itself is case-sensitive. Timestamps (t=) and playlists (list=, /embed/videoseries) are ignored.
+ * Cases: modules/ritme-protocol/fixtures/rules/youtube-links.json.
  */
 export function parseYouTubeLink(raw: string): YouTubeLink | null {
   const text = raw.trim();
@@ -62,16 +70,17 @@ export function parseYouTubeLink(raw: string): YouTubeLink | null {
   if (vnd) return { videoId: vnd[1], music: false };
   const url = parseWebUrl(text);
   if (!url) return null;
-  const host = url.hostname.toLowerCase();
+  const host = url.hostname.toLowerCase().replace(/\.$/, '');
   if (!YOUTUBE_HOSTS.has(host)) return null;
   const segments = url.pathname.split('/').filter((s) => s !== '');
+  const keyword = segments[0]?.toLowerCase();
   let id: string | null = null;
   if (host === 'youtu.be') {
     if (segments.length === 1) id = segments[0];
-  } else if (segments.length === 1 && segments[0] === 'watch') {
+  } else if (segments.length === 1 && keyword === 'watch') {
     id = url.searchParams.get('v');
-  } else if (segments.length === 2 && PATH_ID_PREFIXES.has(segments[0])) {
-    id = segments[1];
+  } else if (segments.length === 2 && keyword !== undefined && PATH_ID_PREFIXES.has(keyword)) {
+    if (keyword !== 'embed' || segments[1].toLowerCase() !== PLAYLIST_EMBED) id = segments[1];
   }
   return id !== null && VIDEO_ID.test(id) ? { videoId: id, music: host === 'music.youtube.com' } : null;
 }
@@ -107,6 +116,6 @@ export function classifyVideoLink(raw: string, pageIsHttps: boolean): VideoLink 
     url: url.href,
     hls: HLS_PATH.test(url.pathname),
     fileName: decodeSegment(last).trim().slice(0, MAX_TEXT_LENGTH),
-    domain: url.hostname.replace(/^www\./, ''),
+    domain: url.hostname.replace(/\.$/, '').replace(/^www\./, ''),
   };
 }

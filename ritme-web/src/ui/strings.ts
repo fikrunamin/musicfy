@@ -1,5 +1,7 @@
 import type { EndReason } from '../net/connection';
 import type { SearchFailure } from '../net/search';
+import type { VideoInfoFailure } from '../net/video';
+import type { VideoLinkProblem } from '../net/video-link';
 import type { NoticeKey } from '../session/reducer';
 
 /** All UI copy (Indonesian, matching the spec). */
@@ -71,6 +73,22 @@ export const t = {
   playNext: 'Putar berikutnya',
   close: 'Tutup',
 
+  addVideo: 'Tambah video',
+  addKindGroup: 'Yang ditambahkan',
+  tabSongs: 'Lagu',
+  tabVideo: 'Video',
+  videoLinkLabel: 'Tempel link video',
+  videoLinkPlaceholder: 'Link YouTube atau link video',
+  pasteLink: 'Tempel dari papan klip',
+  preview: 'Pratinjau',
+  loadingPreview: 'Memuat…',
+  titleOptional: 'Judul (opsional)',
+  unknownDuration: 'Durasi tidak diketahui',
+  videoBadge: 'Video',
+  fromDomain: (domain: string) => `dari ${domain}`,
+  videoUnplayableWeb: 'Video ini tidak bisa diputar di web',
+  videoTip: 'Link halaman situs film tidak bisa diputar langsung. Fitur deteksi video dari situs ada di aplikasi Musicfy.',
+
   membersTitle: 'Anggota',
   makeHost: 'Jadikan host',
   kick: 'Keluarkan',
@@ -95,6 +113,22 @@ export const searchFailureText: Record<SearchFailure, string> = {
   'rate-limited': 'Terlalu banyak pencarian, tunggu sebentar.',
   busy: 'Server pencarian sedang sibuk, coba lagi nanti.',
   failed: 'Pencarian gagal, coba lagi.',
+};
+
+export const videoLinkProblemText: Record<VideoLinkProblem, string> = {
+  unrecognized: 'Link tidak dikenali',
+  page: 'Link ini halaman web, bukan file video. Tempel link video langsung (mp4, webm, atau m3u8).',
+  dash: 'Video ini tidak bisa diputar di web',
+  unsafe: 'Link ini tidak bisa ditambahkan',
+  insecure: 'Halaman harus https untuk link http',
+};
+
+export const videoInfoFailureText: Record<VideoInfoFailure, string> = {
+  invalid: 'Link tidak dikenali',
+  'not-found': 'Video tidak ditemukan',
+  'rate-limited': 'Terlalu banyak permintaan, coba lagi sebentar',
+  busy: 'Server sibuk',
+  failed: 'Info video tidak bisa diambil',
 };
 
 export function endText(reason: EndReason): string | null {

@@ -9,6 +9,10 @@ const { cases } = JSON.parse(readFileSync(FIXTURE, 'utf8')) as {
 };
 
 describe('parseYouTubeLink (shared fixture)', () => {
+  it('has the shared cases', () => {
+    expect(cases).toHaveLength(43);
+  });
+
   for (const c of cases) {
     it(JSON.stringify(c.input), () => {
       expect(parseYouTubeLink(c.input)).toEqual(c.videoId === null ? null : { videoId: c.videoId, music: c.music ?? false });
@@ -58,6 +62,22 @@ describe('classifyVideoLink', () => {
     [`https://cdn.example.org/${'a'.repeat(2048)}.mp4`, 'unsafe'],
   ])('rejects %j as %s', (input, reason) => {
     expect(classifyVideoLink(input, true)).toEqual({ kind: 'rejected', reason });
+  });
+
+  it('drops the trailing dot of a fully qualified host from the shown domain', () => {
+    expect(classifyVideoLink('https://www.cdn.example.org./a.mp4', true)).toMatchObject({
+      kind: 'direct',
+      url: 'https://www.cdn.example.org./a.mp4',
+      domain: 'cdn.example.org',
+    });
+  });
+
+  it('keeps an IDN host as punycode in the url and the domain (decoded for display only)', () => {
+    expect(classifyVideoLink('https://bücher.example/a.mp4', true)).toMatchObject({
+      kind: 'direct',
+      url: 'https://xn--bcher-kva.example/a.mp4',
+      domain: 'xn--bcher-kva.example',
+    });
   });
 
   it('lets public DNS names through even when they point at a private address (D6: no DNS on the web)', () => {

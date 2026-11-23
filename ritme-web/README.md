@@ -3,7 +3,8 @@
 Browser companion for Ritme (listen together): create or join a room, see and edit the shared
 queue, control playback (as permitted by the host), and listen in sync through the YouTube IFrame
 player, or use it as a silent remote. It is served by the Ritme server from the same origin
-(`/`, `/r/{code}`), so the WebSocket (`/ritme`) and search (`/api/search`) need no CORS.
+(`/`, `/r/{code}`), so the WebSocket (`/ritme`), search (`/api/search`) and video info
+(`/api/video`) need no CORS.
 
 ## Develop
 
@@ -43,7 +44,13 @@ npm run e2e        # Playwright: builds and starts the real server on :47821 ser
 `src/net/media-url-rules.ts` is the TypeScript twin of `MediaUrlRules.kt`; both are tested against
 `modules/ritme-protocol/fixtures/rules/media-urls.json`, so change them together. Pasted links go
 through `src/net/video-link.ts` (YouTube links: `fixtures/rules/youtube-links.json`), and a direct
-link the rules refuse is never sent.
+link the rules refuse is never sent. What is sent is exactly what `toUrlEntry` returns: the
+WHATWG-normalized url (punycode host, no fragment) and the punycode domain as artist. Only text
+shown on screen decodes IDN hosts (`src/net/idn.ts`, "dari bücher.example"), and a label that
+mixes Latin with Cyrillic/Greek or decodes to symbols stays punycode. For a `URL` entry the shown
+domain comes from its url, not from the artist text another client sent. Titles are checked like
+the server does (`src/net/visible-text.ts`, a port of `RoomLogic.hasVisible(cleanText())`), so an
+Add is never refused for a title that only looks filled.
 
 The rules are pure string checks: like the server (spec D6), the web never resolves a host, and it
 has no guard after DNS. A public DNS name that resolves to a private or loopback address
@@ -55,6 +62,7 @@ public pages reaching private addresses) are what applies.
 
 No analytics, no cookies of our own, no external fonts or CDNs. The only third-party requests are
 the YouTube IFrame API script and the privacy-enhanced embed (`youtube-nocookie.com`) in listen
-mode, thumbnails (sent without a referrer), and the media of `URL` entries. A Content Security
-Policy in `index.html` enforces this. The display name is kept in `localStorage`, the room's
-resume token in `sessionStorage` (this tab only).
+mode, thumbnails (sent without a referrer), the media of `URL` entries, and, in the "Video" tab,
+the metadata of a pasted media link (a hidden `<video preload="metadata" muted>`, to the host that
+link points at). A Content Security Policy in `index.html` enforces this. The display name is kept
+in `localStorage`, the room's resume token in `sessionStorage` (this tab only).

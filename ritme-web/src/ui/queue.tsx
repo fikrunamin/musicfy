@@ -2,7 +2,7 @@ import { httpsThumbnail } from '../net/search';
 import { type QueueEntry, type RoomState, isLive } from '../protocol';
 import { canControl, canRemove, moveDownTarget, moveUpTarget, splitQueue } from '../session/permissions';
 import type { SessionApi } from '../session/session';
-import { memberName, unplayableLabel } from './badges';
+import { entrySource, isVideoEntry, memberName, unplayableLabel } from './badges';
 import { formatMs } from './format';
 import { t } from './strings';
 
@@ -15,14 +15,18 @@ interface Props {
   pageIsHttps: boolean;
 }
 
-/** A 48 px thumbnail, or the placeholder unless the URL is https (entries come from any client). */
-export function Thumb({ url }: { url: string | null }) {
+/**
+ * A 48 px thumbnail (78 × 44 for videos), or the placeholder unless the URL is https (entries
+ * come from any client).
+ */
+export function Thumb({ url, wide = false }: { url: string | null; wide?: boolean }) {
   const src = httpsThumbnail(url);
+  const cls = wide ? 'thumb thumb-wide' : 'thumb';
   return src ? (
-    <img class="thumb" src={src} alt="" loading="lazy" referrerpolicy="no-referrer" width={48} height={48} />
+    <img class={cls} src={src} alt="" loading="lazy" referrerpolicy="no-referrer" width={wide ? 78 : 48} height={wide ? 44 : 48} />
   ) : (
-    <div class="thumb thumb-empty" aria-hidden="true">
-      ♪
+    <div class={`${cls} thumb-empty`} aria-hidden="true">
+      {wide ? '▶' : '♪'}
     </div>
   );
 }
@@ -33,16 +37,19 @@ function Row({ entry, session, room, memberId, unplayable, online, pageIsHttps, 
   const up = upcoming ? moveUpTarget(room, entry.entryId) : null;
   const down = upcoming ? moveDownTarget(room, entry.entryId) : null;
   const label = unplayableLabel(entry, unplayable, pageIsHttps);
+  const video = isVideoEntry(entry);
+  const live = isLive(entry);
+  // A video's badge says Video or LIVE, so its meta line does not repeat LIVE.
+  const length = live ? (video ? null : t.live) : formatMs(entry.durationMs);
   return (
     <li class="queue-row">
-      <Thumb url={entry.thumbnailUrl} />
+      <Thumb url={entry.thumbnailUrl} wide={video} />
       <div class="queue-text">
         <span class="title">{entry.title}</span>
         <span class="muted small">
-          {[entry.artist, isLive(entry) ? t.live : formatMs(entry.durationMs), t.addedBy(memberName(room.members, entry.addedBy, memberId))]
-            .filter(Boolean)
-            .join(' · ')}
+          {[entrySource(entry), length, t.addedBy(memberName(room.members, entry.addedBy, memberId))].filter(Boolean).join(' · ')}
         </span>
+        {video && <span class="badge">{live ? t.live : t.videoBadge}</span>}
         {label && <span class="badge">{label}</span>}
       </div>
       <div class="queue-actions">

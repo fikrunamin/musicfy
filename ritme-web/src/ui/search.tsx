@@ -1,6 +1,8 @@
 import { useRef, useState } from 'preact/hooks';
+import type { probeMedia } from '../net/media-probe';
 import { type SearchResult, searchSongs, toNewEntry, validThumbnail } from '../net/search';
 import type { SessionApi } from '../session/session';
+import { AddVideoPanel } from './add-video';
 import { formatMs } from './format';
 import { Thumb } from './queue';
 import { searchFailureText, t } from './strings';
@@ -8,12 +10,40 @@ import { searchFailureText, t } from './strings';
 interface Props {
   session: SessionApi;
   online: boolean;
+  /** Links to http:// media are refused on an https page (mixed content). */
+  pageIsHttps?: boolean;
   /** Injected in tests. */
   fetchImpl?: typeof fetch;
+  probe?: typeof probeMedia;
+}
+
+type Tab = 'songs' | 'video';
+
+/** The add card: song search (Lagu) and pasting a video link (Video), brief §12 L. */
+export function SearchPanel({ session, online, pageIsHttps = true, fetchImpl, probe }: Props) {
+  const [tab, setTab] = useState<Tab>('songs');
+  return (
+    <section class="card" aria-labelledby="search-title">
+      <h2 id="search-title">{tab === 'songs' ? t.addSong : t.addVideo}</h2>
+      <div class="segmented" role="group" aria-label={t.addKindGroup}>
+        <button type="button" aria-pressed={tab === 'songs'} onClick={() => setTab('songs')}>
+          {t.tabSongs}
+        </button>
+        <button type="button" aria-pressed={tab === 'video'} onClick={() => setTab('video')}>
+          {t.tabVideo}
+        </button>
+      </div>
+      {tab === 'songs' ? (
+        <SongSearch session={session} online={online} fetchImpl={fetchImpl} />
+      ) : (
+        <AddVideoPanel session={session} online={online} pageIsHttps={pageIsHttps} fetchImpl={fetchImpl} probe={probe} />
+      )}
+    </section>
+  );
 }
 
 /** Search submits on Enter/button only (the server allows 30 searches per minute per IP). */
-export function SearchPanel({ session, online, fetchImpl }: Props) {
+function SongSearch({ session, online, fetchImpl }: { session: SessionApi; online: boolean; fetchImpl?: typeof fetch }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,8 +70,7 @@ export function SearchPanel({ session, online, fetchImpl }: Props) {
   };
 
   return (
-    <section class="card" aria-labelledby="search-title">
-      <h2 id="search-title">{t.addSong}</h2>
+    <>
       <form class="search-form" role="search" onSubmit={onSubmit}>
         <label class="visually-hidden" for="search-input">
           {t.searchLabel}
@@ -93,6 +122,6 @@ export function SearchPanel({ session, online, fetchImpl }: Props) {
           ))}
         </ul>
       )}
-    </section>
+    </>
   );
 }
