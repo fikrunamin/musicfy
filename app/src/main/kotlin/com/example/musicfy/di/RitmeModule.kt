@@ -1,11 +1,12 @@
 package com.example.musicfy.di
 
+import android.os.Looper
 import com.example.musicfy.ritme.net.DefaultRitmeConnector
 import com.example.musicfy.ritme.net.HandlerRitmeTimers
 import com.example.musicfy.ritme.net.OkHttpRitmeSocketFactory
 import com.example.musicfy.ritme.net.RitmeConnector
 import com.example.musicfy.ritme.net.RitmeTimers
-import com.example.musicfy.ritme.session.RitmeClock
+import com.example.musicfy.ritme.session.RitmeThreadCheck
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -24,7 +25,9 @@ object RitmeModule {
 
     @Provides
     @Singleton
-    fun provideRitmeClock(timers: RitmeTimers): RitmeClock = RitmeClock { timers.now() }
+    fun provideRitmeThreadCheck(): RitmeThreadCheck = RitmeThreadCheck {
+        check(Looper.myLooper() == Looper.getMainLooper()) { "Ritme is main-thread only" }
+    }
 
     @Provides
     @Singleton
