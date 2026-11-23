@@ -1,11 +1,19 @@
 package com.example.musicfy.ritme.testing
 
+import com.example.musicfy.ritme.net.ConnectionEvent
+import com.example.musicfy.ritme.net.ConnectionLike
+import com.example.musicfy.ritme.net.ConnectionStatus
+import com.example.musicfy.ritme.net.EndReason
+import com.example.musicfy.ritme.net.JoinIntent
+import com.example.musicfy.ritme.net.RitmeConnector
 import com.example.musicfy.ritme.net.RitmeSocket
 import com.example.musicfy.ritme.net.RitmeSocketFactory
 import com.example.musicfy.ritme.net.RitmeSocketListener
 import com.example.musicfy.ritme.net.RitmeTimer
 import com.example.musicfy.ritme.net.RitmeTimers
 import com.example.musicfy.ritme.protocol.ClientMessage
+import com.example.musicfy.ritme.protocol.Command
+import com.example.musicfy.ritme.protocol.RoomState
 import com.example.musicfy.ritme.protocol.ServerMessage
 import com.example.musicfy.ritme.protocol.decodeClientMessage
 import com.example.musicfy.ritme.protocol.encode
@@ -103,4 +111,48 @@ class FakeSocketFactory : RitmeSocketFactory {
 
     override fun open(url: String, listener: RitmeSocketListener): RitmeSocket =
         FakeSocket(url, listener).also { sockets += it }
+}
+
+/** Records what RitmeSession asks for; the test drives events with [emit]/[welcome]. */
+class FakeConnection(val url: String, private val onEvent: (ConnectionEvent) -> Unit) : ConnectionLike {
+    var intent: JoinIntent? = null
+    val commands = mutableListOf<Command>()
+    val trackEnds = mutableListOf<String>()
+    var left = false
+
+    override fun start(intent: JoinIntent) {
+        this.intent = intent
+        onEvent(ConnectionEvent.Status(ConnectionStatus.CONNECTING))
+    }
+
+    override fun command(cmd: Command): String? {
+        commands += cmd
+        return "r${commands.size}"
+    }
+
+    override fun trackEnded(entryId: String): Boolean {
+        trackEnds += entryId
+        return true
+    }
+
+    override fun leave() {
+        left = true
+        onEvent(ConnectionEvent.Ended(EndReason.Left))
+    }
+
+    fun welcome(state: RoomState, memberId: String = "m1", serverTime: Long = 0, receivedAt: Long = 0) {
+        // Fully qualified: the builder, not this member function.
+        onEvent(ConnectionEvent.Welcome(com.example.musicfy.ritme.testing.welcome(state, memberId, serverTime = serverTime), receivedAt))
+        onEvent(ConnectionEvent.Status(ConnectionStatus.ONLINE))
+    }
+
+    fun emit(event: ConnectionEvent) = onEvent(event)
+}
+
+class FakeConnector : RitmeConnector {
+    val connections = mutableListOf<FakeConnection>()
+    val last: FakeConnection get() = connections.last()
+
+    override fun connect(url: String, onEvent: (ConnectionEvent) -> Unit): ConnectionLike =
+        FakeConnection(url, onEvent).also { connections += it }
 }
