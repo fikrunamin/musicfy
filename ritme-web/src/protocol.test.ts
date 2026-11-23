@@ -42,7 +42,7 @@ const state: RoomState = {
   code: 'K7M2QX',
   version: 3,
   hostId: 'm1',
-  settings: { guestsCanControl: true },
+  settings: { guestsCanControl: true, guestsCanAdd: true },
   members: [
     { id: 'm1', name: 'Budi', isHost: true, connected: true, joinedAt: 1_000 },
     { id: 'm2', name: 'Sari', isHost: false, connected: false, joinedAt: 2_000 },
@@ -96,7 +96,7 @@ const clientSamples: Record<string, ClientMessage> = {
   }),
   'cmd-remove': send({ type: 'Remove', entryId: 'e1' }),
   'cmd-move': send({ type: 'Move', entryId: 'e1', afterEntryId: null }),
-  'cmd-set-settings': send({ type: 'SetSettings', settings: { guestsCanControl: false } }),
+  'cmd-set-settings': send({ type: 'SetSettings', settings: { guestsCanControl: false, guestsCanAdd: false } }),
   'cmd-kick': send({ type: 'Kick', memberId: 'm2' }),
   'cmd-transfer-host': send({ type: 'TransferHost', memberId: 'm2' }),
   'cmd-end-room': send({ type: 'EndRoom' }),
@@ -186,7 +186,7 @@ describe('forward compatibility (mirrors ForwardCompatibilityTest.kt)', () => {
         code: 'K7M2QX',
         version: 1,
         hostId: 'm1',
-        settings: { guestsCanControl: true },
+        settings: { guestsCanControl: true, guestsCanAdd: true },
         members: [],
         queue: [
           {
@@ -213,6 +213,13 @@ describe('forward compatibility (mirrors ForwardCompatibilityTest.kt)', () => {
       clientTime: 1,
       serverTime: 2,
     });
+  });
+
+  it('defaults guestsCanAdd to true for settings from an older server', () => {
+    const msg = parseServerMessage(
+      '{"type":"State","state":{"code":"K7M2QX","version":1,"hostId":"m1","settings":{"guestsCanControl":false}}}',
+    );
+    expect(msg?.type === 'State' && msg.state.settings).toEqual({ guestsCanControl: false, guestsCanAdd: true });
   });
 });
 

@@ -1,5 +1,5 @@
 import type { ConnectionEvent, JoinIntent } from '../net/connection';
-import type { Command, NewEntry } from '../protocol';
+import type { Command, NewEntry, RoomSettings } from '../protocol';
 import { ClockSync } from '../sync/clock';
 import { type NoticeKey, type SessionState, initialSession, sessionReducer } from './reducer';
 
@@ -50,6 +50,7 @@ export interface SessionApi {
   remove(entryId: string): void;
   move(entryId: string, afterEntryId: string | null): void;
   setGuestsCanControl(value: boolean): void;
+  setGuestsCanAdd(value: boolean): void;
   kick(memberId: string): void;
   transferHost(memberId: string): void;
   endRoom(): void;
@@ -69,6 +70,10 @@ export class Session implements SessionApi {
   /** The clock was reset; the next kept Pong sample triggers a resync. */
   private awaitingSample = false;
   private hiddenAt: { local: number; wall: number } | null = null;
+  /** reqIds of recent Adds, so a FORBIDDEN answer to one gets its own message (spec U6). */
+  private readonly addReqIds = new Set<string>();
+  /** The settings last sent, with the room and version they were built on (see sendSettings). */
+  private sentSettings: { code: string; afterVersion: number; settings: RoomSettings } | null = null;
   readonly clock: ClockSync;
 
   constructor(private readonly deps: SessionDeps) {
@@ -148,7 +153,11 @@ export class Session implements SessionApi {
     this.send({ type: 'PlayEntry', entryId });
   }
   add(entry: NewEntry, playNext: boolean): void {
-    this.send({ type: 'Add', entries: [entry], playNext });
+    const reqId = this.send({ type: 'Add', entries: [entry], playNext });
+    if (reqId === null) return;
+    this.addReqIds.add(reqId);
+    // Only answers to recent commands matter: keep the set small.
+    if (this.addReqIds.size > 64) this.addReqIds.delete(this.addReqIds.values().next().value!);
   }
   remove(entryId: string): void {
     this.send({ type: 'Remove', entryId });
@@ -157,7 +166,10 @@ export class Session implements SessionApi {
     this.send({ type: 'Move', entryId, afterEntryId });
   }
   setGuestsCanControl(value: boolean): void {
-    this.send({ type: 'SetSettings', settings: { guestsCanControl: value } });
+    this.sendSettings({ guestsCanControl: value });
+  }
+  setGuestsCanAdd(value: boolean): void {
+    this.sendSettings({ guestsCanAdd: value });
   }
   kick(memberId: string): void {
     this.send({ type: 'Kick', memberId });
@@ -193,6 +205,9 @@ export class Session implements SessionApi {
       // follows this event) and use the Welcome's server time until the first Pong.
       this.resetClock(event.receivedAt, 0);
       this.clock.seed(event.welcome.serverTime, event.receivedAt);
+      // Command answers and the room version start over with a new connection.
+      this.addReqIds.clear();
+      this.sentSettings = null;
     }
     let fresh = false;
     if (event.type === 'pong') {
@@ -201,6 +216,11 @@ export class Session implements SessionApi {
       if (fresh) this.awaitingSample = false;
     }
     if (event.type === 'ended') this.conn = null;
+    // "The host locked the controls" would be wrong for a refused Add (spec U6).
+    if (event.type === 'error' && event.reqId !== null && this.addReqIds.delete(event.reqId) && event.code === 'FORBIDDEN') {
+      this.dispatch({ type: 'notice', key: 'addForbidden' });
+      return;
+    }
     this.dispatch(event);
     if (fresh) this.emitResync();
   }
@@ -214,9 +234,26 @@ export class Session implements SessionApi {
     for (const listener of this.resyncListeners) listener();
   }
 
-  private send(cmd: Command): void {
-    if (this.state.phase !== 'in-room' || this.state.connection !== 'online') return;
-    this.conn?.command(cmd);
+  /** The reqId the command went out with, or null when it was not sent (not online in a room). */
+  private send(cmd: Command): string | null {
+    if (this.state.phase !== 'in-room' || this.state.connection !== 'online') return null;
+    return this.conn?.command(cmd) ?? null;
+  }
+
+  /**
+   * SetSettings replaces every setting. The others come from the settings this client last sent
+   * until a snapshot newer than the one those were built on arrives (two quick toggles must not
+   * undo each other), and from the latest snapshot after that.
+   */
+  private sendSettings(change: Partial<RoomSettings>): void {
+    const room = this.state.room;
+    if (!room) return;
+    const sent = this.sentSettings;
+    const base = sent && sent.code === room.code && room.version <= sent.afterVersion ? sent.settings : room.settings;
+    const settings = { ...base, ...change };
+    if (this.send({ type: 'SetSettings', settings }) !== null) {
+      this.sentSettings = { code: room.code, afterVersion: room.version, settings };
+    }
   }
 
   private dispatch(action: Parameters<typeof sessionReducer>[1]): void {

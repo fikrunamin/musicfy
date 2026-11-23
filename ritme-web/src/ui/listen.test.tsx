@@ -28,7 +28,7 @@ vi.mock('../player/controller', () => ({
   },
 }));
 vi.mock('../player/youtube', () => ({ loadYouTubeApi: () => Promise.resolve({}), createYouTubePlayer: () => ({}) }));
-vi.mock('../player/html5', () => ({ createVideoPlayer: () => ({}) }));
+vi.mock('../player/html5', () => ({ createVideoPlayer: () => ({}), loadHlsJs: () => Promise.reject(new Error('not used here')) }));
 
 afterEach(() => {
   mocks.log.length = 0;

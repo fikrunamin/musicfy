@@ -11,6 +11,7 @@ object RitmeTexts {
     @StringRes
     fun notice(key: NoticeKey): Int = when (key) {
         NoticeKey.FORBIDDEN -> R.string.ritme_toast_forbidden
+        NoticeKey.ADD_FORBIDDEN -> R.string.ritme_toast_add_locked
         NoticeKey.RATE_LIMITED -> R.string.ritme_error_rate_limited
         NoticeKey.QUEUE_FULL -> R.string.ritme_toast_queue_full
         NoticeKey.INVALID -> R.string.ritme_error_invalid

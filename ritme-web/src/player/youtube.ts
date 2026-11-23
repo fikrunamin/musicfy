@@ -102,12 +102,20 @@ export function createYouTubePlayer(
   /** Last accepted state; -1 right after a (re-)cue. Cued/unstarted: seekTo would start playback. */
   let lastState = -1;
   let cuedStartMs: number | null = null;
+  /**
+   * A cue is in flight. YouTube answers a playVideo() issued before the cue reports CUED with
+   * onError 2 (seen on the live site; a setTimeout(0) is not enough), so play() is held until then.
+   */
+  let cuePending = false;
+  let cuedAt = 0;
   let dropped = false;
   let recheckTimers: (ReturnType<typeof setTimeout> | undefined)[] = [];
 
   const cue = (videoId: string, startMs: number | null) => {
     cuedStartMs = startMs;
     lastState = -1;
+    cuePending = true;
+    cuedAt = Date.now();
     yt!.cueVideoById(startMs === null ? { videoId } : { videoId, startSeconds: startMs / 1000 });
   };
 
@@ -131,6 +139,11 @@ export function createYouTubePlayer(
       filterActive = false;
     }
     lastState = state;
+    if (cuePending && (state === STATE_CUED || state === STATE_PLAYING)) {
+      cuePending = false;
+      // The play() that arrived while the cue was in flight.
+      if (state === STATE_CUED && wantPlay) yt!.playVideo();
+    }
     if (state === STATE_PLAYING) emit('playing');
     else if (state === STATE_PAUSED) emit('paused');
     else if (state === STATE_ENDED) emit('ended');
@@ -175,7 +188,7 @@ export function createYouTubePlayer(
               ready = true;
               if (pendingLoad) cue(pendingLoad.videoId, pendingLoad.startMs);
               pendingLoad = null;
-              if (wantPlay) yt!.playVideo();
+              if (wantPlay && !cuePending) yt!.playVideo();
             },
             onStateChange: (e) => {
               if (destroyed) return;
@@ -225,7 +238,16 @@ export function createYouTubePlayer(
     },
     play() {
       wantPlay = true;
-      if (ready) yt!.playVideo();
+      if (!ready) return;
+      if (!cuePending) {
+        yt!.playVideo();
+        return;
+      }
+      // Normally the CUED event releases the play. If it never came (a controller retry finds the
+      // cue long settled), trust the player's own state, which is safe to play from once CUED.
+      if (Date.now() - cuedAt > STALE_WINDOW_MS && !isStale() && yt!.getPlayerState() === STATE_CUED) {
+        acceptState(STATE_CUED);
+      }
     },
     pause() {
       wantPlay = false;

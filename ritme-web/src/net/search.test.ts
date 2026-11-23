@@ -79,5 +79,7 @@ describe('toNewEntry', () => {
     expect(toNewEntry({ ...song, durationMs: -5 })!.durationMs).toBe(0);
     expect(toNewEntry({ ...song, durationMs: Number.NaN })!.durationMs).toBe(0);
     expect(toNewEntry({ ...song, title: '   ' })).toBeNull();
+    // Nothing visible once cleaned like the server does: zero-width space, blank braille, Hangul filler.
+    expect(toNewEntry({ ...song, title: '\u200B\u2800\u3164' })).toBeNull();
   });
 });

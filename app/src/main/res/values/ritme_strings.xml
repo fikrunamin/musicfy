@@ -22,6 +22,7 @@
     <string name="ritme_toast_closed">The host ended Ritme</string>
     <string name="ritme_toast_lost">Disconnected from Ritme</string>
     <string name="ritme_toast_forbidden">Not allowed in this Ritme</string>
+    <string name="ritme_toast_add_locked">The host turned off adding songs</string>
     <string name="ritme_toast_queue_full">The Ritme queue is full</string>
 
     <string name="ritme_error_unreachable">Can\'t reach the Ritme server</string>
@@ -53,6 +54,7 @@
     <string name="ritme_you">You</string>
     <string name="ritme_add_songs">Add songs</string>
     <string name="ritme_guests_can_control">Members can control</string>
+    <string name="ritme_guests_can_add">Members can add</string>
     <string name="ritme_leave">Leave Ritme</string>
     <string name="ritme_end">End Ritme</string>
     <string name="ritme_end_confirm_title">End this Ritme for everyone?</string>

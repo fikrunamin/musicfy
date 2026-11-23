@@ -9,6 +9,7 @@ import com.example.musicfy.ritme.protocol.Command
 import com.example.musicfy.ritme.protocol.Playback
 import com.example.musicfy.ritme.protocol.RoomSettings
 import com.example.musicfy.ritme.protocol.RoomState
+import com.example.musicfy.ritme.session.NoticeKey
 import com.example.musicfy.ritme.session.RitmeSession
 import com.example.musicfy.ritme.testing.FakeConnector
 import com.example.musicfy.ritme.testing.FakeLocalPlayback
@@ -349,5 +350,33 @@ class RitmeControllerTest {
         assertTrue(connector.connections.isEmpty())
         assertEquals(0, local.resumed)
         assertTrue(toasts.shown.isEmpty())
+    }
+
+    @Test
+    fun guestsCannotAddWhileTheHostTurnedAddingOff() {
+        inRoom(playing.copy(settings = RoomSettings(guestsCanAdd = false)), memberId = "m2")
+        controller.handle(RitmeLocalAction.AddItems(listOf(song("a")), playNext = false))
+        controller.handle(RitmeLocalAction.PlayQueue(listOf(song("b"))))
+        assertTrue(commands.isEmpty())
+        assertEquals(
+            listOf<RitmeToast>(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN), RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN)),
+            toasts.shown,
+        )
+    }
+
+    @Test
+    fun theHostAddsEvenWhileGuestsMayNot() {
+        inRoom(playing.copy(settings = RoomSettings(guestsCanAdd = false)), memberId = "m1")
+        controller.handle(RitmeLocalAction.AddItems(listOf(song("a")), playNext = false))
+        assertEquals(1, commands.size)
+    }
+
+    @Test
+    fun theAddSwitchGoesThroughRoomCommand() {
+        inRoom(playing, memberId = "m1")
+        assertTrue(controller.roomCommand { setGuestsCanAdd(false) })
+        connector.last.emit(ConnectionEvent.Status(ConnectionStatus.RECONNECTING))
+        assertFalse(controller.roomCommand { setGuestsCanAdd(true) })
+        assertEquals(RitmeToast.Reconnecting, toasts.shown.last())
     }
 }

@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { type RoomState, currentEntry, isLive, positionAt } from '../protocol';
 import { canControl } from '../session/permissions';
 import type { SessionApi } from '../session/session';
-import { memberName, unplayableLabel } from './badges';
+import { entrySource, isVideoEntry, memberName, unplayableLabel } from './badges';
 import { formatMs } from './format';
 import { useServerNow } from './hooks';
 import { Thumb } from './queue';
@@ -42,11 +42,11 @@ export function NowPlaying({ session, room, memberId, unplayable, online, pageIs
     <section class="card now-playing" aria-labelledby="now-title">
       <h2 id="now-title">{t.nowPlaying}</h2>
       <div class="now-row">
-        <Thumb url={entry.thumbnailUrl} />
+        <Thumb url={entry.thumbnailUrl} wide={isVideoEntry(entry)} />
         <div class="queue-text">
           <span class="title">{entry.title}</span>
           <span class="muted small">
-            {[entry.artist, t.addedBy(memberName(room.members, entry.addedBy, memberId))].filter(Boolean).join(' · ')}
+            {[entrySource(entry), t.addedBy(memberName(room.members, entry.addedBy, memberId))].filter(Boolean).join(' · ')}
           </span>
           {label && <span class="badge">{label}</span>}
         </div>

@@ -49,4 +49,18 @@ class ForwardCompatibilityTest {
         val welcome = """{"type":"Welcome","memberId":"m1","resumeToken":"t","serverTime":5,"state":{"code":"K7M2QX","version":1,"hostId":"m1"}}"""
         assertEquals(PROTOCOL_VERSION, (decodeServerMessageOrNull(welcome) as ServerMessage.Welcome).protocolVersion)
     }
+
+    @Test
+    fun settingsFromAnOlderPeerDefaultGuestsCanAddToTrue() {
+        val state = """{"type":"State","state":{"code":"K7M2QX","version":1,"hostId":"m1","settings":{"guestsCanControl":false}}}"""
+        assertEquals(
+            RoomSettings(guestsCanControl = false, guestsCanAdd = true),
+            (decodeServerMessageOrNull(state) as ServerMessage.State).state.settings,
+        )
+        val cmd = """{"type":"Command","reqId":"r1","cmd":{"type":"SetSettings","settings":{"guestsCanControl":true}}}"""
+        assertEquals(
+            Command.SetSettings(RoomSettings(guestsCanControl = true, guestsCanAdd = true)),
+            (decodeClientMessage(cmd) as ClientMessage.Send).cmd,
+        )
+    }
 }

@@ -257,19 +257,23 @@ internal fun RitmeRoomContent(
         item(key = "divider2") { SheetDivider() }
         item(key = "actions") {
             // The same menu rows as the song, queue and player menus (Material3MenuGroup, 8 dp
-            // apart); a row is dimmed when its onClick is null. The switch row is that row's
+            // apart); a row is dimmed when its onClick is null. The switch rows are that row's
             // mirror with a real switch (RitmeMenuSwitchRow).
             val guestsCanControl = room.settings.guestsCanControl
+            val guestsCanAdd = room.settings.guestsCanAdd
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Material3MenuGroup(
-                    items = listOf(
-                        Material3MenuItemData(
-                            icon = { Icon(painterResource(R.drawable.playlist_add), contentDescription = null) },
-                            title = { Text(stringResource(R.string.ritme_add_songs)) },
-                            onClick = onAddSongs,
+                // Hidden, not dimmed, while the host keeps guests from adding (spec 8).
+                if (RitmePermissions.canAdd(room, me)) {
+                    Material3MenuGroup(
+                        items = listOf(
+                            Material3MenuItemData(
+                                icon = { Icon(painterResource(R.drawable.playlist_add), contentDescription = null) },
+                                title = { Text(stringResource(R.string.ritme_add_songs)) },
+                                onClick = onAddSongs,
+                            ),
                         ),
-                    ),
-                )
+                    )
+                }
                 if (isHost) {
                     RitmeMenuSwitchRow(
                         icon = {
@@ -282,6 +286,13 @@ internal fun RitmeRoomContent(
                         checked = guestsCanControl,
                         enabled = canManage,
                         onCheckedChange = { ritme.controller.roomCommand { setGuestsCanControl(it) } },
+                    )
+                    RitmeMenuSwitchRow(
+                        icon = { Icon(painterResource(R.drawable.playlist_add), contentDescription = null) },
+                        title = stringResource(R.string.ritme_guests_can_add),
+                        checked = guestsCanAdd,
+                        enabled = canManage,
+                        onCheckedChange = { ritme.controller.roomCommand { setGuestsCanAdd(it) } },
                     )
                 }
                 Material3MenuGroup(

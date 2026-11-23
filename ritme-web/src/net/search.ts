@@ -1,4 +1,5 @@
 import type { NewEntry } from '../protocol';
+import { hasVisibleText } from './visible-text';
 
 /** One item of GET /api/search?q= (ritme-server Search.kt SearchResult). */
 export interface SearchResult {
@@ -16,9 +17,9 @@ export type SearchOutcome = { ok: true; results: SearchResult[] } | { ok: false;
 export const MAX_QUERY_LENGTH = 200;
 
 /** Server-side entry limits (ritme-server README "Entries"); exceeding them makes Add INVALID. */
-const MAX_TEXT_LENGTH = 300;
+export const MAX_TEXT_LENGTH = 300;
 const MAX_THUMBNAIL_URL_LENGTH = 512;
-const MAX_DURATION_MS = 86_400_000;
+export const MAX_DURATION_MS = 86_400_000;
 const VIDEO_ID = /^[A-Za-z0-9_-]{1,64}$/;
 /** RoomLogic.isValidThumbnail: YouTube entries only accept thumbnails from these hosts. */
 const THUMBNAIL_HOST_SUFFIXES = ['.ytimg.com', '.googleusercontent.com', '.ggpht.com'];
@@ -86,12 +87,13 @@ export function validThumbnail(thumb: string | null): string | null {
 /**
  * A search result as an Add entry that passes the server's validation: text trimmed to 300
  * chars, thumbnails dropped unless https, at most 512 chars and on a YouTube image host,
- * duration within 0..24 h. Null when the videoId or title is unusable.
+ * duration within 0..24 h. Null when the videoId is unusable or the title has nothing visible.
  */
 export function toNewEntry(result: SearchResult): NewEntry | null {
   if (!VIDEO_ID.test(result.videoId)) return null;
   const title = result.title.trim().slice(0, MAX_TEXT_LENGTH);
-  if (title.length === 0) return null;
+  // Same verdict as the server's hasVisible(cleanText()): a title of invisible characters is refused.
+  if (!hasVisibleText(title)) return null;
   const rounded = Number.isFinite(result.durationMs) ? Math.round(result.durationMs) : 0;
   return {
     videoId: result.videoId,

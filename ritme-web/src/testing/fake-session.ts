@@ -27,6 +27,7 @@ export function fakeSession(state: SessionState = initialSession) {
     remove: vi.fn(),
     move: vi.fn(),
     setGuestsCanControl: vi.fn(),
+    setGuestsCanAdd: vi.fn(),
     kick: vi.fn(),
     transferHost: vi.fn(),
     endRoom: vi.fn(),

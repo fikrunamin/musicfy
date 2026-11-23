@@ -13,6 +13,11 @@ export function canControl(room: RoomState, memberId: string | null): boolean {
   return isHost(room, memberId) || room.settings.guestsCanControl;
 }
 
+/** Add (spec U6): the host always; others only while the host allows it. */
+export function canAdd(room: RoomState, memberId: string | null): boolean {
+  return isHost(room, memberId) || (memberId !== null && room.settings.guestsCanAdd);
+}
+
 export function canRemove(room: RoomState, memberId: string | null, entry: QueueEntry): boolean {
   return entry.addedBy === memberId || canControl(room, memberId);
 }

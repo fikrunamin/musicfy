@@ -221,4 +221,49 @@ describe('Session', () => {
     expect(resyncs).toBe(1);
     expect(t.conns[0].bursts).toBe(0);
   });
+
+  it('SetSettings sends every setting, changing only the one asked for', () => {
+    const t = setup();
+    t.session.create('Budi');
+    t.welcome(t.conns[0]);
+    t.session.setGuestsCanControl(false);
+    expect(t.conns[0].commands).toEqual([{ type: 'SetSettings', settings: { guestsCanControl: false, guestsCanAdd: true } }]);
+  });
+
+  it('two quick settings changes keep both: the next builds on the last sent until a newer snapshot', () => {
+    const t = setup();
+    t.session.create('Budi');
+    t.welcome(t.conns[0]); // version 1, both settings on
+    t.session.setGuestsCanControl(false);
+    t.session.setGuestsCanAdd(false); // before any snapshot: builds on what was just sent
+    t.conns[0].emit({ type: 'state', state: room({ version: 2, settings: { guestsCanControl: false, guestsCanAdd: false } }) });
+    t.session.setGuestsCanControl(true); // a newer snapshot: builds on it
+    expect(t.conns[0].commands).toEqual([
+      { type: 'SetSettings', settings: { guestsCanControl: false, guestsCanAdd: true } },
+      { type: 'SetSettings', settings: { guestsCanControl: false, guestsCanAdd: false } },
+      { type: 'SetSettings', settings: { guestsCanControl: true, guestsCanAdd: false } },
+    ]);
+  });
+
+  it('a newer snapshot wins over the settings last sent', () => {
+    const t = setup();
+    t.session.create('Budi');
+    t.welcome(t.conns[0]);
+    t.session.setGuestsCanControl(false);
+    t.conns[0].emit({ type: 'state', state: room({ version: 2, settings: { guestsCanControl: true, guestsCanAdd: true } }) });
+    t.session.setGuestsCanAdd(false);
+    expect(t.conns[0].commands.at(-1)).toEqual({ type: 'SetSettings', settings: { guestsCanControl: true, guestsCanAdd: false } });
+  });
+
+  it('a FORBIDDEN answer to an Add gets its own notice; other commands keep the control-lock one', () => {
+    const t = setup();
+    t.session.create('Budi');
+    t.welcome(t.conns[0]);
+    t.session.add({ videoId: 'v', title: 'T', artist: 'A', thumbnailUrl: null, durationMs: 1, kind: 'YOUTUBE_MUSIC', url: null }, false); // r1
+    t.conns[0].emit({ type: 'error', reqId: 'r1', code: 'FORBIDDEN' });
+    expect(t.session.getState().notice?.key).toBe('addForbidden');
+    t.session.pause(); // r2
+    t.conns[0].emit({ type: 'error', reqId: 'r2', code: 'FORBIDDEN' });
+    expect(t.session.getState().notice?.key).toBe('forbidden');
+  });
 });

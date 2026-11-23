@@ -4,7 +4,8 @@
     "cmd": {
         "type": "SetSettings",
         "settings": {
-            "guestsCanControl": false
+            "guestsCanControl": false,
+            "guestsCanAdd": false
         }
     }
 }

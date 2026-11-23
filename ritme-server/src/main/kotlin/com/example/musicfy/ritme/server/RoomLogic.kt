@@ -4,6 +4,7 @@ import com.example.musicfy.ritme.protocol.ClientMessage
 import com.example.musicfy.ritme.protocol.Command
 import com.example.musicfy.ritme.protocol.ErrorCode
 import com.example.musicfy.ritme.protocol.MediaKind
+import com.example.musicfy.ritme.protocol.MediaUrlRules
 import com.example.musicfy.ritme.protocol.Member
 import com.example.musicfy.ritme.protocol.NewEntry
 import com.example.musicfy.ritme.protocol.Playback
@@ -13,7 +14,6 @@ import com.example.musicfy.ritme.protocol.RoomState
 import com.example.musicfy.ritme.protocol.currentEntry
 import com.example.musicfy.ritme.protocol.isLive
 import com.example.musicfy.ritme.protocol.positionAt
-import java.net.URI
 import java.text.Normalizer
 
 /** Side effects a command asks the stateful [Room] to carry out. */
@@ -45,6 +45,7 @@ object RoomLogic {
     fun apply(state: RoomState, by: String, cmd: Command, now: Long, ids: IdGen, size: SizeContext = SizeContext()): Outcome {
         val isHost = by == state.hostId
         val canControl = isHost || state.settings.guestsCanControl
+        val canAdd = isHost || state.settings.guestsCanAdd
         fun control(block: () -> Outcome): Outcome = if (canControl) block() else FORBIDDEN
         fun hostOnly(block: () -> Outcome): Outcome = if (isHost) block() else FORBIDDEN
 
@@ -57,7 +58,7 @@ object RoomLogic {
             is Command.PlayEntry -> control {
                 if (state.queue.any { it.entryId == cmd.entryId }) changed(startEntry(state, cmd.entryId, now)) else INVALID
             }
-            is Command.Add -> add(state, by, cmd, now, ids, size)
+            is Command.Add -> if (canAdd) add(state, by, cmd, now, ids, size) else FORBIDDEN
             is Command.Remove -> remove(state, by, canControl, cmd.entryId, now)
             is Command.Move -> control { move(state, cmd.entryId, cmd.afterEntryId) }
             is Command.SetSettings -> hostOnly { changed(state.copy(settings = cmd.settings)) }
@@ -310,19 +311,16 @@ object RoomLogic {
         positionMs.coerceIn(0, if (entry.isLive) Limits.MAX_DURATION_MS else entry.durationMs)
 
     private val VIDEO_ID = Regex("^[A-Za-z0-9_-]{1,${Limits.MAX_VIDEO_ID_LENGTH}}$")
-    private val YOUTUBE_THUMBNAIL_HOST_SUFFIXES = listOf(".ytimg.com", ".googleusercontent.com", ".ggpht.com")
 
     /**
      * Every field is bounded so a full queue stays small when it is broadcast: YouTube kinds carry
-     * only a videoId, URL entries only an http(s) url, thumbnails are short https links (for
-     * YouTube kinds only from YouTube's image hosts).
+     * only a videoId, URL entries only a url that passes MediaUrlRules, thumbnails are short https
+     * links (for YouTube kinds only from YouTube's image hosts).
      */
     internal fun NewEntry.isValid(): Boolean {
         val source = when (kind) {
             MediaKind.YOUTUBE_MUSIC, MediaKind.YOUTUBE_VIDEO -> url == null && VIDEO_ID.matches(videoId)
-            MediaKind.URL -> videoId.isEmpty() && url?.let { u ->
-                u.length <= Limits.MAX_URL_LENGTH && (u.startsWith("https://") || u.startsWith("http://"))
-            } == true
+            MediaKind.URL -> videoId.isEmpty() && url?.let(MediaUrlRules::isAcceptableMediaUrl) == true
             MediaKind.UNKNOWN -> false
         }
         return source &&
@@ -335,9 +333,9 @@ object RoomLogic {
     private fun isValidThumbnail(thumbnailUrl: String?, youtube: Boolean): Boolean {
         if (thumbnailUrl == null) return true
         if (thumbnailUrl.length > Limits.MAX_THUMBNAIL_URL_LENGTH || !thumbnailUrl.startsWith("https://")) return false
-        if (!youtube) return true
-        val host = runCatching { URI(thumbnailUrl).host }.getOrNull()?.lowercase() ?: return false
-        return host == "i.ytimg.com" || YOUTUBE_THUMBNAIL_HOST_SUFFIXES.any { host.endsWith(it) }
+        // Other members' devices load it directly: the same host rules as a URL entry's url.
+        if (!youtube) return MediaUrlRules.isAcceptableMediaUrl(thumbnailUrl)
+        return isYouTubeImageUrl(thumbnailUrl)
     }
 
     private fun NewEntry.toQueueEntry(entryId: String, addedBy: String) =

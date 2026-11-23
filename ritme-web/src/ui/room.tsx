@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks';
 import type { KeyValueStore } from '../net/storage';
 import { MODE_KEY } from '../net/storage';
 import type { RoomState } from '../protocol';
+import { canAdd } from '../session/permissions';
 import type { SessionState } from '../session/reducer';
 import type { SessionApi } from '../session/session';
 import { pageIsHttps } from './badges';
@@ -68,7 +69,8 @@ export function RoomScreen({ session, state, prefs }: Props) {
       <ListenPanel session={session} room={room} unplayable={unplayable} mode={mode} onModeChange={changeMode} pageIsHttps={https} />
       <NowPlaying {...shared} />
       <QueueList {...shared} />
-      <SearchPanel session={session} online={online} />
+      {/* Hidden, not disabled, while the host keeps guests from adding (spec 8). */}
+      {canAdd(room, memberId) && <SearchPanel session={session} online={online} pageIsHttps={https} />}
       <MembersPanel session={session} room={room} memberId={memberId} online={online} />
 
       {/* Ending the room lives in the members panel's host section, right above. */}

@@ -12,6 +12,7 @@ import com.example.musicfy.ritme.protocol.ClientMessage
 import com.example.musicfy.ritme.protocol.Command
 import com.example.musicfy.ritme.protocol.ErrorCode
 import com.example.musicfy.ritme.protocol.NewEntry
+import com.example.musicfy.ritme.protocol.RoomSettings
 import com.example.musicfy.ritme.protocol.RoomState
 import com.example.musicfy.ritme.testing.FakeConnector
 import com.example.musicfy.ritme.testing.FakeSocketFactory
@@ -279,5 +280,52 @@ class RitmeSessionTest {
         connector.last.emit(ConnectionEvent.Status(ConnectionStatus.RECONNECTING))
         assertFalse(session.trackEnded("e2"))
         assertEquals(listOf("e1"), connector.last.trackEnds)
+    }
+
+    @Test
+    fun aSettingsChangeKeepsTheOtherSetting() {
+        joinedRoom(room(settings = RoomSettings(guestsCanControl = true, guestsCanAdd = true)))
+        assertTrue(session.setGuestsCanAdd(false))
+        assertEquals(
+            listOf<Command>(Command.SetSettings(RoomSettings(guestsCanControl = true, guestsCanAdd = false))),
+            connector.last.commands,
+        )
+    }
+
+    @Test
+    fun quickSettingsChangesBuildOnTheLastSentOneUntilANewerSnapshot() {
+        joinedRoom(room(version = 5, settings = RoomSettings(guestsCanControl = true, guestsCanAdd = true)))
+        assertTrue(session.setGuestsCanAdd(false))
+        assertTrue(session.setGuestsCanControl(false)) // before any snapshot: builds on what was just sent
+        connector.last.emit(ConnectionEvent.State(room(version = 6, settings = RoomSettings(guestsCanControl = false, guestsCanAdd = false))))
+        assertTrue(session.setGuestsCanControl(true)) // a newer snapshot: builds on it
+        assertEquals(
+            listOf<Command>(
+                Command.SetSettings(RoomSettings(guestsCanControl = true, guestsCanAdd = false)),
+                Command.SetSettings(RoomSettings(guestsCanControl = false, guestsCanAdd = false)),
+                Command.SetSettings(RoomSettings(guestsCanControl = true, guestsCanAdd = false)),
+            ),
+            connector.last.commands,
+        )
+    }
+
+    @Test
+    fun aNewerSnapshotWinsOverTheSettingsLastSent() {
+        joinedRoom(room(version = 5))
+        assertTrue(session.setGuestsCanControl(false))
+        connector.last.emit(ConnectionEvent.State(room(version = 6, settings = RoomSettings(guestsCanControl = true, guestsCanAdd = true))))
+        assertTrue(session.setGuestsCanAdd(false))
+        assertEquals(Command.SetSettings(RoomSettings(guestsCanControl = true, guestsCanAdd = false)), connector.last.commands.last())
+    }
+
+    @Test
+    fun aForbiddenAddGetsItsOwnNotice() {
+        joinedRoom()
+        assertTrue(session.add(listOf(newEntry("aaaa")), playNext = false)) // r1
+        connector.last.emit(ConnectionEvent.Failure("r1", ErrorCode.FORBIDDEN))
+        assertEquals(NoticeKey.ADD_FORBIDDEN, session.state.value.notice?.key)
+        assertTrue(session.pause()) // r2
+        connector.last.emit(ConnectionEvent.Failure("r2", ErrorCode.FORBIDDEN))
+        assertEquals(NoticeKey.FORBIDDEN, session.state.value.notice?.key)
     }
 }

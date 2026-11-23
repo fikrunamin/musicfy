@@ -10,6 +10,7 @@ import com.example.musicfy.ritme.net.RitmeConnector
 import com.example.musicfy.ritme.net.RitmeTimer
 import com.example.musicfy.ritme.net.RitmeTimers
 import com.example.musicfy.ritme.protocol.Command
+import com.example.musicfy.ritme.protocol.ErrorCode
 import com.example.musicfy.ritme.protocol.NewEntry
 import com.example.musicfy.ritme.protocol.RoomSettings
 import com.example.musicfy.ritme.protocol.RoomState
@@ -53,6 +54,14 @@ class RitmeSession @Inject constructor(
     /** Add batches still owed to the room that Create made (the Create held at most 200 entries). */
     private val pendingOverflow = ArrayDeque<List<NewEntry>>()
     private var overflowTimer: RitmeTimer? = null
+
+    /** reqIds of recent Adds, so a FORBIDDEN answer to one gets its own message (spec U6). */
+    private val addReqIds = LinkedHashSet<String>()
+
+    /** The settings last sent, with the room and version they were built on (see [changeSettings]). */
+    private var sentSettings: SentSettings? = null
+
+    private data class SentSettings(val code: String, val afterVersion: Long, val settings: RoomSettings)
 
     /**
      * The server URL this session was started or joined with. Share links use it, so a server URL
@@ -101,10 +110,17 @@ class RitmeSession @Inject constructor(
     fun next(): Boolean = send(Command.Next)
     fun previous(): Boolean = send(Command.Previous)
     fun playEntry(entryId: String): Boolean = send(Command.PlayEntry(entryId))
-    fun add(entries: List<NewEntry>, playNext: Boolean): Boolean = send(Command.Add(entries, playNext))
+    fun add(entries: List<NewEntry>, playNext: Boolean): Boolean {
+        val reqId = sendCommand(Command.Add(entries, playNext)) ?: return false
+        addReqIds += reqId
+        if (addReqIds.size > MAX_TRACKED_ADDS) addReqIds.remove(addReqIds.first())
+        return true
+    }
+
     fun remove(entryId: String): Boolean = send(Command.Remove(entryId))
     fun move(entryId: String, afterEntryId: String?): Boolean = send(Command.Move(entryId, afterEntryId))
-    fun setGuestsCanControl(value: Boolean): Boolean = send(Command.SetSettings(RoomSettings(guestsCanControl = value)))
+    fun setGuestsCanControl(value: Boolean): Boolean = changeSettings { it.copy(guestsCanControl = value) }
+    fun setGuestsCanAdd(value: Boolean): Boolean = changeSettings { it.copy(guestsCanAdd = value) }
     fun kick(memberId: String): Boolean = send(Command.Kick(memberId))
     fun transferHost(memberId: String): Boolean = send(Command.TransferHost(memberId))
     fun endRoom(): Boolean = send(Command.EndRoom)
@@ -122,6 +138,8 @@ class RitmeSession @Inject constructor(
         awaitingCreatedRoom = false
         clock.reset()
         clearOverflow()
+        addReqIds.clear()
+        sentSettings = null
         _state.value = RitmeReducer.start(_state.value)
         lateinit var c: ConnectionLike
         c = connector.connect(RitmeLinks.socketUrl(url)) { event -> if (conn === c) onEvent(event) }
@@ -132,9 +150,26 @@ class RitmeSession @Inject constructor(
     private fun canSend(): Boolean =
         _state.value.phase == RitmePhase.IN_ROOM && _state.value.connection == ConnectionStatus.ONLINE
 
-    private fun send(cmd: Command): Boolean {
+    private fun send(cmd: Command): Boolean = sendCommand(cmd) != null
+
+    /** The reqId the command went out with, or null when it was not sent (not online in a room). */
+    private fun sendCommand(cmd: Command): String? {
         threadCheck.check()
-        return canSend() && conn?.command(cmd) != null
+        return if (canSend()) conn?.command(cmd) else null
+    }
+
+    /**
+     * SetSettings replaces all settings. The others come from the settings this device last sent
+     * until a snapshot newer than the one those were built on arrives (two quick toggles must not
+     * undo each other), and from the latest snapshot after that.
+     */
+    private fun changeSettings(change: (RoomSettings) -> RoomSettings): Boolean {
+        val room = _state.value.room ?: return false
+        val pending = sentSettings?.takeIf { it.code == room.code && room.version <= it.afterVersion }
+        val next = change(pending?.settings ?: room.settings)
+        if (!send(Command.SetSettings(next))) return false
+        sentSettings = SentSettings(room.code, room.version, next)
+        return true
     }
 
     private fun onEvent(event: ConnectionEvent) {
@@ -146,6 +181,9 @@ class RitmeSession @Inject constructor(
                 // reset() also clears the seed, so seed again right away (serverNow is raw local time otherwise).
                 clock.reset()
                 clock.seed(event.welcome.serverTime, event.receivedAt)
+                // Command answers and the room version start over with a new connection.
+                addReqIds.clear()
+                sentSettings = null
             }
             is ConnectionEvent.Ended -> {
                 conn = null
@@ -154,7 +192,14 @@ class RitmeSession @Inject constructor(
             }
             else -> Unit
         }
-        _state.value = RitmeReducer.reduce(_state.value, event)
+        // "The host locked the controls" would be wrong for a refused Add (spec U6).
+        val addRefused = event is ConnectionEvent.Failure && event.reqId != null &&
+            addReqIds.remove(event.reqId) && event.code == ErrorCode.FORBIDDEN
+        _state.value = if (addRefused) {
+            RitmeReducer.withNotice(_state.value, NoticeKey.ADD_FORBIDDEN)
+        } else {
+            RitmeReducer.reduce(_state.value, event)
+        }
         if (event is ConnectionEvent.Welcome) {
             scheduleOverflow(event.welcome.state.code)
             if (awaitingCreatedRoom) {
@@ -200,5 +245,7 @@ class RitmeSession @Inject constructor(
         /** After the Welcome's Ack and the 5-ping burst (4 x 200 ms) have gone out and mostly come back. */
         const val OVERFLOW_DELAY_MS = 1_200L
         const val OVERFLOW_GAP_MS = 100L
+        /** Adds remembered for [addReqIds]; an answer comes long before this many more go out. */
+        const val MAX_TRACKED_ADDS = 64
     }
 }

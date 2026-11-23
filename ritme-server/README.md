@@ -1,8 +1,8 @@
 # Ritme server
 
 Relay for Ritme (listen together). It keeps rooms in memory, syncs queue and playback over
-WebSocket `/ritme`, and offers metadata-only song search for the web client. It never streams
-audio and never writes to disk.
+WebSocket `/ritme`, and offers metadata-only song search and video info for the web client. It
+never streams audio and never writes to disk.
 
 ## Develop
 
@@ -102,6 +102,7 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
 | GET | `/healthz` | `ok` |
 | WS | `/ritme` | Room protocol (see `modules/ritme-protocol`) |
 | GET | `/api/search?q=` | Up to 20 songs `{videoId,title,artist,durationMs,thumbnailUrl}`; 30/min per IP (429), 300 uncached/min in total (503) |
+| GET | `/api/video?id=` | One YouTube video's metadata `{videoId,title,channel,durationMs,thumbnailUrl,live}` from InnerTube `music/get_queue` (no stream URLs). 400 for an id that is not 11 URL-safe characters, 404 when YouTube returns no such video, 30/min per IP (429, a bucket separate from search), 503 when the 300/min upstream budget shared with search is spent, 502 when YouTube fails. Cached 6 h; live videos and misses 5 min |
 | GET | `/`, `/r/{code}` | Web client (`ritme-web`), or the landing page with a `musicfy://ritme/{code}` button when `WEB_DIR` has no `index.html`. These and the static files are sent with `Content-Security-Policy: frame-ancestors 'none'` and `X-Frame-Options: DENY` |
 
 ## Protocol notes
@@ -128,9 +129,23 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
 - The server accepts protocol versions `MIN_SUPPORTED_PROTOCOL_VERSION..PROTOCOL_VERSION`;
   `Welcome.protocolVersion` is the server's version.
 - Entries: YouTube kinds carry a `videoId` matching `[A-Za-z0-9_-]{1,64}` and no `url`; `URL`
-  entries carry an http(s) `url` (<= 2048 chars) and `videoId = ""`. `thumbnailUrl` is null or
-  https (<= 512 chars), for YouTube kinds only from `*.ytimg.com`, `*.googleusercontent.com` or
-  `*.ggpht.com`. `durationMs` is 0 (live) to 24 h.
+  entries carry a `url` that passes `MediaUrlRules` (`modules/ritme-protocol`) and `videoId = ""`:
+  http(s), at most 2048 chars, no whitespace (Unicode whitespace and U+FEFF included), control
+  characters, backslash or `#fragment`, no `user:pass@`, and no local host (`localhost`,
+  `*.localhost`, `*.local`, `*.internal`, `*.lan`, `*.home.arpa`, `*.localdomain` (also `4`/`6`),
+  single-label names, loopback/private/link-local/CGNAT/unspecified/multicast/reserved IPv4 and
+  IPv6 literals, including 192.0.0/24 and the 198.18/15 benchmark (proxy fake-IP) range, IPv6
+  literals embedding such an IPv4 address (`::ffff:`, `::ffff:0:`, NAT64 `64:ff9b::/96`, 6to4
+  `2002::/16`), the local-use NAT64 prefix `64:ff9b:1::/48`, or numeric hosts that are not a
+  dotted quad). The server never resolves or fetches the URL. `thumbnailUrl` is null or https
+  (<= 512 chars), for YouTube kinds only from `*.ytimg.com`, `*.googleusercontent.com` or
+  `*.ggpht.com`, for `URL` entries under the same host rules as the url. `durationMs` is 0 (live)
+  to 24 h.
+- Settings: `guestsCanControl` and `guestsCanAdd` (both default `true`). With `guestsCanAdd = false`
+  only the host may `Add` (others get `FORBIDDEN`). `SetSettings` replaces all settings, so clients
+  send every field, taking the others from the latest snapshot. A host on an older client that does
+  not know `guestsCanAdd` resets it to `true` whenever it changes another setting (accepted: the web
+  client always ships with the server).
 
 ### Abuse limits (`/ritme`)
 
@@ -158,7 +173,7 @@ What passes through memory while a room exists: display names, the queue (titles
 videoIds, URLs, thumbnail links), playback state and resume tokens. Client IP addresses are held
 only as rate-limit and connection-count keys (IPv6 reduced to its /64). None of this is ever
 persisted or logged: the server logs only startup, errors and periodic room/connection counts.
-Search queries are cached in memory for 10 minutes and never logged.
+Search queries (10 minutes) and looked-up video ids (up to 6 hours) are cached in memory and never logged.
 
 Caddy is configured not to log either: access logs are off and the request error log
 (`http.log.error`), Go's server log (`http.stdlib`, which would print client IPs on TLS errors)
@@ -169,4 +184,6 @@ Exposure note: a room's members see each other's queue entries. `URL` entries an
 thumbnail are loaded by each member's device directly from the given host, so whoever adds a
 `URL` entry (or a non-YouTube thumbnail on a `URL` entry) learns the IP addresses of the members
 who play or display it. YouTube-kind thumbnails are restricted to YouTube's image hosts for this
-reason. Clients should only play `URL` entries from people they trust.
+reason. Clients should only play `URL` entries from people they trust. Local and private hosts
+are refused for URL entries and their thumbnails, so a member cannot point other members' devices
+at their own router or LAN.

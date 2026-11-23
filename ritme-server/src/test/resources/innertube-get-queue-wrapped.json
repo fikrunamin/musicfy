@@ -1,0 +1,21 @@
+{
+  "queueDatas": [
+    {
+      "content": {
+        "playlistPanelVideoWrapperRenderer": {
+          "primaryRenderer": {
+            "playlistPanelVideoRenderer": {
+              "title": { "runs": [{ "text": "Never Gonna Give You Up" }] },
+              "longBylineText": { "runs": [{ "text": "Rick Astley" }] },
+              "thumbnail": { "thumbnails": [{ "url": "https://evil.example/t.jpg", "width": 480, "height": 360 }] },
+              "lengthText": { "runs": [{ "text": "3:33" }] },
+              "videoId": "dQw4w9WgXcQ",
+              "selected": true,
+              "navigationEndpoint": { "watchEndpoint": { "videoId": "dQw4w9WgXcQ" } }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

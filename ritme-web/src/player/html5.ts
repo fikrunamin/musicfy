@@ -14,7 +14,7 @@ export interface HlsConstructor {
   Events: { ERROR: string };
 }
 
-const loadHlsJs = (): Promise<HlsConstructor> => import('hls.js').then((m) => m.default as unknown as HlsConstructor);
+export const loadHlsJs = (): Promise<HlsConstructor> => import('hls.js').then((m) => m.default as unknown as HlsConstructor);
 
 /** A pause this close to the end is the <video> announcing the natural end, not a user pause. */
 const END_EPSILON_S = 0.05;

@@ -56,7 +56,7 @@ internal object RitmeRoomActions {
         )
     }
 
-    /** "Members can control" and "End Ritme". */
+    /** "Members can control", "Members can add" and "End Ritme". */
     fun canManageRoom(room: RoomState, me: String?, online: Boolean): Boolean = online && RitmePermissions.isHost(room, me)
 }
 

@@ -21,7 +21,7 @@ export function room(overrides: Partial<RoomState> = {}): RoomState {
     code: 'K7M2QX',
     version: 1,
     hostId: 'm1',
-    settings: { guestsCanControl: true },
+    settings: { guestsCanControl: true, guestsCanAdd: true },
     members: [
       { id: 'm1', name: 'Budi', isHost: true, connected: true, joinedAt: 1 },
       { id: 'm2', name: 'Sari', isHost: false, connected: true, joinedAt: 2 },
