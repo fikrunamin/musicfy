@@ -10,6 +10,8 @@ sealed interface RitmeToast {
     data object PausedLocally : RitmeToast
     data object Reconnecting : RitmeToast
     data object CastingBlocked : RitmeToast
+    /** Casting started while in a room: this device left it. */
+    data object CastingStopped : RitmeToast
     data class Added(val count: Int) : RitmeToast
     data class SkippedLocal(val count: Int) : RitmeToast
     data class Ended(val reason: EndReason) : RitmeToast

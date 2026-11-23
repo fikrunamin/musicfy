@@ -9,6 +9,7 @@
     <string name="ritme_toast_locked">The host locked the controls</string>
     <string name="ritme_toast_paused_locally">Paused on this device only</string>
     <string name="ritme_toast_casting">Stop casting to use Ritme</string>
+    <string name="ritme_toast_casting_stopped">Ritme stopped because casting started</string>
     <plurals name="ritme_toast_added">
         <item quantity="one">Added %d song to Ritme</item>
         <item quantity="other">Added %d songs to Ritme</item>

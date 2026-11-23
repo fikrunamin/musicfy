@@ -162,6 +162,7 @@ class RitmePlaybackBridgeTest {
     @Before
     fun setUp() {
         bridge.attach(host)
+        bridge.onServiceReady()
     }
 
     private fun join(state: RoomState, memberId: String = "m1") {
@@ -359,6 +360,56 @@ class RitmePlaybackBridgeTest {
         assertNull(controller.localPlayback)
         assertFalse(host.calls.any { it.startsWith("exit") }) // the service is going away; the saved queue stays on disk
         assertTrue(fake.listeners.isEmpty())
+    }
+
+    @Test
+    fun aRoomAlreadyActiveIsEnteredOnlyOnceTheServiceIsReady() {
+        bridge.detach()
+        bridge.attach(host) // a new MusicService, still restoring its queue
+        join(starting)
+        assertEquals(emptyList<String>(), host.calls)
+        assertFalse(gate.isActive)
+
+        bridge.onServiceReady()
+
+        assertEquals(listOf("save gate=false", "enter gate=true", "load e1@0"), host.calls)
+        assertTrue(gate.isActive)
+    }
+
+    @Test
+    fun castingThatStartsInsideARoomLeavesIt() {
+        joinPlaying()
+
+        host.isCasting = true
+        timers.advanceBy(1_000)
+
+        assertTrue(connector.last.left)
+        assertTrue(RitmeToast.CastingStopped in toasts.shown)
+        assertFalse(gate.isActive)
+        assertEquals("exit gate=false", host.calls.last())
+    }
+
+    @Test
+    fun aRepreparedStreamPlaysOnlyIfTheRoomDoes() {
+        joinPlaying()
+        // MusicService.failStream: paused, then re-prepared by the retry
+        fake.playWhenReady = false
+        fake.state = Player.STATE_IDLE
+
+        bridge.resync()
+
+        assertTrue(fake.playWhenReady)
+        assertEquals(Player.STATE_READY, fake.state)
+    }
+
+    @Test
+    fun aRepreparedStreamStaysPausedInAPausedRoom() {
+        join(starting.copy(playback = Playback(isPlaying = false, positionMs = 4_000, anchorServerTimeMs = 0)))
+        fake.state = Player.STATE_IDLE
+
+        bridge.resync()
+
+        assertFalse(fake.playWhenReady)
     }
 
     @Test

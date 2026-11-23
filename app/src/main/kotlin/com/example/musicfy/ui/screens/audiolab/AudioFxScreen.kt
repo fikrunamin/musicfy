@@ -408,11 +408,16 @@ private val SpeedPresets = listOf(
 
 @Composable
 private fun SpeedCard(viewModel: AudioLabViewModel) {
-    val playback by viewModel.playback.collectAsState()
-    val reverb by viewModel.reverb.collectAsState()
     // In a Ritme room the speed belongs to the room: dimmed, and every control says "Not available during Ritme".
     val ritmeActive by viewModel.ritmeActive.collectAsState()
-    Box(Modifier.alpha(if (ritmeActive) 0.38f else 1f)) { EffectCard(
+    if (ritmeActive) Box(Modifier.alpha(0.38f)) { SpeedCardContent(viewModel) } else SpeedCardContent(viewModel)
+}
+
+@Composable
+private fun SpeedCardContent(viewModel: AudioLabViewModel) {
+    val playback by viewModel.playback.collectAsState()
+    val reverb by viewModel.reverb.collectAsState()
+    EffectCard(
         picture = { SpeedPicture(playback) },
         header = {
             Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -444,7 +449,9 @@ private fun SpeedCard(viewModel: AudioLabViewModel) {
                             (!p.preservePitch || playback.pitchSemitones == 0f)
                     }?.key
                 },
-                onSelect = { key ->
+                onSelect = onSelect@{ key ->
+                    // In a Ritme room the whole preset is refused, so "Slowed + reverb" never half-applies.
+                    if (viewModel.interceptSpeedForRitme()) return@onSelect
                     val p = SpeedPresets.first { it.key == key }
                     viewModel.updatePlayback { it.copy(speed = p.speed, preservePitch = p.preservePitch, pitchSemitones = 0f) }
                     if (p.withReverb) {
@@ -480,7 +487,7 @@ private fun SpeedCard(viewModel: AudioLabViewModel) {
                 }
             }
         },
-    ) }
+    )
 }
 
 @Composable

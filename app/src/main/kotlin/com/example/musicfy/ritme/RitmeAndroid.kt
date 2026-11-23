@@ -20,6 +20,7 @@ class TopToastRitmeNotifier(private val context: Context) : RitmeNotifier {
             RitmeToast.PausedLocally -> TopToaster.show(res.getString(R.string.ritme_toast_paused_locally), iconRes = R.drawable.group)
             RitmeToast.Reconnecting -> TopToaster.show(res.getString(R.string.ritme_reconnecting), iconRes = R.drawable.group)
             RitmeToast.CastingBlocked -> TopToaster.error(res.getString(R.string.ritme_toast_casting))
+            RitmeToast.CastingStopped -> TopToaster.show(res.getString(R.string.ritme_toast_casting_stopped), iconRes = R.drawable.group)
             is RitmeToast.Added -> TopToaster.show(
                 res.getQuantityString(R.plurals.ritme_toast_added, toast.count, toast.count),
                 iconRes = R.drawable.queue_music,

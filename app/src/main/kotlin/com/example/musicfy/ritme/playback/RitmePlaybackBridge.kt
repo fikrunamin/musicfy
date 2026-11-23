@@ -45,6 +45,11 @@ import kotlin.coroutines.CoroutineContext
  * before the gate can open. The session state is collected on [stateContext], which in the app is
  * Dispatchers.Main.immediate: the gate opens and closes in the same main-thread step that puts the
  * room into, or takes it out of, the state, so no local control can slip in between.
+ *
+ * Entering waits for [onServiceReady]: MusicService calls it once onCreate's saved queue, repeat,
+ * shuffle and position are restored, so a room that is already active when the service starts
+ * neither snapshots a half-restored queue nor has the restore overwrite the room's item.
+ * Casting that starts inside a room makes this device leave the room (checked every tick).
  */
 @Singleton
 class RitmePlaybackBridge internal constructor(
@@ -79,6 +84,8 @@ class RitmePlaybackBridge internal constructor(
     private var listening: Player? = null
 
     private var inRitme = false
+    /** MusicService finished restoring its own state; until then a room is not entered. */
+    private var ready = false
     private var snapshot: LocalQueueSnapshot? = null
     private var loadedEntryId: String? = null
     private var endedEntryId: String? = null
@@ -113,9 +120,17 @@ class RitmePlaybackBridge internal constructor(
     fun attach(host: RitmePlayerHost) {
         detach()
         this.host = host
+        ready = false
         controller.localPlayback = this
         lastNoticeId = session.state.value.notice?.id ?: 0L
         scope = CoroutineScope(SupervisorJob() + stateContext).also { s -> s.launch { session.state.collect(::onState) } }
+    }
+
+    /** MusicService restored its queue and settings: a room (already active or later) may take the player now. */
+    fun onServiceReady() {
+        if (host == null || ready) return
+        ready = true
+        onState(session.state.value)
     }
 
     fun detach() {
@@ -140,7 +155,7 @@ class RitmePlaybackBridge internal constructor(
             notifier.show(RitmeToast.CommandFailed(it.key))
         }
         when (val transition = RitmeModeTransitions.next(inRitme, state)) {
-            RitmeTransition.Enter -> enter()
+            RitmeTransition.Enter -> if (ready) enter()
             is RitmeTransition.Exit -> exit(transition.reason)
             RitmeTransition.None -> Unit
         }
@@ -184,6 +199,13 @@ class RitmePlaybackBridge internal constructor(
     private fun tick() {
         tickTimer = null
         if (!inRitme) return
+        if (host?.isCasting == true) {
+            // The cast device would play on its own clock: leave the room (spec: Ritme is refused while casting).
+            // Ended(Left) follows synchronously and exit() restores the local queue.
+            notifier.show(RitmeToast.CastingStopped)
+            session.leave()
+            return
+        }
         sync(force = false)
         if (inRitme) tickTimer = timers.schedule(TICK_MS, ::tick)
     }
@@ -285,7 +307,13 @@ class RitmePlaybackBridge internal constructor(
      * decide, so during the start anchor the player stays paused and starts at the anchor with
      * everyone else, and otherwise it is seeked to the room position and played.
      */
-    override fun resumeLocally() {
+    override fun resumeLocally() = resync()
+
+    /**
+     * Aligns the player with the room now and lets the planner decide play or pause (e.g. after
+     * MusicService re-prepared a failed stream); outside a room it does nothing.
+     */
+    fun resync() {
         sync(force = true)
     }
 

@@ -231,8 +231,11 @@ class AudioLabViewModel @Inject constructor(
     /** True while in a Ritme room: the speed card is dimmed and its controls only say "Not available during Ritme". */
     val ritmeActive: StateFlow<Boolean> = ritmeGate.active
 
+    /** In a Ritme room: shows "Not available during Ritme" and returns true; the caller then changes nothing. */
+    fun interceptSpeedForRitme(): Boolean = ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.Speed)
+
     fun updatePlayback(transform: (com.example.musicfy.eq.PlaybackSettings) -> com.example.musicfy.eq.PlaybackSettings) {
-        if (ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.Speed)) return
+        if (interceptSpeedForRitme()) return
         store.updatePlayback(transform)
     }
 
