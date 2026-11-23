@@ -18,6 +18,10 @@ object RitmePermissions {
     /** Play, Pause, Seek, Next, Previous, PlayEntry, Move, and Remove of other people's entries. */
     fun canControl(room: RoomState, memberId: String?): Boolean = isHost(room, memberId) || room.settings.guestsCanControl
 
+    /** Add (spec U6): the host always; others only while the host allows it. */
+    fun canAdd(room: RoomState, memberId: String?): Boolean =
+        isHost(room, memberId) || (memberId != null && room.settings.guestsCanAdd)
+
     fun canRemove(room: RoomState, memberId: String?, entry: QueueEntry): Boolean =
         entry.addedBy == memberId || canControl(room, memberId)
 

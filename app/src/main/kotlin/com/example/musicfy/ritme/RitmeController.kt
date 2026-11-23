@@ -3,6 +3,7 @@ package com.example.musicfy.ritme
 import com.example.musicfy.models.MediaMetadata
 import com.example.musicfy.ritme.entries.RitmeEntries
 import com.example.musicfy.ritme.protocol.RoomState
+import com.example.musicfy.ritme.session.NoticeKey
 import com.example.musicfy.ritme.session.RitmePermissions
 import com.example.musicfy.ritme.session.RitmeSession
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -130,9 +131,9 @@ class RitmeController @Inject constructor(
             is RitmeLocalAction.Seek -> control(room, me) { session.seek(action.positionMs) }
             RitmeLocalAction.Next -> control(room, me) { session.next() }
             RitmeLocalAction.Previous -> control(room, me) { session.previous() }
-            is RitmeLocalAction.AddItems -> add(action.songs, action.playNext)
+            is RitmeLocalAction.AddItems -> add(room, me, action.songs, action.playNext)
             is RitmeLocalAction.PlayQueue ->
-                if (action.songs.isEmpty()) notifier.show(RitmeToast.NotAvailable) else add(action.songs, playNext = false)
+                if (action.songs.isEmpty()) notifier.show(RitmeToast.NotAvailable) else add(room, me, action.songs, playNext = false)
             RitmeLocalAction.QueueEdit,
             RitmeLocalAction.Shuffle,
             RitmeLocalAction.Repeat,
@@ -173,7 +174,12 @@ class RitmeController @Inject constructor(
         }
     }
 
-    private fun add(songs: List<MediaMetadata?>, playNext: Boolean) {
+    private fun add(room: RoomState, me: String?, songs: List<MediaMetadata?>, playNext: Boolean) {
+        // The server would answer FORBIDDEN; say it right away, with the same message (spec 8).
+        if (!RitmePermissions.canAdd(room, me)) {
+            notifier.show(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN))
+            return
+        }
         val batches = RitmeEntries.toAddBatches(songs)
         if (batches.count == 0) {
             notifier.show(if (batches.skipped > 0) RitmeToast.SkippedLocal(batches.skipped) else RitmeToast.NotAvailable)
