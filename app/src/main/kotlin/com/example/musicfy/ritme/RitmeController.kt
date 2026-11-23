@@ -140,6 +140,13 @@ class RitmeController @Inject constructor(
         }
     }
 
+    /**
+     * A command from the room sheet (remove, move, play an entry, settings, kick, make host, end):
+     * dropped while offline, it says "Reconnecting" like the player controls do. True if it was sent.
+     */
+    fun roomCommand(send: RitmeSession.() -> Boolean): Boolean =
+        session.send().also { sent -> if (!sent) notifier.show(RitmeToast.Reconnecting) }
+
     private fun play(room: RoomState, me: String?) {
         // Already playing for the room: this device was paused locally, so only it resumes.
         // Paused room: only the Play command goes out (no optimistic local play, or the planner
@@ -173,7 +180,9 @@ class RitmeController @Inject constructor(
             return
         }
         // Each "play next" batch lands right after the current entry, so the last batch goes first.
-        val ordered = if (playNext) batches.batches.asReversed() else batches.batches
+        // With nothing current there is no such spot: the batches go in their own order.
+        val stacked = playNext && session.state.value.room?.currentEntryId != null
+        val ordered = if (stacked) batches.batches.asReversed() else batches.batches
         val sent = ordered.all { session.add(it, playNext) }
         notifier.show(if (sent) RitmeToast.Added(batches.count) else RitmeToast.Reconnecting)
     }

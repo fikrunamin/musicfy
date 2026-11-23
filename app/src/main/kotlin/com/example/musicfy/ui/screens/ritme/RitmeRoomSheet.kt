@@ -226,7 +226,7 @@ internal fun RitmeRoomContent(
                     isPlaying = room.playback.isPlaying,
                     actions = RitmeRoomActions.forCurrent(room, me, current, online),
                     onPlay = {},
-                    onRemove = { ritme.session.remove(current.entryId) },
+                    onRemove = { ritme.controller.roomCommand { remove(current.entryId) } },
                     onMoveUp = {},
                     onMoveDown = {},
                 )
@@ -248,10 +248,10 @@ internal fun RitmeRoomContent(
                 isCurrent = false,
                 isPlaying = false,
                 actions = actions,
-                onPlay = { ritme.session.playEntry(entry.entryId) },
-                onRemove = { ritme.session.remove(entry.entryId) },
-                onMoveUp = { actions.moveUp?.let { ritme.session.move(entry.entryId, it.afterEntryId) } },
-                onMoveDown = { actions.moveDown?.let { ritme.session.move(entry.entryId, it.afterEntryId) } },
+                onPlay = { ritme.controller.roomCommand { playEntry(entry.entryId) } },
+                onRemove = { ritme.controller.roomCommand { remove(entry.entryId) } },
+                onMoveUp = { actions.moveUp?.let { ritme.controller.roomCommand { move(entry.entryId, it.afterEntryId) } } },
+                onMoveDown = { actions.moveDown?.let { ritme.controller.roomCommand { move(entry.entryId, it.afterEntryId) } } },
             )
         }
         item(key = "divider2") { SheetDivider() }
@@ -281,7 +281,7 @@ internal fun RitmeRoomContent(
                         title = stringResource(R.string.ritme_guests_can_control),
                         checked = guestsCanControl,
                         enabled = canManage,
-                        onCheckedChange = { ritme.session.setGuestsCanControl(it) },
+                        onCheckedChange = { ritme.controller.roomCommand { setGuestsCanControl(it) } },
                     )
                 }
                 Material3MenuGroup(
@@ -606,7 +606,7 @@ private fun PopupSheetState.showMemberActions(ritme: RitmeUi, memberId: String) 
                         icon = { Icon(painterResource(R.drawable.crown), contentDescription = null) },
                         title = { Text(stringResource(R.string.ritme_make_host)) },
                         onClick = if (actions.canTransferHost) ({
-                            ritme.session.transferHost(member.id)
+                            ritme.controller.roomCommand { transferHost(member.id) }
                             close()
                         }) else null,
                     ),
@@ -614,7 +614,7 @@ private fun PopupSheetState.showMemberActions(ritme: RitmeUi, memberId: String) 
                         icon = { Icon(painterResource(R.drawable.close), contentDescription = null) },
                         title = { Text(stringResource(R.string.ritme_kick)) },
                         onClick = if (actions.canKick) ({
-                            ritme.session.kick(member.id)
+                            ritme.controller.roomCommand { kick(member.id) }
                             close()
                         }) else null,
                     ),
@@ -649,7 +649,7 @@ private fun PopupSheetState.showEndConfirm(ritme: RitmeUi) {
                         },
                         title = { Text(stringResource(R.string.ritme_end)) },
                         onClick = if (RitmeRoomActions.canManageRoom(room, me, online)) ({
-                            ritme.session.endRoom()
+                            ritme.controller.roomCommand { endRoom() }
                             close()
                         }) else null,
                     ),

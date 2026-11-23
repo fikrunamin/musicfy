@@ -59,12 +59,18 @@ fun RitmeSheetOpener(navController: NavController) {
 // One of each at a time: a second tap on the pill (or a repeated deep link) must not stack a copy
 // of the sheet already showing. Main thread only; cleared once that sheet has left. The popup state
 // these sheets go on (LocalZoomOutOverlayState's default) outlives an activity, so these do too.
-/** The form of the entry sheet that is showing, so a deep link can fill in its code. */
-private var openEntryForm: RitmeEntryForm? = null
+/**
+ * The entry sheet that is showing: its form, so a deep link can fill in its code, and its handle, so
+ * the room sheet can take its place instead of being pushed over it.
+ */
+private class OpenEntrySheet(val form: RitmeEntryForm) {
+    var handle: PopupSheetHandle? = null
+}
+private var openEntry: OpenEntrySheet? = null
 private var roomSheetOpen = false
 
 fun PopupSheetState.showRitmeEntrySheet(ritme: RitmeUi, code: String?, startWith: List<MediaMetadata?>?) {
-    openEntryForm?.let { open ->
+    openEntry?.form?.let { open ->
         // Already showing: a link's code goes into it (not while an attempt is under way), and an
         // error from the previous attempt no longer applies.
         if (code != null && ritme.session.state.value.phase != RitmePhase.CONNECTING) {
@@ -77,12 +83,13 @@ fun PopupSheetState.showRitmeEntrySheet(ritme: RitmeUi, code: String?, startWith
     // A failure left over from an earlier attempt is not this sheet's error.
     ritme.session.dismiss()
     val form = RitmeEntryForm(code, startWith)
-    openEntryForm = form
+    val open = OpenEntrySheet(form)
+    openEntry = open
     var handle: PopupSheetHandle? = null
     handle = showWithHandle(
         buttonBar = { RitmeEntryButton(ritme, form) },
         onClosed = {
-            if (openEntryForm === form) openEntryForm = null
+            if (openEntry === open) openEntry = null
             // Closed while still connecting: give that attempt up. After a failure: back to idle.
             when (ritme.session.state.value.phase) {
                 RitmePhase.CONNECTING -> ritme.session.leave()
@@ -99,9 +106,17 @@ fun PopupSheetState.showRitmeEntrySheet(ritme: RitmeUi, code: String?, startWith
             onJoined = { handle?.dismiss() },
         )
     }
+    open.handle = handle
 }
 
-fun PopupSheetState.showRitmeRoomSheet(ritme: RitmeUi, navController: NavController) {
+fun PopupSheetState.showRitmeRoomSheet(ritme: RitmeUi, navController: NavController) =
+    showRitmeRoomSheet(ritme) { navController.navigate(Screens.Search.route) }
+
+internal fun PopupSheetState.showRitmeRoomSheet(ritme: RitmeUi, openSearch: () -> Unit) {
+    // The host of a new room gets this sheet while the entry sheet may still be up (it closes
+    // itself a frame later): close it now, so the room sheet takes its place rather than being
+    // pushed over it. The room sheet then goes in underneath the leaving entry sheet.
+    openEntry?.handle?.dismiss()
     if (roomSheetOpen) return
     roomSheetOpen = true
     var handle: PopupSheetHandle? = null
@@ -115,7 +130,7 @@ fun PopupSheetState.showRitmeRoomSheet(ritme: RitmeUi, navController: NavControl
                 // compositionLocalOf<BottomSheetState?>: null outside the main layout
                 playerSheet?.let { if (it.isExpanded) it.collapseSoft() }
                 // In a room, tapping a search result adds it to the room (RitmeController, PlayQueue).
-                navController.navigate(Screens.Search.route)
+                openSearch()
             },
             onLeft = { handle?.dismiss() },
             bottomPadding = 16.dp + navigationBar,

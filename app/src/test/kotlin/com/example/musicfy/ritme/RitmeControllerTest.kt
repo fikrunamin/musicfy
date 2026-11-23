@@ -153,6 +153,33 @@ class RitmeControllerTest {
     }
 
     @Test
+    fun playNextIntoAnEmptyRoomKeepsTheBatchOrder() {
+        // Nothing is current, so there is no "right after the current entry" to stack batches on.
+        inRoom(room())
+        controller.handle(RitmeLocalAction.AddItems((1..250).map { song("s$it") }, playNext = true))
+        assertEquals(listOf(200, 50), commands.map { (it as Command.Add).entries.size })
+        assertEquals("s1", (commands.first() as Command.Add).entries.first().videoId)
+    }
+
+    @Test
+    fun roomSheetCommandsDroppedWhileReconnectingSaySo() {
+        inRoom(paused)
+        connector.last.emit(ConnectionEvent.Status(ConnectionStatus.RECONNECTING))
+        assertFalse(controller.roomCommand { kick("m2") })
+        assertFalse(controller.roomCommand { endRoom() })
+        assertTrue(commands.isEmpty())
+        assertEquals(listOf<RitmeToast>(RitmeToast.Reconnecting, RitmeToast.Reconnecting), toasts.shown)
+    }
+
+    @Test
+    fun roomSheetCommandsGoOutSilentlyWhenOnline() {
+        inRoom(paused)
+        assertTrue(controller.roomCommand { remove("e1") })
+        assertEquals(listOf<Command>(Command.Remove("e1")), commands)
+        assertTrue(toasts.shown.isEmpty())
+    }
+
+    @Test
     fun onlyLocalSongsAddNothing() {
         inRoom(playing)
         controller.handle(RitmeLocalAction.AddItems(listOf(song("x", local = true)), playNext = false))
