@@ -52,7 +52,9 @@ test('LIVE and locked controls @locked', async ({ context }, info) => {
   await (await showMembers(a)).getByRole('switch', { name: 'Anggota boleh kontrol' }).click();
   await closeSheet(a);
   await tap(b);
-  await b.getByRole('button', { name: 'Jeda' }).click();
+  // Locked controls are aria-disabled but still take taps (they explain the lock); Playwright
+  // treats aria-disabled as not enabled and would wait forever without force.
+  await b.getByRole('button', { name: 'Jeda' }).click({ force: true });
   await expect(b.getByRole('status').filter({ hasText: 'Host mengunci kontrol' })).toBeVisible();
   await shot(b, info, 'C-live-locked');
 });
