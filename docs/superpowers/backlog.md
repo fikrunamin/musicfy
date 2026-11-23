@@ -70,3 +70,10 @@ Permintaan pengguna (catatan, belum dijadwalkan; Android Ritme diselesaikan dulu
   default true supaya klien lama tetap jalan (tolerant decoding). UI di web, Android, dan desktop
   ikut menampilkan sakelar dan menyembunyikan tombol tambah. Opsional: setelan terpisah khusus
   video.
+
+## 2026-11-23: Installer desktop di GitHub Actions ditunda
+
+Keputusan pengguna: job packaging DMG/MSI di `desktop.yml` **baru dibuat setelah** aplikasi desktop
+bisa memutar lagu (D2) **dan** mendukung Ritme: dengar bareng musik, nonton video YouTube, dan
+video URL. Sampai saat itu, DMG hanya dibuat manual untuk percobaan
+(`./gradlew :desktopApp:packageDmg -Pcompose.desktop.packaging.checkJdkVendor=false`).
