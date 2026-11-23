@@ -27,8 +27,10 @@ extensions.configure<ApplicationExtension> {
         applicationId = "com.example.musicfy"
         minSdk = 26
         targetSdk = 36
-        versionCode = 71
-        versionName = "8.0.0 build#1150"
+        // .github/workflows/release.yml passes the tag's version (v8.1.0 → "8.1.0", 8001000), so an
+        // installed release matches its GitHub Release and the updater stops offering it again.
+        versionCode = providers.gradleProperty("releaseVersionCode").orNull?.toInt() ?: 71
+        versionName = providers.gradleProperty("releaseVersionName").orNull ?: "8.0.0 build#1150"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

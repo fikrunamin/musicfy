@@ -62,6 +62,36 @@ you can fork it but I dont support unofficial fork
 oh also thanks to [monochrome](https://github.com/monochrome-music/monochrome) we have FLAC streams!
 
 ---
+## Releasing (this fork)
+The app updates itself from the GitHub Releases of the repo in **Settings → General → Update source**
+(default `https://github.com/fikrunamin/musicfy`). To publish one, tag the commit and push the tag:
+
+```sh
+git tag v1.2.3 && git push origin v1.2.3
+```
+
+`.github/workflows/release.yml` then builds the universal GMS release APK and creates the GitHub
+Release `v1.2.3` with the two assets the updater reads: `musicfy.apk` and `changelog.json` (the
+commit subjects since the previous `v*` tag). You can also run the workflow by hand (Actions →
+Release → Run workflow) with a tag name; it builds the selected branch and creates that tag.
+
+- Tags must be `vMAJOR.MINOR.PATCH`. The APK gets `versionName` `MAJOR.MINOR.PATCH` and
+  `versionCode` `MAJOR*1000000 + MINOR*1000 + PATCH`, so each new tag installs over the last one.
+  Pick a version above the installed one (local builds say `8.0.0`), or the updater won't offer it.
+- Signing: add these repository secrets (Settings → Secrets and variables → Actions) to sign with
+  your own release key:
+  - `RELEASE_KEYSTORE_BASE64`: the keystore file, `base64 -i release.keystore | pbcopy` (macOS) or
+    `base64 -w0 release.keystore` (Linux)
+  - `RELEASE_KEYSTORE_PASSWORD`: the keystore password
+  - `RELEASE_KEY_ALIAS`: the key alias
+  - `RELEASE_KEY_PASSWORD`: the key password
+
+  Make a key once with `keytool -genkeypair -v -keystore release.keystore -alias musicfy -keyalg RSA -keysize 4096 -validity 10000`
+  and keep it safe: Android only installs an update signed with the same key.
+  Without those four secrets the workflow signs with the fixed debug key from `DEBUG_KEYSTORE_BASE64`
+  (the one CI debug builds use) and says so in a warning. With neither, it stops.
+
+---
 ## Wants to help? bug report? report it on issues!
 
 Or read contribute.md there
