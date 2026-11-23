@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { KeyValueStore } from '../net/storage';
 import { NAME_KEY } from '../net/storage';
 import type { SessionState } from '../session/reducer';
@@ -45,9 +45,16 @@ export function HomeScreen({ session, state, routeCode, prefs }: Props) {
   const [name, setName] = useState(prefs.get(NAME_KEY) ?? '');
   const [code, setCode] = useState(routeCode ?? '');
   const [error, setError] = useState<FieldErrorState>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const codeRef = useRef<HTMLInputElement>(null);
   const busy = state.phase === 'connecting';
   const ended = state.phase === 'ended' && state.ended ? endText(state.ended) : null;
   const invite = routeCode !== null;
+
+  // Move keyboard and screen-reader users to the field that needs fixing.
+  useEffect(() => {
+    if (error) (error.field === 'name' ? nameRef : codeRef).current?.focus();
+  }, [error]);
 
   const validName = (): string | null => {
     const n = normalizeName(name);
@@ -78,8 +85,8 @@ export function HomeScreen({ session, state, routeCode, prefs }: Props) {
     session.join(c, n);
   };
 
-  const nameError = error?.field === 'name' ? 'name-error' : null;
-  const codeError = error?.field === 'code' ? 'code-error' : null;
+  const nameError = error?.field === 'name' ? { id: 'name-error', message: error.message } : null;
+  const codeError = error?.field === 'code' ? { id: 'code-error', message: error.message } : null;
 
   const nameField = (
     <>
@@ -91,23 +98,25 @@ export function HomeScreen({ session, state, routeCode, prefs }: Props) {
         maxLength={32}
         autoComplete="nickname"
         placeholder={t.namePlaceholder}
-        errorId={nameError}
+        errorId={nameError?.id}
+        inputRef={nameRef}
         onInput={(e) => setName(e.currentTarget.value)}
       />
-      {nameError && <FieldError id={nameError}>{error!.message}</FieldError>}
+      {nameError && <FieldError id={nameError.id}>{nameError.message}</FieldError>}
     </>
   );
 
   return (
     <main class={cx('home', invite && 'home-invite')}>
+      {invite && (
+        <p class="room-chip">
+          <Icon name="group" size={20} />
+          {t.roomChip(routeCode)}
+        </p>
+      )}
       <HeroArt />
       <div class="home-panel">
-        {invite ? (
-          <p class="room-chip">
-            <Icon name="group" size={20} />
-            {t.roomChip(routeCode)}
-          </p>
-        ) : (
+        {invite ? null : (
           <p class="home-brand">
             <Icon name="radio_button_checked" size={22} />
             <span class="home-brand-mobile">{t.brand}</span>
@@ -158,7 +167,8 @@ export function HomeScreen({ session, state, routeCode, prefs }: Props) {
                   autoComplete="off"
                   spellcheck={false}
                   placeholder={t.codePlaceholder}
-                  errorId={codeError}
+                  errorId={codeError?.id}
+                  inputRef={codeRef}
                   onInput={(e) => {
                     const sanitized = sanitizeCodeInput(e.currentTarget.value);
                     e.currentTarget.value = sanitized; // state may be unchanged (7th char), so Preact would not re-render
@@ -169,7 +179,7 @@ export function HomeScreen({ session, state, routeCode, prefs }: Props) {
                   {busy ? t.connecting : t.join}
                 </Button>
               </div>
-              {codeError && <FieldError id={codeError}>{error!.message}</FieldError>}
+              {codeError && <FieldError id={codeError.id}>{codeError.message}</FieldError>}
             </form>
             <DownloadLine />
           </div>

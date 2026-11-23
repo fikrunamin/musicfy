@@ -61,7 +61,6 @@
 
 .home-invite .home-art {
   height: 280px;
-  margin-top: 64px;
 }
 
 .home-invite .vinyl {
@@ -87,9 +86,8 @@
 }
 
 .room-chip {
-  position: absolute;
-  top: max(24px, env(safe-area-inset-top));
-  left: var(--gutter);
+  align-self: flex-start;
+  margin: max(24px, env(safe-area-inset-top)) 0 0 var(--gutter);
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -212,9 +210,21 @@
     display: inline;
   }
 
+  .home {
+    position: relative;
+  }
+
   .room-chip {
+    position: absolute;
     top: 40px;
     left: 112px;
+    margin: 0;
+    z-index: 1;
+  }
+
+  /* Reserve the chip's block (40 + 36) plus 24+ px so the title never meets it. */
+  .home-invite .home-panel {
+    padding-top: 112px;
   }
 
   .home-form {

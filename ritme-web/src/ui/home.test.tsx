@@ -79,4 +79,36 @@ describe('HomeScreen', () => {
     fireEvent.input(input, { target: { value: 'K7M2QXZ' } });
     expect(input.value).toBe('K7M2QX');
   });
+
+  it('moves focus to the first invalid field', () => {
+    render(<HomeScreen session={fakeSession()} state={initialSession} routeCode={null} prefs={memoryStore()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Mulai Ritme' }));
+    expect(document.activeElement).toBe(screen.getByLabelText('Nama tampilan'));
+    fireEvent.input(screen.getByLabelText('Nama tampilan'), { target: { value: 'Sari' } });
+    fireEvent.input(screen.getByLabelText('Kode room'), { target: { value: 'abc' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Gabung' }));
+    expect(document.activeElement).toBe(screen.getByLabelText('Kode room'));
+  });
+
+  it('invite page: empty name shows the field error and focuses the field', () => {
+    const session = fakeSession();
+    render(<HomeScreen session={session} state={initialSession} routeCode="K7M2QX" prefs={memoryStore()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Gabung' }));
+    const input = screen.getByLabelText('Nama tampilan');
+    expect(document.activeElement).toBe(input);
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    expect(input.getAttribute('aria-describedby')).toBe(screen.getByRole('alert').id);
+    expect(session.join).not.toHaveBeenCalled();
+  });
+
+  it('hides the decorative hero from assistive tech', () => {
+    const { container } = render(<HomeScreen session={fakeSession()} state={initialSession} routeCode={null} prefs={memoryStore()} />);
+    expect(container.querySelector('.home-art')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('renders the room chip before the hero, in flow', () => {
+    const { container } = render(<HomeScreen session={fakeSession()} state={initialSession} routeCode="K7M2QX" prefs={memoryStore()} />);
+    const main = container.querySelector('main')!;
+    expect(main.firstElementChild?.classList.contains('room-chip')).toBe(true);
+  });
 });
