@@ -44,12 +44,19 @@ class InnerTubeVideoBackend(private val http: HttpClient, private val url: Strin
         // YouTube answers an unknown id with HTTP 404 {"error":{"code":404,"status":"NOT_FOUND"}}
         // (400 for some malformed ones), not an empty queue. "{}" reads as "no such video": the
         // endpoint answers 404 and the miss is cached like one.
-        if (response.status == HttpStatusCode.NotFound || response.status == HttpStatusCode.BadRequest) return "{}"
+        if (response.status == HttpStatusCode.BadRequest) {
+            // Also what an outdated client version looks like: without this line every lookup would
+            // silently become a cached 404. Never log the id.
+            log.warn("video backend answered 400")
+            return "{}"
+        }
+        if (response.status == HttpStatusCode.NotFound) return "{}"
         check(response.status.isSuccess()) { "InnerTube get_queue failed: ${response.status.value}" }
         return response.bodyAsText()
     }
 
     companion object {
+        private val log = org.slf4j.LoggerFactory.getLogger(InnerTubeVideoBackend::class.java)
         const val URL = "https://music.youtube.com/youtubei/v1/music/get_queue?prettyPrint=false"
 
         fun requestBody(videoId: String): String = buildJsonObject {
