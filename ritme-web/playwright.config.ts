@@ -9,6 +9,9 @@ const PORT = 47821;
  */
 export default defineConfig({
   testDir: './e2e',
+  // Its own folder: Playwright empties outputDir on every run, and test-results/redesign holds the
+  // before/after screenshot sets.
+  outputDir: 'test-results/e2e',
   workers: 1,
   retries: 0,
   reporter: process.env.CI ? 'github' : 'list',
