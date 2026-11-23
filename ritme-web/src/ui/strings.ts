@@ -27,6 +27,18 @@ export const t = {
   connecting: 'Menghubungkan…',
   retry: 'Coba lagi',
   back: 'Kembali',
+  reload: 'Muat ulang',
+
+  // Connection states (handoff H): full screens for a session that cannot go on.
+  lostTitle: 'Terputus dari Ritme',
+  unreachableTitle: 'Tidak bisa terhubung ke server Ritme',
+  checkConnection: 'Periksa koneksi internetmu.',
+  closedTitle: 'Ritme sudah diakhiri',
+  closedBody: 'Host mengakhiri Ritme untuk semua anggota.',
+  kickedTitle: 'Kamu dikeluarkan dari Ritme',
+  kickedBody: 'Host mengeluarkanmu dari room ini.',
+  upgradeTitle: 'Perlu versi baru',
+  upgradeBody: 'Room ini memakai versi Ritme yang lebih baru. Muat ulang halaman.',
 
   roomTitle: (code: string) => `Ritme · ${code}`,
   share: 'Bagikan',

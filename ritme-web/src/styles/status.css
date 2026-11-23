@@ -1,0 +1,82 @@
+/*
+ * Connection states (handoff H: b3gHO connecting, lrH2k/GfryT lost, s9H6eO ended, H2D5o kicked,
+ * copmC upgrade): a 96 px disc, a 24 px title, one line of muted text, full-width buttons, all
+ * centred on the page. The reconnecting banner (kclxK) lives in room.css.
+ */
+.status-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 32px max(32px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom)) max(32px, env(safe-area-inset-left));
+}
+
+.status-body {
+  width: 100%;
+  max-width: 326px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.status-disc {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+}
+
+/* A quarter arc on a faint track, from 12 to 3 o'clock as in b3gHO. */
+.status-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 4px solid var(--surface3);
+  border-top-color: var(--text);
+  transform: rotate(45deg);
+}
+
+.status-title {
+  margin-top: 16px;
+  font-size: 24px; /* handoff "Tipografi": 28 / 24 */
+  overflow-wrap: anywhere;
+}
+
+/* Focused only so the reason is read out; it is not a control. */
+.status-title:focus {
+  outline: none;
+}
+
+.status-text {
+  margin-top: 16px;
+  color: var(--muted);
+}
+
+.status-actions {
+  width: 100%;
+  margin-top: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@keyframes status-spin {
+  from {
+    transform: rotate(45deg);
+  }
+  to {
+    transform: rotate(405deg);
+  }
+}
+
+/* Reduced motion: the ring stays still (base.css also switches every animation off). */
+@media (prefers-reduced-motion: no-preference) {
+  .status-ring {
+    animation: status-spin 1s linear infinite;
+  }
+}

@@ -14,6 +14,10 @@ interface Props {
   /** From /r/{code}: the invite page (flow B), joining that room. */
   routeCode: string | null;
   prefs: KeyValueStore;
+  /** The code field's starting value at / (the code of a refused join, to fix it). */
+  initialCode?: string | null;
+  /** Each start that passed validation, just before it goes out: the room code, or null for a new room. */
+  onStart?: (code: string | null) => void;
 }
 
 type FieldErrorState = { field: 'name' | 'code'; message: string } | null;
@@ -41,9 +45,9 @@ function DownloadLine() {
   );
 }
 
-export function HomeScreen({ session, state, routeCode, prefs }: Props) {
+export function HomeScreen({ session, state, routeCode, prefs, initialCode, onStart }: Props) {
   const [name, setName] = useState(prefs.get(NAME_KEY) ?? '');
-  const [code, setCode] = useState(routeCode ?? '');
+  const [code, setCode] = useState(routeCode ?? initialCode ?? '');
   const [error, setError] = useState<FieldErrorState>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const codeRef = useRef<HTMLInputElement>(null);
@@ -67,6 +71,7 @@ export function HomeScreen({ session, state, routeCode, prefs }: Props) {
     setError(null);
     const n = validName();
     if (!n) return;
+    onStart?.(null);
     session.dismiss();
     session.create(n);
   };
@@ -81,6 +86,7 @@ export function HomeScreen({ session, state, routeCode, prefs }: Props) {
       setError({ field: 'code', message: t.codeInvalid });
       return;
     }
+    onStart?.(c);
     session.dismiss();
     session.join(c, n);
   };

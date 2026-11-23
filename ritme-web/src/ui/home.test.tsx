@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NAME_KEY, memoryStore } from '../net/storage';
 import { initialSession } from '../session/reducer';
 import { HomeScreen } from './home';
@@ -59,6 +59,31 @@ describe('HomeScreen', () => {
       />,
     );
     expect(screen.getByRole('alert').textContent).toBe('Room tidak ditemukan');
+  });
+
+  it('reports each start through onStart before it goes out: the code, or null for a new room', () => {
+    const session = fakeSession();
+    const onStart = vi.fn();
+    render(<HomeScreen session={session} state={initialSession} routeCode={null} prefs={memoryStore()} onStart={onStart} />);
+    fireEvent.input(screen.getByLabelText('Nama tampilan'), { target: { value: 'Sari' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Mulai Ritme' }));
+    expect(onStart).toHaveBeenLastCalledWith(null);
+    expect(onStart.mock.invocationCallOrder[0]).toBeLessThan(session.create.mock.invocationCallOrder[0]);
+    fireEvent.input(screen.getByLabelText('Kode room'), { target: { value: 'k7m2qx' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Gabung' }));
+    expect(onStart).toHaveBeenLastCalledWith('K7M2QX');
+    expect(onStart.mock.invocationCallOrder[1]).toBeLessThan(session.join.mock.invocationCallOrder[0]);
+    expect(onStart).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not report a start that failed validation', () => {
+    const onStart = vi.fn();
+    render(<HomeScreen session={fakeSession()} state={initialSession} routeCode={null} prefs={memoryStore()} onStart={onStart} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Mulai Ritme' }));
+    fireEvent.input(screen.getByLabelText('Nama tampilan'), { target: { value: 'Sari' } });
+    fireEvent.input(screen.getByLabelText('Kode room'), { target: { value: 'abc' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Gabung' }));
+    expect(onStart).not.toHaveBeenCalled();
   });
 
   it('accepts a pasted code with spaces', () => {
