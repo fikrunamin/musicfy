@@ -398,7 +398,7 @@ class RitmeControllerTest {
         controller.handle(RitmeLocalAction.AddAll((1..600).map { song("s$it") }))
         timers.advanceBy(10 * RitmeSession.OVERFLOW_GAP_MS)
         assertEquals(listOf(200, 200, 99), commands.map { (it as Command.Add).entries.size })
-        assertEquals(listOf<RitmeToast>(RitmeToast.Added(499)), toasts.shown)
+        assertEquals(listOf<RitmeToast>(RitmeToast.AddedRestFull(499)), toasts.shown)
     }
 
     @Test
@@ -439,5 +439,47 @@ class RitmeControllerTest {
         val expected = listOf(song("a"), song("b")).map { RitmeEntries.toNewEntry(it)!! }
         assertEquals(JoinIntent.Create("Budi", expected, 0, 0), connector.last.intent)
         assertEquals(listOf<RitmeToast>(RitmeToast.SkippedLocal(1)), toasts.shown)
+    }
+
+    @Test
+    fun aListAddRightAfterABigStartCountsTheOverflowStillOwed() {
+        // Start Ritme with 450 songs: the Create holds 200, 250 are still owed when another album is played.
+        controller.startRoom("Budi", startWith = (1..450).map { song("s$it") })
+        val created = (1..200).map { entry("e$it", videoId = "s$it") }
+        connector.last.welcome(room(queue = created, currentEntryId = "e1"), memberId = "m1")
+        assertEquals(250, session.owedEntries)
+        controller.handle(RitmeLocalAction.AddAll((1..100).map { song("a$it") }))
+        // 500 - 200 in the room - 250 owed: only 50 of the album fit, and the toast says so
+        assertEquals(RitmeToast.AddedRestFull(50), toasts.shown.last())
+        timers.advanceBy(RitmeSession.OVERFLOW_DELAY_MS + 10 * RitmeSession.OVERFLOW_GAP_MS)
+        assertEquals(listOf(200, 50, 50), commands.map { (it as Command.Add).entries.size })
+        assertEquals((201..450).map { "s$it" } + (1..50).map { "a$it" }, addedIds)
+        assertEquals(500, created.size + addedIds.size)
+    }
+
+    @Test
+    fun aListAddCountsAddsSentButNotYetInASnapshot() {
+        inRoom(playing)
+        controller.handle(RitmeLocalAction.AddAll((1..300).map { song("s$it") }))
+        timers.advanceBy(10 * RitmeSession.OVERFLOW_GAP_MS) // both batches out, neither in a snapshot yet
+        assertEquals(300, session.owedEntries)
+        controller.handle(RitmeLocalAction.AddAll((1..300).map { song("b$it") }))
+        assertEquals(RitmeToast.AddedRestFull(199), toasts.shown.last())
+        timers.advanceBy(10 * RitmeSession.OVERFLOW_GAP_MS)
+        assertEquals(499, addedIds.size)
+        // the snapshot with everything lands: nothing is owed any more, and the room is full
+        val queue = playing.queue + addedIds.mapIndexed { i, id -> entry("n$i", videoId = id) }
+        connector.last.emit(ConnectionEvent.State(playing.copy(version = 2, queue = queue)))
+        assertEquals(0, session.owedEntries)
+        controller.handle(RitmeLocalAction.AddAll(listOf(song("c"))))
+        assertEquals(RitmeToast.CommandFailed(NoticeKey.QUEUE_FULL), toasts.shown.last())
+    }
+
+    @Test
+    fun startWithNothingShareableSaysNotAvailableAndOpensNothing() {
+        controller.openStartWith(emptyList())
+        controller.openStartWith(listOf(song("x", local = true)))
+        assertNull(controller.sheetRequest.value)
+        assertEquals(List<RitmeToast>(2) { RitmeToast.NotAvailable }, toasts.shown)
     }
 }

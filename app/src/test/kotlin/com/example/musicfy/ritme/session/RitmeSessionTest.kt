@@ -346,4 +346,70 @@ class RitmeSessionTest {
         assertEquals(1, connector.last.commands.size)
         assertEquals(0, timers.pendingCount())
     }
+
+    private fun mine(vararg videoIds: String, memberId: String = "m1") =
+        videoIds.mapIndexed { i, id -> com.example.musicfy.ritme.testing.entry("x$i", addedBy = memberId, videoId = id) }
+
+    @Test
+    fun anAddIsOwedUntilASnapshotHoldsIt() {
+        joinedRoom()
+        assertTrue(session.add(listOf(newEntry("aaaa"), newEntry("bbbb")), playNext = false))
+        assertEquals(2, session.owedEntries)
+        // someone else's add of the same song does not count
+        connector.last.emit(ConnectionEvent.State(room(version = 6, queue = mine("aaaa", "bbbb", memberId = "m2"))))
+        assertEquals(2, session.owedEntries)
+        connector.last.emit(ConnectionEvent.State(room(version = 7, queue = mine("aaaa", "bbbb"))))
+        assertEquals(0, session.owedEntries)
+    }
+
+    @Test
+    fun theSameSongAddedTwiceWaitsForBothCopies() {
+        joinedRoom(room(version = 5, queue = mine("aaaa")))
+        session.add(listOf(newEntry("aaaa")), playNext = false)
+        session.add(listOf(newEntry("aaaa")), playNext = false)
+        assertEquals(2, session.owedEntries)
+        connector.last.emit(ConnectionEvent.State(room(version = 6, queue = mine("aaaa", "aaaa"))))
+        assertEquals(1, session.owedEntries)
+        connector.last.emit(ConnectionEvent.State(room(version = 7, queue = mine("aaaa", "aaaa", "aaaa"))))
+        assertEquals(0, session.owedEntries)
+    }
+
+    @Test
+    fun aRefusedAddIsNoLongerOwed() {
+        joinedRoom()
+        session.add(listOf(newEntry("aaaa")), playNext = false) // r1
+        session.add(listOf(newEntry("aaaa")), playNext = false) // r2
+        connector.last.emit(ConnectionEvent.Failure("r1", ErrorCode.QUEUE_FULL))
+        assertEquals(1, session.owedEntries)
+        // r2 now needs only one copy in the room
+        connector.last.emit(ConnectionEvent.State(room(version = 6, queue = mine("aaaa"))))
+        assertEquals(0, session.owedEntries)
+    }
+
+    @Test
+    fun anAddNeverSeenExpiresAndAResumeWelcomeClearsTheRest() {
+        joinedRoom()
+        session.add(listOf(newEntry("aaaa")), playNext = false)
+        timers.advanceBy(RitmeSession.IN_FLIGHT_EXPIRY_MS)
+        assertEquals(0, session.owedEntries)
+        session.add(listOf(newEntry("bbbb")), playNext = false)
+        connector.last.emit(ConnectionEvent.Status(ConnectionStatus.RECONNECTING))
+        connector.last.welcome(room(version = 9))
+        assertEquals(0, session.owedEntries)
+    }
+
+    @Test
+    fun owedEntriesCountTheOverflowNotSentYet() {
+        session.create(
+            "https://ritme.dubeli.id",
+            "Budi",
+            InitialQueue(first = listOf(newEntry("aaaa")), startIndex = 0, startPositionMs = 0, overflow = listOf(listOf(newEntry("bbbb"), newEntry("cccc"))), skipped = 0),
+        )
+        connector.last.welcome(room(queue = mine("aaaa")))
+        assertEquals(2, session.owedEntries)
+        timers.advanceBy(RitmeSession.OVERFLOW_DELAY_MS) // sent, not yet in a snapshot
+        assertEquals(2, session.owedEntries)
+        connector.last.emit(ConnectionEvent.State(room(version = 2, queue = mine("aaaa", "bbbb", "cccc"))))
+        assertEquals(0, session.owedEntries)
+    }
 }

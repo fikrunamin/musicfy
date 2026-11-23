@@ -83,8 +83,16 @@ class RitmeController @Inject constructor(
         return true
     }
 
-    fun openStartWith(songs: List<MediaMetadata?>) =
-        request(if (session.state.value.inRoom) RitmeSheetRequest.Kind.Room else RitmeSheetRequest.Kind.Entry(startWith = songs))
+    /**
+     * The start sheet with [songs] as the room's starting queue (in a room: the room sheet). A list
+     * with nothing a room can take (empty, a failed fetch, local files only) opens nothing and says
+     * "Not available during Ritme", instead of starting an empty room.
+     */
+    fun openStartWith(songs: List<MediaMetadata?>) {
+        if (session.state.value.inRoom) return request(RitmeSheetRequest.Kind.Room)
+        if (!RitmeEntries.hasShareable(songs)) return notifier.show(RitmeToast.NotAvailable)
+        request(RitmeSheetRequest.Kind.Entry(startWith = songs))
+    }
 
     fun consumeSheetRequest(id: Long) {
         if (_sheetRequest.value?.id == id) _sheetRequest.value = null
@@ -177,12 +185,14 @@ class RitmeController @Inject constructor(
 
     /**
      * Play/Shuffle on a playlist, album or artist page: the list goes to the end of the room queue
-     * in the order given, as much of it as the room still holds (the server's [RitmeEntries.MAX_QUEUE]
-     * counts every entry, played ones too, and refuses a whole Add past it), the batches after the
-     * first paced by the session. Local files are skipped; only local files: the skipped toast.
+     * in the order given, as much of it as the room still holds, the batches after the first paced
+     * by the session. The server's [RitmeEntries.MAX_QUEUE] counts every entry, played ones too, and
+     * refuses a whole Add past it, so the room's queue and what this session still owes it (overflow
+     * not sent yet, Adds not yet in a snapshot) are both taken. Local files are skipped; only local
+     * files: the skipped toast. A list cut short says the rest did not fit.
      */
     private fun addAll(room: RoomState, songs: List<MediaMetadata?>) {
-        val space = RitmeEntries.MAX_QUEUE - room.queue.size
+        val space = RitmeEntries.MAX_QUEUE - room.queue.size - session.owedEntries
         if (space <= 0) {
             notifier.show(RitmeToast.CommandFailed(NoticeKey.QUEUE_FULL))
             return
@@ -192,7 +202,14 @@ class RitmeController @Inject constructor(
             notifier.show(if (batches.skipped > 0) RitmeToast.SkippedLocal(batches.skipped) else RitmeToast.NotAvailable)
             return
         }
-        notifier.show(if (session.addPaced(batches.batches)) RitmeToast.Added(batches.count) else RitmeToast.Reconnecting)
+        val cutShort = songs.count { RitmeEntries.toNewEntry(it) != null } > batches.count
+        notifier.show(
+            when {
+                !session.addPaced(batches.batches) -> RitmeToast.Reconnecting
+                cutShort -> RitmeToast.AddedRestFull(batches.count)
+                else -> RitmeToast.Added(batches.count)
+            },
+        )
     }
 
     private fun add(songs: List<MediaMetadata?>, playNext: Boolean) {

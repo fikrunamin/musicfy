@@ -177,6 +177,7 @@ fun YouTubePlaylistMenu(
     fun addToRitmeInRoom(shuffled: Boolean): Boolean {
         if (!playerConnection.ritmeGate.isActive) return false
         coroutineScope.launch {
+            // A failed fetch gives nothing to add: the controller says "Not available".
             val all = allSongs()
             playerConnection.addAllToRitme { (if (shuffled) all.shuffled() else all).map { it.toMediaMetadata() } }
         }
@@ -520,8 +521,8 @@ fun YouTubePlaylistMenu(
                             },
                             onClick = {
                                 coroutineScope.launch {
-                                    val all = allSongs().map { it.toMediaMetadata() }
-                                    if (RitmeEntries.hasShareable(all)) ritme.controller.openStartWith(all)
+                                    // A failed fetch or nothing shareable: openStartWith says "Not available".
+                                    ritme.controller.openStartWith(allSongs().map { it.toMediaMetadata() })
                                 }
                                 onDismiss()
                             }

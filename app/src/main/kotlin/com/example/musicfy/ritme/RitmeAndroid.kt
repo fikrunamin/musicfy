@@ -61,6 +61,8 @@ class TopToastRitmeNotifier(
             RitmeToast.CastingStopped -> info(res.getString(R.string.ritme_toast_casting_stopped))
             is RitmeToast.Added ->
                 info(res.getQuantityString(R.plurals.ritme_toast_added, toast.count, toast.count), R.drawable.queue_music)
+            is RitmeToast.AddedRestFull ->
+                info(res.getQuantityString(R.plurals.ritme_toast_added_rest_full, toast.count, toast.count), R.drawable.queue_music)
             is RitmeToast.SkippedLocal ->
                 info(res.getQuantityString(R.plurals.ritme_toast_skipped_local, toast.count, toast.count))
             is RitmeToast.Ended -> RitmeTexts.endedToast(toast.reason)?.let { info(res.getString(it)) }

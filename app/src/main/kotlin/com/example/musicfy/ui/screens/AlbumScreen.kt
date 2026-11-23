@@ -261,6 +261,8 @@ fun AlbumScreen(
                 isPlaying = isThisAlbum && isPlaying,
                 onPlayClick = {
                     when {
+                        // In a Ritme room Play always adds the album, as on the other pages.
+                        playerConnection.ritmeGate.isActive -> playAll()
                         isThisAlbum && isPlaying -> playerConnection.ritmeOr(RitmeLocalAction.Pause) { playerConnection.player.pause() }
                         isThisAlbum -> playerConnection.ritmeOr(RitmeLocalAction.Play) { playerConnection.player.play() }
                         else -> playAll()

@@ -11,6 +11,9 @@
     <plurals name="ritme_toast_added">
         <item quantity="other">%d lagu ditambahkan ke Ritme</item>
     </plurals>
+    <plurals name="ritme_toast_added_rest_full">
+        <item quantity="other">Ditambahkan %d lagu, sisanya tidak muat</item>
+    </plurals>
     <plurals name="ritme_toast_skipped_local">
         <item quantity="other">%d lagu lokal dilewati</item>
     </plurals>

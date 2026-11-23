@@ -58,6 +58,18 @@ class RitmeSession @Inject constructor(
     private var overflowTimer: RitmeTimer? = null
 
     /**
+     * An Add sent and not yet seen in a snapshot. There is no per-command ack, so it counts as
+     * landed once the room holds at least [expected] entries of this member with its last videoId:
+     * those in the room when it was sent, plus the ones this Add and the Adds still in flight before
+     * it bring. A refusal (Failure with its reqId), a new Welcome or the end drop it; so does
+     * [IN_FLIGHT_EXPIRY_MS], for an Add whose entries someone removed before a snapshot showed them.
+     */
+    private class InFlightAdd(val reqId: String, val videoIds: List<String>, var expected: Int, val sentAt: Long) {
+        val lastVideoId: String get() = videoIds.last()
+    }
+    private val inFlightAdds = ArrayList<InFlightAdd>()
+
+    /**
      * The server URL this session was started or joined with. Share links use it, so a server URL
      * changed in Settings mid-room only applies to the next Ritme.
      */
@@ -104,7 +116,25 @@ class RitmeSession @Inject constructor(
     fun next(): Boolean = send(Command.Next)
     fun previous(): Boolean = send(Command.Previous)
     fun playEntry(entryId: String): Boolean = send(Command.PlayEntry(entryId))
-    fun add(entries: List<NewEntry>, playNext: Boolean): Boolean = send(Command.Add(entries, playNext))
+    fun add(entries: List<NewEntry>, playNext: Boolean): Boolean {
+        threadCheck.check()
+        if (!canSend()) return false
+        val reqId = conn?.command(Command.Add(entries, playNext)) ?: return false
+        if (entries.isNotEmpty()) trackAdd(reqId, entries)
+        return true
+    }
+
+    /**
+     * Entries this session still owes the room: overflow batches not sent yet plus Adds sent but not
+     * yet in a snapshot. The room's [RoomState.queue] does not hold them, but the server's 500-entry
+     * cap will, so a list add counts them as taken.
+     */
+    val owedEntries: Int
+        get() {
+            threadCheck.check()
+            pruneExpiredAdds()
+            return pendingOverflow.sumOf { it.size } + inFlightAdds.sumOf { it.videoIds.size }
+        }
 
     /**
      * A long list for the end of the queue (a whole playlist or album): the first batch now, the
@@ -150,11 +180,46 @@ class RitmeSession @Inject constructor(
         awaitingCreatedRoom = false
         clock.reset()
         clearOverflow()
+        inFlightAdds.clear()
         _state.value = RitmeReducer.start(_state.value)
         lateinit var c: ConnectionLike
         c = connector.connect(RitmeLinks.socketUrl(url)) { event -> if (conn === c) onEvent(event) }
         conn = c
         return c
+    }
+
+    private fun mineWith(room: RoomState?, videoId: String): Int {
+        val me = _state.value.memberId ?: return 0
+        return room?.queue?.count { it.addedBy == me && it.videoId == videoId } ?: 0
+    }
+
+    private fun trackAdd(reqId: String, entries: List<NewEntry>) {
+        val ids = entries.map { it.videoId }
+        val last = ids.last()
+        val expected = mineWith(_state.value.room, last) +
+            inFlightAdds.sumOf { add -> add.videoIds.count { it == last } } +
+            ids.count { it == last }
+        inFlightAdds += InFlightAdd(reqId, ids, expected, timers.now())
+    }
+
+    /** Drops [gone] and lowers what the Adds sent after it wait for by what it would have brought. */
+    private fun dropInFlight(gone: InFlightAdd) {
+        val index = inFlightAdds.indexOf(gone)
+        if (index < 0) return
+        inFlightAdds.removeAt(index)
+        for (later in inFlightAdds.subList(index, inFlightAdds.size)) {
+            later.expected -= gone.videoIds.count { it == later.lastVideoId }
+        }
+    }
+
+    private fun confirmInFlight(room: RoomState?) {
+        if (room == null) return
+        inFlightAdds.filter { mineWith(room, it.lastVideoId) >= it.expected }.forEach { inFlightAdds.remove(it) }
+    }
+
+    private fun pruneExpiredAdds() {
+        val now = timers.now()
+        inFlightAdds.filter { now - it.sentAt >= IN_FLIGHT_EXPIRY_MS }.forEach(::dropInFlight)
     }
 
     private fun canSend(): Boolean =
@@ -179,10 +244,21 @@ class RitmeSession @Inject constructor(
                 conn = null
                 awaitingCreatedRoom = false
                 clearOverflow()
+                inFlightAdds.clear()
             }
+            is ConnectionEvent.Failure -> inFlightAdds.firstOrNull { it.reqId == event.reqId }?.let(::dropInFlight)
             else -> Unit
         }
         _state.value = RitmeReducer.reduce(_state.value, event)
+        when (event) {
+            is ConnectionEvent.State -> confirmInFlight(_state.value.room)
+            // A Welcome (also a resume) is the room as the server has it: what it lacks was lost with the old socket.
+            is ConnectionEvent.Welcome -> {
+                confirmInFlight(_state.value.room)
+                inFlightAdds.clear()
+            }
+            else -> Unit
+        }
         if (event is ConnectionEvent.Welcome) {
             scheduleOverflow(event.welcome.state.code)
             if (awaitingCreatedRoom) {
@@ -228,5 +304,7 @@ class RitmeSession @Inject constructor(
         /** After the Welcome's Ack and the 5-ping burst (4 x 200 ms) have gone out and mostly come back. */
         const val OVERFLOW_DELAY_MS = 1_200L
         const val OVERFLOW_GAP_MS = 100L
+        /** An Add not seen in any snapshot by then is taken as lost (or removed before it showed). */
+        const val IN_FLIGHT_EXPIRY_MS = 10_000L
     }
 }

@@ -14,6 +14,10 @@
         <item quantity="one">Added %d song to Ritme</item>
         <item quantity="other">Added %d songs to Ritme</item>
     </plurals>
+    <plurals name="ritme_toast_added_rest_full">
+        <item quantity="one">Added %d song, the rest didn\'t fit</item>
+        <item quantity="other">Added %d songs, the rest didn\'t fit</item>
+    </plurals>
     <plurals name="ritme_toast_skipped_local">
         <item quantity="one">%d local song skipped</item>
         <item quantity="other">%d local songs skipped</item>
