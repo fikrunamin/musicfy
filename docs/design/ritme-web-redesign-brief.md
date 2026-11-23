@@ -321,3 +321,82 @@ YouTube player). Keep everything else from the previous design (blurred artwork 
 stack, "Tersinkron", queue rows). Deliver: listen (before start), listen (playing), remote — mobile
 390×844 dark & light, plus desktop 1440×900 where the left column holds this slot and controls.
 ```
+
+---
+
+## 12. Tambahan: layar nonton video bareng
+
+Bagian ini menambah layar baru dan tidak mengubah layar yang sudah jadi.
+
+**Konteks:** selain lagu, antrean Ritme juga bisa berisi **video**, baik video YouTube biasa maupun
+link video/streaming (mp4, siaran langsung). Saat entri video sedang diputar, semua anggota menonton
+video yang sama di detik yang sama. Web sudah bisa memutar video; yang belum ada adalah desainnya dan
+cara menambahkan video (lihat layar L).
+
+Aturan dari bagian 11 tetap berlaku: **satu panggung**, video menempati slot utama, dan **tidak boleh
+ada apa pun di atas video**.
+
+### I. Room: video sedang diputar (mode Dengar), HP tegak
+- Slot utama berubah menjadi **pemutar video 16:9 selebar layar** (tepi 16 px atau full-bleed),
+  menggantikan cover persegi.
+- Di bawahnya: judul video, nama channel atau sumber, "oleh Budi", progres dan kontrol yang sama
+  seperti lagu.
+- Lencana kecil **"Video"** di dekat judul. Untuk siaran langsung pakai lencana **"LIVE"** dan
+  sembunyikan bar progres.
+- Tombol **"Layar penuh"** (ikon expand) **di luar** area video, misalnya di baris kontrol.
+- Latar: blur dari thumbnail video, lebih gelap dari mode lagu supaya fokus ke video.
+- Antrean tetap bisa digulir di bawahnya.
+
+### J. Room: video, HP miring dan layar penuh
+- HP miring: video memenuhi layar (16:9). Kontrol room tampil sebagai **bar tipis di bawah atau di
+  samping area video**, bukan di atas video, dan bisa disembunyikan dengan sekali ketuk di luar video.
+- Indikator kecil "Tersinkron" dan jumlah anggota tetap terlihat di pinggir.
+- Tombol keluar dari layar penuh.
+
+### K. Room: video di desktop (mode teater)
+- Saat entri video diputar, layout desktop beralih ke **mode teater**: video besar di tengah-kiri
+  (16:9, lebar maksimum), lalu judul dan kontrol di bawahnya. Antrean dan anggota pindah ke kolom
+  kanan yang lebih sempit (bisa dilipat).
+- Saat kembali ke lagu, layout kembali ke tiga kolom biasa dengan transisi halus.
+
+### Video di mode Remote
+- Tanpa pemutar. Slot menampilkan **thumbnail video 16:9** dengan lencana "Video" atau "LIVE",
+  kontrolnya di bawah.
+
+### Baris antrean untuk video
+- Thumbnail **16:9** (misalnya 78 × 44 px, sudut 8 px) sebagai pengganti cover persegi, dengan
+  lencana kecil "Video" atau "LIVE" dan durasi.
+- Entri yang tidak bisa diputar tetap pakai tanda "Tidak bisa diputar di web".
+
+### L. Sheet "Tambah video"
+Fitur ini belum ada di aplikasi, tapi desainnya dibuat sekarang.
+- Dibuka dari tombol "Tambah lagu" yang kini punya dua tab, **"Lagu"** dan **"Video"**, atau dari
+  tombol terpisah "Tambah video".
+- Kolom **"Tempel link video"** (placeholder "Link YouTube atau link video") dan tombol **"Tambah"**.
+- Pratinjau setelah link ditempel: thumbnail 16:9, judul, channel atau sumber, durasi (atau "LIVE").
+- Pesan salah: "Link tidak dikenali", "Video ini tidak bisa diputar di web", "Halaman harus https
+  untuk link http".
+- Opsi **"Putar berikutnya"** seperti pada lagu.
+
+**Yang dikirim:** layar **I** (HP, gelap dan terang), **J** (HP miring), **K** (desktop 1440 × 900),
+video di mode Remote (HP), baris antrean video, dan sheet **L**.
+
+**Prompt tambahan siap tempel:**
+
+```
+Add "watch together" video screens to the Ritme design (keep all existing screens and rules: one
+stage, nothing overlaid on the video, monochrome + artwork-derived colour, Inter SemiBold, pill
+buttons, bottom sheets, Indonesian copy). (I) Mobile portrait, video entry playing in listen mode:
+the main slot becomes a full-width 16:9 video player; below it title, channel/source, "oleh Budi",
+a small "Video" badge (or "LIVE" with no progress bar), progress, previous/play-pause/next and a
+fullscreen button placed outside the video area; darker blurred thumbnail backdrop; queue below.
+(J) Mobile landscape/fullscreen: video fills the screen, room controls as a slim bar beside or
+below the video (never on top), small "Tersinkron" + member count at the edge. (K) Desktop
+1440×900 theater mode: large 16:9 video left-centre with controls below, narrow collapsible right
+column for queue and members. Remote mode with a video entry: 16:9 thumbnail with badge, no player.
+Queue rows for videos: 16:9 thumbnail (~78×44, 8px radius) with "Video"/"LIVE" badge and duration.
+(L) "Tambah video" bottom sheet: tabs "Lagu" / "Video", field "Tempel link video" (placeholder
+"Link YouTube atau link video"), preview card (16:9 thumbnail, title, source, duration), buttons
+"Tambah" and "Putar berikutnya", errors "Link tidak dikenali", "Video ini tidak bisa diputar di
+web". Show dark and light.
+```
