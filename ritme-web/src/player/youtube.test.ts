@@ -11,17 +11,26 @@ class FakeYTPlayer {
   shownVideoId = '';
   /** What getPlayerState() reports (YT.PlayerState: 1 playing, 5 cued, ...). */
   playerState = -1;
+  /** Like the real API: a cue is in flight until CUED/PLAYING is reported, and playVideo() then fails with error 2. */
+  cueInFlight = false;
   constructor(
     readonly element: HTMLElement,
     readonly options: YTPlayerOptions,
   ) {
     FakeYTPlayer.last = this;
+    const onStateChange = options.events.onStateChange;
+    options.events.onStateChange = (e) => {
+      if (e.data === CUED || e.data === 1) this.cueInFlight = false;
+      onStateChange(e);
+    };
   }
   cueVideoById(o: unknown) {
     this.calls.push(['cue', o]);
+    this.cueInFlight = true;
   }
   playVideo() {
     this.calls.push(['play']);
+    if (this.cueInFlight) this.options.events.onError({ data: 2 });
   }
   pauseVideo() {
     this.calls.push(['pause']);
@@ -73,8 +82,9 @@ describe('createYouTubeApiLoader', () => {
 });
 
 describe('createYouTubePlayer', () => {
-  it('queues load and play until ready, then cues paused and plays', async () => {
-    const player = createYouTubePlayer(document.body, () => {}, () => Promise.resolve(YT));
+  it('queues load and play until ready, then cues paused and plays once CUED', async () => {
+    const events: PlayerEvent[] = [];
+    const player = createYouTubePlayer(document.body, (e) => events.push(e), () => Promise.resolve(YT));
     player.load({ kind: 'youtube', videoId: 'abc' }, 15_000, 1);
     player.play();
     expect(player.currentMs()).toBeNull();
@@ -82,16 +92,131 @@ describe('createYouTubePlayer', () => {
     const yt = FakeYTPlayer.last!;
     expect(yt.options.host).toBe('https://www.youtube-nocookie.com');
     yt.options.events.onReady();
-    expect(yt.calls).toEqual([['cue', { videoId: 'abc', startSeconds: 15 }], ['play']]);
+    // Not play in the same tick: YouTube rejects that with error 2 (mid-join "Tidak bisa diputar di web").
+    expect(yt.calls).toEqual([['cue', { videoId: 'abc', startSeconds: 15 }]]);
     yt.time = 16.5;
     expect(player.currentMs()).toBeNull(); // new video has not reported yet
     yt.shownVideoId = 'abc';
     yt.options.events.onStateChange({ data: CUED });
+    expect(yt.calls).toEqual([['cue', { videoId: 'abc', startSeconds: 15 }], ['play']]);
     expect(player.currentMs()).toBe(15_000); // cued: the cued start, not getCurrentTime()
     yt.options.events.onStateChange({ data: 1 });
     expect(player.currentMs()).toBe(16_500);
     player.seek(20_000);
     expect(yt.calls.at(-1)).toEqual(['seek', 20, true]);
+    expect(events).toEqual([{ type: 'playing', gen: 1 }]); // no spurious unplayable
+  });
+
+  it('on a ready player, holds play() for a new track until its cue reports CUED', async () => {
+    const { player, yt, events } = await readyPlayer();
+    player.load({ kind: 'youtube', videoId: 'a' }, 0, 1);
+    yt.shownVideoId = 'a';
+    yt.options.events.onStateChange({ data: 1 });
+    yt.calls.length = 0;
+    events.length = 0;
+
+    player.load({ kind: 'youtube', videoId: 'b' }, 30_000, 2); // anchor already past
+    player.play();
+    expect(yt.calls).toEqual([['cue', { videoId: 'b', startSeconds: 30 }]]);
+    player.play(); // a controller retry while the cue is in flight: still held
+    expect(yt.calls).toHaveLength(1);
+    yt.shownVideoId = 'b';
+    yt.options.events.onStateChange({ data: CUED });
+    expect(yt.calls.at(-1)).toEqual(['play']);
+    yt.options.events.onStateChange({ data: 1 });
+    expect(events).toEqual([{ type: 'playing', gen: 2 }]);
+    player.play(); // cue settled: plays right away again
+    expect(yt.calls.at(-1)).toEqual(['play']);
+    expect(yt.calls.filter((c) => c[0] === 'play')).toHaveLength(2);
+  });
+
+  it('a pause while the cue is in flight cancels the held play', async () => {
+    const { player, yt, events } = await readyPlayer();
+    player.load({ kind: 'youtube', videoId: 'a' }, 10_000, 1);
+    player.play();
+    player.pause();
+    yt.shownVideoId = 'a';
+    yt.options.events.onStateChange({ data: CUED });
+    expect(yt.calls.some((c) => c[0] === 'play')).toBe(false);
+    expect(player.currentMs()).toBe(10_000);
+    expect(events).toEqual([]);
+  });
+
+  it('a new load while a cue is in flight releases the play only on the new video\'s CUED', async () => {
+    const { player, yt, events } = await readyPlayer();
+    player.load({ kind: 'youtube', videoId: 'a' }, 0, 1);
+    yt.shownVideoId = 'a';
+    yt.options.events.onStateChange({ data: CUED });
+    yt.calls.length = 0;
+
+    player.load({ kind: 'youtube', videoId: 'b' }, 0, 2);
+    player.play();
+    player.load({ kind: 'youtube', videoId: 'c' }, 5_000, 3); // gen changes before B is cued
+    expect(yt.calls).toEqual([
+      ['cue', { videoId: 'b', startSeconds: 0 }],
+      ['cue', { videoId: 'c', startSeconds: 5 }],
+    ]);
+    yt.shownVideoId = 'b';
+    yt.options.events.onStateChange({ data: CUED }); // B's late CUED: known stale, dropped
+    expect(yt.calls.some((c) => c[0] === 'play')).toBe(false);
+    yt.shownVideoId = 'c';
+    yt.options.events.onStateChange({ data: CUED });
+    expect(yt.calls.at(-1)).toEqual(['play']);
+    yt.options.events.onStateChange({ data: 1 });
+    expect(events).toEqual([{ type: 'playing', gen: 3 }]);
+  });
+
+  it('a load and play queued before ready, then replaced, cues and plays only the latest', async () => {
+    const events: PlayerEvent[] = [];
+    const player = createYouTubePlayer(document.body, (e) => events.push(e), () => Promise.resolve(YT));
+    player.load({ kind: 'youtube', videoId: 'a' }, 0, 1);
+    player.play();
+    player.load({ kind: 'youtube', videoId: 'b' }, 2_000, 2);
+    await flush();
+    const yt = FakeYTPlayer.last!;
+    yt.options.events.onReady();
+    expect(yt.calls).toEqual([['cue', { videoId: 'b', startSeconds: 2 }]]);
+    yt.shownVideoId = 'b';
+    yt.options.events.onStateChange({ data: CUED });
+    expect(yt.calls.at(-1)).toEqual(['play']);
+    yt.options.events.onStateChange({ data: 1 });
+    expect(events).toEqual([{ type: 'playing', gen: 2 }]);
+  });
+
+  it('a play retry long after a cue whose CUED event never arrived plays if the player reports CUED', async () => {
+    const { player, yt } = await readyPlayer();
+    const realNow = Date.now;
+    let now = 1_000_000;
+    Date.now = () => now;
+    try {
+      player.load({ kind: 'youtube', videoId: 'a' }, 0, 1);
+      player.play();
+      expect(yt.calls.some((c) => c[0] === 'play')).toBe(false);
+      yt.shownVideoId = 'a';
+      yt.playerState = CUED;
+      yt.cueInFlight = false; // the cue finished, but its event was lost
+      player.play(); // too early to second-guess the event
+      expect(yt.calls.some((c) => c[0] === 'play')).toBe(false);
+      now += 3_500;
+      player.play();
+      expect(yt.calls.at(-1)).toEqual(['play']);
+      expect(player.currentMs()).toBe(0);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it('a re-cue from seek while paused, then play, waits for CUED', async () => {
+    const { player, yt, events } = await readyPlayer();
+    player.load({ kind: 'youtube', videoId: 'a' }, 0, 1);
+    yt.shownVideoId = 'a';
+    yt.options.events.onStateChange({ data: CUED });
+    player.seek(40_000);
+    player.play();
+    expect(yt.calls.at(-1)).toEqual(['cue', { videoId: 'a', startSeconds: 40 }]);
+    yt.options.events.onStateChange({ data: CUED });
+    expect(yt.calls.at(-1)).toEqual(['play']);
+    expect(events).toEqual([]);
   });
 
   it('maps states and embed errors to events tagged with the load generation', async () => {

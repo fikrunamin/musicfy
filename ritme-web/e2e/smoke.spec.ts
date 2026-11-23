@@ -67,6 +67,29 @@ test('two tabs in one room: the song tab A adds shows up in tab B', async ({ con
   await expect.poll(() => b.evaluate(() => (window as unknown as { __fakeYt?: { playing: boolean } }).__fakeYt?.playing)).toBe(true);
 });
 
+test('joining a room that is already playing plays the song mid-way, not "Tidak bisa diputar di web"', async ({ context }) => {
+  type FakeYt = { cued: string | null; startSeconds: number | null; playing: boolean; errors: number[] };
+  const fakeYt = (p: Page) => p.evaluate(() => (window as unknown as { __fakeYt?: FakeYt }).__fakeYt ?? null);
+  await isolate(context);
+  const { a, b } = await openRoom(context);
+
+  await a.getByLabel('Cari lagu').fill('rick');
+  await a.getByRole('button', { name: 'Cari', exact: true }).click();
+  await a.getByRole('button', { name: `Tambah: ${SONG.title}` }).click();
+  await expect(b.locator('section.now-playing')).toContainText(SONG.title);
+  // Let the start anchor pass, so the room is playing when B starts listening.
+  await b.waitForTimeout(3_000);
+
+  // The player is created only now: load and play are requested before it is ready.
+  await b.getByRole('button', { name: 'Ketuk untuk ikut dengar' }).click();
+  await expect.poll(async () => (await fakeYt(b))?.playing).toBe(true);
+  const yt = (await fakeYt(b))!;
+  expect(yt.cued).toBe(SONG.videoId);
+  expect(yt.startSeconds).toBeGreaterThan(1); // cued mid-song: a real mid-join
+  expect(yt.errors).toEqual([]);
+  await expect(b.getByText('Tidak bisa diputar di web', { exact: true })).toHaveCount(0);
+});
+
 test('a YouTube link and a direct mp4 link from the Video tab reach the other tab', async ({ context }) => {
   await isolate(context);
   const { a, b } = await openRoom(context);
