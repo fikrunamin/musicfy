@@ -14,7 +14,7 @@ function renderQueue(memberId: string, guestsCanControl: boolean, unplayable: Re
   render(
     <QueueList
       session={session}
-      room={room({ queue, currentEntryId: 'a', settings: { guestsCanControl } })}
+      room={room({ queue, currentEntryId: 'a', settings: { guestsCanControl, guestsCanAdd: true } })}
       memberId={memberId}
       unplayable={unplayable}
       online

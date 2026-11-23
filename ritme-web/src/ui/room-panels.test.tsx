@@ -57,7 +57,7 @@ describe('MembersPanel', () => {
 describe('NowPlaying', () => {
   const playingRoom = (guestsCanControl: boolean) =>
     room({
-      settings: { guestsCanControl },
+      settings: { guestsCanControl, guestsCanAdd: true },
       queue: [entry('e1', { title: 'Lagu Satu' })],
       currentEntryId: 'e1',
       playback: { isPlaying: true, positionMs: 0, anchorServerTimeMs: 0 },

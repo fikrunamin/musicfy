@@ -3,7 +3,7 @@ import { canControl, canRemove, isHost, moveDownTarget, moveUpTarget, splitQueue
 import { entry, room } from '../testing/builders';
 
 describe('permissions', () => {
-  const locked = room({ settings: { guestsCanControl: false } });
+  const locked = room({ settings: { guestsCanControl: false, guestsCanAdd: true } });
 
   it('host can always control; guests only while guestsCanControl', () => {
     expect(isHost(locked, 'm1')).toBe(true);

@@ -221,4 +221,12 @@ describe('Session', () => {
     expect(resyncs).toBe(1);
     expect(t.conns[0].bursts).toBe(0);
   });
+
+  it('SetSettings sends every setting, changing only the one asked for', () => {
+    const t = setup();
+    t.session.create('Budi');
+    t.welcome(t.conns[0]);
+    t.session.setGuestsCanControl(false);
+    expect(t.conns[0].commands).toEqual([{ type: 'SetSettings', settings: { guestsCanControl: false, guestsCanAdd: true } }]);
+  });
 });

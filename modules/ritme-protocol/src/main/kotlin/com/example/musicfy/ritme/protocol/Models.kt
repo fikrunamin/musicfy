@@ -18,8 +18,18 @@ const val PROTOCOL_VERSION = 1
 /** Oldest client protocol the server still accepts. Raise only when dropping old clients. */
 const val MIN_SUPPORTED_PROTOCOL_VERSION = 1
 
+/**
+ * Host switches. SetSettings replaces all of them, so clients send every field (the latest
+ * snapshot's values with one changed). A field missing on the wire takes its default, which is
+ * how settings from an older peer decode.
+ */
 @Serializable
-data class RoomSettings(val guestsCanControl: Boolean = true)
+data class RoomSettings(
+    /** Members other than the host may Play, Pause, Seek, Next, Previous, PlayEntry, Move and remove others' entries. */
+    val guestsCanControl: Boolean = true,
+    /** Members other than the host may Add (spec U6). */
+    val guestsCanAdd: Boolean = true,
+)
 
 @Serializable
 data class Member(

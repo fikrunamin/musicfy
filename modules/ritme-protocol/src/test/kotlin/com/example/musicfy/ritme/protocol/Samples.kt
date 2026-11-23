@@ -47,7 +47,7 @@ object Samples {
         ),
         "cmd-remove" to send(Command.Remove("e1")),
         "cmd-move" to send(Command.Move("e1", afterEntryId = null)),
-        "cmd-set-settings" to send(Command.SetSettings(RoomSettings(guestsCanControl = false))),
+        "cmd-set-settings" to send(Command.SetSettings(RoomSettings(guestsCanControl = false, guestsCanAdd = false))),
         "cmd-kick" to send(Command.Kick("m2")),
         "cmd-transfer-host" to send(Command.TransferHost("m2")),
         "cmd-end-room" to send(Command.EndRoom),

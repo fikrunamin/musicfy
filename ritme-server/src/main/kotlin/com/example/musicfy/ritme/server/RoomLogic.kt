@@ -45,6 +45,7 @@ object RoomLogic {
     fun apply(state: RoomState, by: String, cmd: Command, now: Long, ids: IdGen, size: SizeContext = SizeContext()): Outcome {
         val isHost = by == state.hostId
         val canControl = isHost || state.settings.guestsCanControl
+        val canAdd = isHost || state.settings.guestsCanAdd
         fun control(block: () -> Outcome): Outcome = if (canControl) block() else FORBIDDEN
         fun hostOnly(block: () -> Outcome): Outcome = if (isHost) block() else FORBIDDEN
 
@@ -57,7 +58,7 @@ object RoomLogic {
             is Command.PlayEntry -> control {
                 if (state.queue.any { it.entryId == cmd.entryId }) changed(startEntry(state, cmd.entryId, now)) else INVALID
             }
-            is Command.Add -> add(state, by, cmd, now, ids, size)
+            is Command.Add -> if (canAdd) add(state, by, cmd, now, ids, size) else FORBIDDEN
             is Command.Remove -> remove(state, by, canControl, cmd.entryId, now)
             is Command.Move -> control { move(state, cmd.entryId, cmd.afterEntryId) }
             is Command.SetSettings -> hostOnly { changed(state.copy(settings = cmd.settings)) }

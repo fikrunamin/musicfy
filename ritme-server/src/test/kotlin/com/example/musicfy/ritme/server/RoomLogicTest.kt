@@ -452,4 +452,21 @@ class RoomLogicTest {
         assertEquals("\u3164a", RoomLogic.cleanName("\u3164a"))
         assertEquals(ErrorCode.INVALID, rejected(apply(playingA, HOST, Command.Add(listOf(newEntry().copy(title = "\u200D\u200B"))))))
     }
+
+    @Test
+    fun guestsMayNotAddWhileTheHostTurnedAddingOff() {
+        val noAdds = playingA.copy(settings = RoomSettings(guestsCanControl = true, guestsCanAdd = false))
+        assertEquals(ErrorCode.FORBIDDEN, rejected(apply(noAdds, GUEST, Command.Add(listOf(newEntry())))))
+        assertEquals(4, ok(apply(noAdds, HOST, Command.Add(listOf(newEntry())))).queue.size)
+        // Adding and controlling are separate switches.
+        assertFalse(ok(apply(noAdds, GUEST, Command.Pause)).playback.isPlaying)
+        val addsOnly = playingA.copy(settings = RoomSettings(guestsCanControl = false, guestsCanAdd = true))
+        assertEquals(4, ok(apply(addsOnly, GUEST, Command.Add(listOf(newEntry())))).queue.size)
+    }
+
+    @Test
+    fun setSettingsReplacesBothSwitches() {
+        val changed = ok(apply(playingA, HOST, Command.SetSettings(RoomSettings(guestsCanControl = false, guestsCanAdd = false))))
+        assertEquals(RoomSettings(guestsCanControl = false, guestsCanAdd = false), changed.settings)
+    }
 }

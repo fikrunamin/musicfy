@@ -1,5 +1,5 @@
 import type { ConnectionEvent, JoinIntent } from '../net/connection';
-import type { Command, NewEntry } from '../protocol';
+import type { Command, NewEntry, RoomSettings } from '../protocol';
 import { ClockSync } from '../sync/clock';
 import { type NoticeKey, type SessionState, initialSession, sessionReducer } from './reducer';
 
@@ -157,7 +157,7 @@ export class Session implements SessionApi {
     this.send({ type: 'Move', entryId, afterEntryId });
   }
   setGuestsCanControl(value: boolean): void {
-    this.send({ type: 'SetSettings', settings: { guestsCanControl: value } });
+    this.sendSettings({ guestsCanControl: value });
   }
   kick(memberId: string): void {
     this.send({ type: 'Kick', memberId });
@@ -217,6 +217,12 @@ export class Session implements SessionApi {
   private send(cmd: Command): void {
     if (this.state.phase !== 'in-room' || this.state.connection !== 'online') return;
     this.conn?.command(cmd);
+  }
+
+  /** SetSettings replaces every setting: keep the others as the latest snapshot has them. */
+  private sendSettings(change: Partial<RoomSettings>): void {
+    const current = this.state.room?.settings ?? { guestsCanControl: true, guestsCanAdd: true };
+    this.send({ type: 'SetSettings', settings: { ...current, ...change } });
   }
 
   private dispatch(action: Parameters<typeof sessionReducer>[1]): void {

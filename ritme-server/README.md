@@ -131,6 +131,11 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
   entries carry an http(s) `url` (<= 2048 chars) and `videoId = ""`. `thumbnailUrl` is null or
   https (<= 512 chars), for YouTube kinds only from `*.ytimg.com`, `*.googleusercontent.com` or
   `*.ggpht.com`. `durationMs` is 0 (live) to 24 h.
+- Settings: `guestsCanControl` and `guestsCanAdd` (both default `true`). With `guestsCanAdd = false`
+  only the host may `Add` (others get `FORBIDDEN`). `SetSettings` replaces all settings, so clients
+  send every field, taking the others from the latest snapshot. A host on an older client that does
+  not know `guestsCanAdd` resets it to `true` whenever it changes another setting (accepted: the web
+  client always ships with the server).
 
 ### Abuse limits (`/ritme`)
 
