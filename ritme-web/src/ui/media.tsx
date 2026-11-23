@@ -9,7 +9,7 @@ interface ThumbProps {
   url: string | null;
   /** 78 × 44 (16:9) instead of 44 × 44: video rows, and every row of a queue that holds videos. */
   wide?: boolean;
-  /** Which placeholder to show without an image: a note, a play mark, or the film of a direct link. */
+  /** Which placeholder to show without an image: a note, a play mark, or the film of a direct link. Defaults to the play mark when wide, the note otherwise. */
   kind?: ThumbKind;
   /** Shown as a chip on wide thumbnails (videos). */
   duration?: string | null;
@@ -19,14 +19,15 @@ interface ThumbProps {
  * A thumbnail (handoff "Baris Lagu" / "Baris Video"): 44 × 44 or 78 × 44, r8, or a placeholder
  * unless the URL is https (entries come from any client).
  */
-export function Thumb({ url, wide = false, kind = 'song', duration = null }: ThumbProps) {
+export function Thumb({ url, wide = false, kind, duration = null }: ThumbProps) {
+  const shown: ThumbKind = kind ?? (wide ? 'video' : 'song');
   const src = httpsThumbnail(url);
   const cls = cx('thumb', wide && 'thumb-wide');
   const image = src ? (
     <img class={cls} src={src} alt="" loading="lazy" referrerpolicy="no-referrer" width={wide ? 78 : 44} height={44} />
   ) : (
-    <div class={cx(cls, 'thumb-empty', kind === 'direct' && 'thumb-direct')} aria-hidden="true">
-      <Icon name={kind === 'song' ? 'music_note' : kind === 'direct' ? 'movie' : 'play_arrow'} size={20} />
+    <div class={cx(cls, 'thumb-empty', shown === 'direct' && 'thumb-direct')} aria-hidden="true">
+      <Icon name={shown === 'song' ? 'music_note' : shown === 'direct' ? 'movie' : 'play_arrow'} size={20} />
     </div>
   );
   if (!wide || !duration) return image;

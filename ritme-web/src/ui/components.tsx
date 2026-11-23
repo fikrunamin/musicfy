@@ -164,7 +164,9 @@ export function EqBars({ playing }: { playing: boolean }) {
 export function MetaClip({ children }: { children: ComponentChildren }) {
   return (
     <span class="meta-clip">
-      <span class="meta-track">{children}</span>
+      <span class="meta-track">
+        {typeof children === 'string' || typeof children === 'number' ? <span>{children}</span> : children}
+      </span>
     </span>
   );
 }

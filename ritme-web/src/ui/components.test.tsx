@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Avatar, Badge, Button, FieldError, IconButton, TextField, initialOf } from './components';
+import { ICON_PATHS } from './icon-paths';
 import { MediaRow, Thumb, VideoPlaceholder } from './media';
 
 afterEach(cleanup);
@@ -74,11 +75,24 @@ describe('Badge and Avatar', () => {
 });
 
 describe('Thumb', () => {
-  it('shows an https image, square by default and 78 × 44 when wide', () => {
+  it('shows an https image, 44 × 44 by default and 78 × 44 when wide', () => {
+    const square = render(<Thumb url="https://i.ytimg.com/a.jpg" />).container.querySelector('img.thumb')!;
+    expect(square.getAttribute('width')).toBe('44');
+    expect(square.getAttribute('height')).toBe('44');
+    expect(square.classList.contains('thumb-wide')).toBe(false);
     const { container } = render(<Thumb url="https://i.ytimg.com/a.jpg" wide duration="24:18" />);
     const img = container.querySelector('img.thumb.thumb-wide')!;
+    expect(img.getAttribute('width')).toBe('78');
+    expect(img.getAttribute('height')).toBe('44');
     expect(img.getAttribute('referrerpolicy')).toBe('no-referrer');
     expect(container.querySelector('.thumb-frame .chip-duration')?.textContent).toBe('24:18');
+  });
+
+  it('without an image: the play mark when wide, the note when square', () => {
+    const wide = render(<Thumb url={null} wide />).container.querySelector('.thumb-empty path')!;
+    expect(wide.getAttribute('d')).toBe(ICON_PATHS.play_arrow);
+    const square = render(<Thumb url={null} />).container.querySelector('.thumb-empty path')!;
+    expect(square.getAttribute('d')).toBe(ICON_PATHS.music_note);
   });
 
   it('shows the film placeholder for a direct link without an image, and never a non-https URL', () => {
@@ -106,5 +120,15 @@ describe('MediaRow', () => {
     );
     expect(screen.getByText('Tidak bisa diputar di web').className).toBe('row-warning');
     expect(screen.queryByText('Artis · oleh Budi')).toBeNull();
+  });
+
+  it('wraps a plain-text meta in a span so it can ellipsize', () => {
+    const { container } = render(
+      <ul>
+        <MediaRow thumb={null} title="Lagu" meta="Artis · oleh Budi" />
+      </ul>,
+    );
+    const span = container.querySelector('.meta-track > span');
+    expect(span?.textContent).toBe('Artis · oleh Budi');
   });
 });
