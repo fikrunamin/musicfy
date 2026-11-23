@@ -22,10 +22,9 @@ export function MembersPanel({ session, room, memberId, online }: Props) {
   // The kicked member's button disappears when the room update arrives, after the dialog closed;
   // if that dropped focus to the page, bring it back to the panel.
   useEffect(() => {
-    if (kicked.current && (!document.activeElement || document.activeElement === document.body)) {
-      heading.current?.focus();
-      kicked.current = false;
-    }
+    if (!kicked.current) return;
+    kicked.current = false; // only the first members change after the kick counts
+    if (!document.activeElement || document.activeElement === document.body) heading.current?.focus();
   }, [room.members]);
   return (
     <section class="card" aria-labelledby="members-title">

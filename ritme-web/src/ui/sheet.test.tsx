@@ -219,3 +219,112 @@ describe('ConfirmDialog', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('isolation bookkeeping', () => {
+  const snapshot = () =>
+    [...document.body.querySelectorAll('*')].map((e) => `${e.tagName}|${e.getAttribute('inert')}|${e.getAttribute('aria-hidden')}`).join('\n');
+
+  function Nested() {
+    const [outer, setOuter] = useState(true);
+    const [inner, setInner] = useState(false);
+    return (
+      <>
+        <main>
+          <button type="button">Halaman</button>
+        </main>
+        {outer && (
+          <Sheet labelledBy="t" onClose={() => setOuter(false)}>
+            <h2 id="t">Luar</h2>
+            <button type="button" onClick={() => setInner(true)}>Tombol</button>
+            {inner && <ConfirmDialog title="Yakin?" confirmLabel="Ya" onConfirm={() => setInner(false)} onCancel={() => setInner(false)} />}
+          </Sheet>
+        )}
+        <button type="button" data-testid="close-outer" onClick={() => setOuter(false)} />
+      </>
+    );
+  }
+
+  it('restores everything when a sheet unmounts while its dialog is still open', () => {
+    render(<Nested />);
+    fireEvent.click(screen.getByRole('button', { name: 'Tombol' }));
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
+    expect(document.querySelector('main')?.hasAttribute('inert')).toBe(true);
+    expect(document.querySelector('main')?.getAttribute('aria-hidden')).toBe('true');
+    fireEvent.click(screen.getByTestId('close-outer'));
+    expect(document.querySelector('main')?.hasAttribute('inert')).toBe(false);
+    expect(document.querySelector('main')?.hasAttribute('aria-hidden')).toBe(false);
+    expect(screen.getByTestId('close-outer').hasAttribute('inert')).toBe(false);
+    expect(document.querySelectorAll('[inert]')).toHaveLength(0);
+    expect(document.querySelectorAll('[aria-hidden="true"]')).toHaveLength(0);
+  });
+
+  function Two({ a, b }: { a: boolean; b: boolean }) {
+    return (
+      <>
+        <main id="page">
+          <button type="button">p</button>
+        </main>
+        {a && (
+          <Sheet labelledBy="ta" onClose={() => {}}>
+            <h2 id="ta">A</h2>
+          </Sheet>
+        )}
+        {b && (
+          <Sheet labelledBy="tb" onClose={() => {}}>
+            <h2 id="tb">B</h2>
+          </Sheet>
+        )}
+      </>
+    );
+  }
+
+  it('returns to the original state when modals close out of order', () => {
+    const { rerender } = render(<Two a={false} b={false} />);
+    const original = snapshot();
+    rerender(<Two a b={false} />);
+    rerender(<Two a b />);
+    rerender(<Two a={false} b />);
+    expect(document.getElementById('page')?.hasAttribute('inert')).toBe(true); // B still open
+    rerender(<Two a={false} b={false} />);
+    expect(snapshot()).toBe(original);
+  });
+
+  it('keeps values that were already inert or aria-hidden before any modal opened', () => {
+    const { rerender } = render(
+      <>
+        <div id="pre" inert aria-hidden="false" />
+        <div id="hid" aria-hidden="true" />
+        <Two a={false} b={false} />
+      </>,
+    );
+    const open = (a: boolean, b: boolean) =>
+      rerender(
+        <>
+          <div id="pre" inert aria-hidden="false" />
+          <div id="hid" aria-hidden="true" />
+          <Two a={a} b={b} />
+        </>,
+      );
+    open(true, false);
+    open(true, true);
+    open(false, true);
+    open(false, false);
+    const pre = document.getElementById('pre')!;
+    expect(pre.hasAttribute('inert')).toBe(true);
+    expect(pre.getAttribute('aria-hidden')).toBe('false');
+    expect(document.getElementById('hid')?.getAttribute('aria-hidden')).toBe('true');
+    expect(document.getElementById('page')?.hasAttribute('inert')).toBe(false);
+  });
+});
+
+describe('Shift+Tab from the panel root', () => {
+  it('goes to the last control', () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: 'Buka' }));
+    const root = screen.getByRole('dialog');
+    root.focus();
+    expect(document.activeElement).toBe(root);
+    fireEvent.keyDown(root, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement?.textContent).toBe('Dua');
+  });
+});

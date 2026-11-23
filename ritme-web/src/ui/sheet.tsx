@@ -21,33 +21,47 @@ let scrollLocks = 0;
 /** Keeps assistive tech reading toasts while a modal is open. */
 const isLive = (el: Element) => el.getAttribute('role') === 'status' || el.hasAttribute('aria-live');
 
+/** What an element looked like before any modal touched it, and how many modals are holding it. */
+const held = new Map<Element, { count: number; inert: string | null; hidden: string | null }>();
+
+function acquire(el: Element) {
+  const h = held.get(el);
+  if (h) h.count += 1;
+  else held.set(el, { count: 1, inert: el.getAttribute('inert'), hidden: el.getAttribute('aria-hidden') });
+  el.setAttribute('inert', '');
+  el.setAttribute('aria-hidden', 'true');
+}
+
+function release(el: Element) {
+  const h = held.get(el);
+  if (!h) return;
+  h.count -= 1;
+  if (h.count > 0) return;
+  held.delete(el);
+  if (h.inert === null) el.removeAttribute('inert');
+  else el.setAttribute('inert', h.inert);
+  if (h.hidden === null) el.removeAttribute('aria-hidden');
+  else el.setAttribute('aria-hidden', h.hidden);
+}
+
 /**
  * Makes everything outside `panel` inert and aria-hidden without moving any node: at each level
- * from the panel up to body, every sibling that is not on the path gets it. Returns the undo,
- * which puts back the exact previous attribute values.
+ * from the panel up to body, every sibling that is not on the path gets it. Reference-counted per
+ * element, so modals may close in any order: the last release puts back the original values.
  */
 function isolate(panel: HTMLElement): () => void {
-  const undo: Array<() => void> = [];
+  const mine: Element[] = [];
   let node: HTMLElement = panel;
   while (node.parentElement && node !== document.body) {
     const parent: HTMLElement = node.parentElement;
     for (const sib of Array.from(parent.children)) {
       if (sib === node || sib.tagName === 'SCRIPT' || sib.tagName === 'STYLE' || isLive(sib) || sib.classList.contains('sheet-scrim')) continue; // the scrim is the modal's own tap-to-close
-      const el = sib as HTMLElement;
-      const inert = el.getAttribute('inert');
-      const hidden = el.getAttribute('aria-hidden');
-      el.setAttribute('inert', '');
-      el.setAttribute('aria-hidden', 'true');
-      undo.push(() => {
-        if (inert === null) el.removeAttribute('inert');
-        else el.setAttribute('inert', inert);
-        if (hidden === null) el.removeAttribute('aria-hidden');
-        else el.setAttribute('aria-hidden', hidden);
-      });
+      acquire(sib);
+      mine.push(sib);
     }
     node = parent;
   }
-  return () => undo.reverse().forEach((f) => f());
+  return () => mine.forEach(release);
 }
 
 /**
@@ -87,7 +101,7 @@ export function useModal(
       const first = items[0];
       const last = items[items.length - 1];
       const active = document.activeElement;
-      if (!root.contains(active)) {
+      if (!root.contains(active) || active === root) {
         e.preventDefault();
         (e.shiftKey ? last : first).focus();
       } else if (e.shiftKey && active === first) {

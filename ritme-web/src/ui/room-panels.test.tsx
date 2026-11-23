@@ -54,6 +54,25 @@ describe('MembersPanel', () => {
     expect(document.activeElement?.id).toBe('members-title');
   });
 
+  it('does not pull focus to the heading on a later members change after a kick that changed nothing', () => {
+    const session = fakeSession();
+    const r = room();
+    const { rerender } = render(<MembersPanel session={session} room={r} memberId="m1" online />);
+    const opener = screen.getByRole('button', { name: 'Keluarkan' });
+    opener.focus();
+    fireEvent.click(opener);
+    confirmIn('Keluarkan Sari dari Ritme?', 'Keluarkan');
+    // the kick failed: members did not change. An unrelated update arrives while focus is on a control.
+    const other = screen.getByRole('button', { name: 'Jadikan host' });
+    other.focus();
+    rerender(<MembersPanel session={session} room={{ ...r, members: r.members.map((m) => ({ ...m })) }} memberId="m1" online />);
+    expect(document.activeElement).toBe(other);
+    // a later update with focus on the page must not be treated as the kick's aftermath
+    (document.activeElement as HTMLElement).blur();
+    rerender(<MembersPanel session={session} room={{ ...r, members: r.members.map((m) => ({ ...m })) }} memberId="m1" online />);
+    expect(document.activeElement).toBe(document.body);
+  });
+
   it('does not kick or end the room when the host declines the confirmation', () => {
     const session = fakeSession();
     render(<MembersPanel session={session} room={room()} memberId="m1" online />);
