@@ -698,9 +698,10 @@ fun BottomSheetPlayer(
                     lyricsProgressProvider = { lyricsProgress },
                     sheetProgressProvider = progressProvider,
                 )
-                // "Ritme · N" at the top of the open player (spec 3.4)
-                com.example.musicfy.ui.screens.ritme.RitmePill(
-                    alphaProvider = { ((progressProvider() - 0.5f) * 2f).coerceIn(0f, 1f) },
+                // "Ritme · N" at the top of the open player (spec 3.4). Gone on the lyrics/queue
+                // pages, where the cover and title morph into that spot (like LikedLabel, flagship only).
+                if (playerStyle.flagshipFamily) com.example.musicfy.ui.screens.ritme.RitmePill(
+                    alphaProvider = { ((progressProvider() - 0.5f) * 2f).coerceIn(0f, 1f) * (1f - lyricsProgress) },
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = statusBarTopInset + 4.dp),
@@ -825,7 +826,12 @@ fun BottomSheetPlayer(
                 com.example.musicfy.ui.screens.ritme.RitmeQueuePage(
                     onClose = { transition.close() },
                     navController = navController,
-                    bottomPadding = lyricsBottomInset + QueueButtonColumnHeight,
+                    // QueueScreen's own insets, so the room's rows fade into the seek bar the same way.
+                    contentBottomInset = lyricsBottomInset,
+                    controlsClearance = QueueButtonColumnHeight + 12.dp - SeekBarLift,
+                    likeBurst = likeBurst,
+                    morph = morph,
+                    onImmersiveChange = { queueImmersive = it },
                     modifier = Modifier
                         .fillMaxSize()
                         .pageTransitionLayer(PlayerPage.QUEUE, transition, morph) { queuePageProgress },

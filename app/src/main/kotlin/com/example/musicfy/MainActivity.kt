@@ -74,6 +74,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -232,6 +233,9 @@ private const val BackgroundZoomOnExpand = true
 @Suppress("DEPRECATION", "ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
 
 private const val SETUP_MARKER_FILE = "setup_wizard_completed"
+
+/** The gap between the mini player and the "Ritme · N" pill above it. */
+private val RitmePillGap = 8.dp
 
 private fun hasOnboardedOnThisInstall(context: android.content.Context): Boolean {
     if (runCatching { java.io.File(context.noBackupFilesDir, SETUP_MARKER_FILE).exists() }.getOrDefault(false)) {
@@ -701,17 +705,30 @@ class MainActivity : ComponentActivity() {
                         .hide(WindowInsetsCompat.Type.navigationBars())
                 }
 
+                // In a Ritme room the "Ritme · N" pill stands above the mini player (bottom bar
+                // layout only): lists keep clear of it as they do of the mini player. Its height is
+                // measured, so it follows the font scale.
+                val ritmeUi = com.example.musicfy.ui.screens.ritme.rememberRitme()
+                val ritmeInRoom by remember(ritmeUi) {
+                    ritmeUi.session.state.map { it.inRoom }.distinctUntilChanged()
+                }.collectAsState(initial = ritmeUi.session.state.value.inRoom)
+                var ritmePillHeight by remember { mutableStateOf(0.dp) }
+                val ritmePillSpace = if (ritmeInRoom && !showRail && ritmePillHeight > 0.dp) {
+                    ritmePillHeight + RitmePillGap
+                } else 0.dp
+
                 val playerAwareWindowInsets = remember(
                     bottomInset,
                     shouldShowNavigationBar,
                     playerBottomSheetState.isDismissed,
                     showRail,
+                    ritmePillSpace,
                 ) {
                     var bottom = bottomInset
                     if (shouldShowNavigationBar && !showRail) {
                         bottom += NavigationBarHeight
                     }
-                    if (!playerBottomSheetState.isDismissed) bottom += MiniPlayerHeight
+                    if (!playerBottomSheetState.isDismissed) bottom += MiniPlayerHeight + ritmePillSpace
                     windowsInsets
                         .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)
                         .add(WindowInsets(top = AppBarHeight, bottom = bottom))
@@ -1083,7 +1100,8 @@ class MainActivity : ComponentActivity() {
                                             },
                                             modifier = Modifier
                                                 .align(Alignment.BottomCenter)
-                                                .padding(bottom = bottomInset + navPadding + MiniPlayerHeight + 8.dp),
+                                                .padding(bottom = bottomInset + navPadding + MiniPlayerHeight + RitmePillGap)
+                                                .onSizeChanged { ritmePillHeight = with(density) { it.height.toDp() } },
                                         )
 
                                         AppNavigationBar(

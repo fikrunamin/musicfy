@@ -30,12 +30,16 @@ enum class PlayerMenuAction(val label: String, @param:DrawableRes val icon: Int)
         val DefaultSlots = listOf(OTHER_MENU, SLEEP_TIMER, SEE_VIDEO, REPEAT)
         val DefaultSide = LIKE
 
+        /** What the editor may offer: RITME only while Ritme is built in (RITME_ENABLED). */
+        val available: List<PlayerMenuAction>
+            get() = entries.filter { it != RITME || com.example.musicfy.ritme.RitmeConfig.ENABLED }
+
         fun parseSlots(stored: String): List<PlayerMenuAction> {
-            val parsed = stored.split(',').mapNotNull { name -> entries.firstOrNull { it.name == name } }
+            val parsed = stored.split(',').mapNotNull { name -> available.firstOrNull { it.name == name } }
             return if (parsed.size == DefaultSlots.size) parsed else DefaultSlots
         }
 
-        fun parseSide(stored: String): PlayerMenuAction = entries.firstOrNull { it.name == stored } ?: DefaultSide
+        fun parseSide(stored: String): PlayerMenuAction = available.firstOrNull { it.name == stored } ?: DefaultSide
     }
 }
 

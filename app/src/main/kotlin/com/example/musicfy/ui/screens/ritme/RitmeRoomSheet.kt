@@ -1,6 +1,25 @@
 package com.example.musicfy.ui.screens.ritme
 
 import android.content.ActivityNotFoundException
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.example.musicfy.ui.player.CardMorphState
+import com.example.musicfy.ui.player.ImmersiveScrollPx
+import com.example.musicfy.ui.player.LikeBurstState
+import com.example.musicfy.ui.player.QueuePageHeader
+import com.example.musicfy.ui.player.queueListBottomInset
+import com.example.musicfy.ui.player.queueListEdgeFade
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
@@ -20,7 +39,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -118,6 +136,8 @@ internal fun RitmeRoomContent(
     onLeft: () -> Unit,
     modifier: Modifier = Modifier,
     bottomPadding: Dp = 16.dp,
+    topPadding: Dp = 0.dp,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     val state by ritme.session.state.collectAsState()
     val room = state.room
@@ -141,8 +161,9 @@ internal fun RitmeRoomContent(
     fun addedBy(entry: QueueEntry): String = if (entry.addedBy == me) you else names[entry.addedBy] ?: someone
 
     LazyColumn(
+        state = listState,
         modifier = modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(bottom = bottomPadding),
+        contentPadding = PaddingValues(top = topPadding, bottom = bottomPadding),
     ) {
         item(key = "header") {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -289,27 +310,83 @@ internal fun RitmeRoomContent(
     }
 }
 
-/** The room in place of QueueScreen while a Ritme room is active (spec 3.4). */
+/**
+ * The room in place of QueueScreen while a Ritme room is active (spec 3.4), dressed as QueueScreen:
+ * no page background of its own (the player's backdrop shows through), the same header the cover
+ * and title morph into, the list ending at the seek bar with the same edge fades, and the same
+ * scroll-to-hide controls ([onImmersiveChange]).
+ */
 @Composable
-fun RitmeQueuePage(onClose: () -> Unit, navController: NavController, bottomPadding: Dp, modifier: Modifier = Modifier) {
+fun RitmeQueuePage(
+    onClose: () -> Unit,
+    navController: NavController,
+    /** As QueueScreen's: distance from the bottom of the screen to the top of the seek bar. */
+    contentBottomInset: Dp,
+    /** As QueueScreen's: how far the player's button column reaches up from there. */
+    controlsClearance: Dp,
+    modifier: Modifier = Modifier,
+    likeBurst: LikeBurstState? = null,
+    morph: CardMorphState? = null,
+    onImmersiveChange: (Boolean) -> Unit = {},
+) {
     val ritme = rememberRitme()
     val playerSheet = LocalPlayerBottomSheetState.current
-    Box(
-        modifier
-            .background(Color.Black)
-            .statusBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-    ) {
-        RitmeRoomContent(
-            ritme = ritme,
-            onAddSongs = {
-                onClose()
-                playerSheet?.collapseSoft()
-                navController.navigate(Screens.Search.route)
-            },
-            onLeft = onClose,
-            bottomPadding = bottomPadding,
-        )
+    val listState = rememberLazyListState()
+    // No row here grows out of the bottom card: drop a target left by an earlier QueueScreen, so
+    // the card's art lifts off and fades instead (PlayerBottomCardStack).
+    if (morph != null) LaunchedEffect(Unit) { morph.pageArtAnchor = Offset.Unspecified }
+
+    // QueueScreen's scroll-to-hide: scroll down and the controls slide away, scroll back up (or
+    // reach the top) and they return. Only the user's own scrolling counts.
+    var immersive by remember { mutableStateOf(false) }
+    DisposableEffect(Unit) { onDispose { onImmersiveChange(false) } }
+    LaunchedEffect(immersive) { onImmersiveChange(immersive) }
+    val immersion by animateFloatAsState(
+        targetValue = if (immersive) 1f else 0f,
+        animationSpec = tween(durationMillis = 420, easing = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)),
+        label = "ritmeQueueImmersion",
+    )
+    val scrollWatcher = remember {
+        object : NestedScrollConnection {
+            private var travel = 0f
+
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                val dy = consumed.y
+                if (dy == 0f) return Offset.Zero
+                travel = if ((travel < 0f) == (dy < 0f)) travel + dy else dy
+                if (travel < -ImmersiveScrollPx) immersive = true
+                if (travel > ImmersiveScrollPx || !listState.canScrollBackward) immersive = false
+                return Offset.Zero
+            }
+        }
+    }
+
+    // QueueScreen's rows are white on the player's backdrop.
+    CompositionLocalProvider(LocalContentColor provides Color.White) {
+        Column(modifier.fillMaxSize()) {
+            QueuePageHeader(likeBurst = likeBurst, onArtClick = { if (immersive) immersive = false else onClose() })
+            RitmeRoomContent(
+                ritme = ritme,
+                onAddSongs = {
+                    onClose()
+                    playerSheet?.collapseSoft()
+                    navController.navigate(Screens.Search.route)
+                },
+                onLeft = onClose,
+                // QueueScreen's list padding: 2 dp under the header, and room at the end for the
+                // last rows to clear the button column.
+                topPadding = 2.dp,
+                bottomPadding = controlsClearance + 8.dp,
+                listState = listState,
+                modifier = Modifier
+                    .weight(1f)
+                    .queueListBottomInset(contentBottomInset) { immersion }
+                    .nestedScroll(scrollWatcher)
+                    .queueListEdgeFade()
+                    // The rows' own insets assume the sheet's side padding (RowArtStart).
+                    .padding(horizontal = SheetSidePadding),
+            )
+        }
     }
 }
 

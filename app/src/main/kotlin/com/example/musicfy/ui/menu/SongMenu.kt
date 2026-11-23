@@ -499,7 +499,8 @@ fun SongMenu(
                             }
                         )
                     } else null,
-                    if (com.example.musicfy.ritme.RitmeConfig.ENABLED && !ritmeActive) {
+                    // Local files are never shared (RitmeEntries skips them too).
+                    if (com.example.musicfy.ritme.RitmeConfig.ENABLED && !ritmeActive && song.song.localUri == null) {
                         Material3MenuItemData(
                             title = { Text(text = stringResource(R.string.ritme_start_with_this)) },
                             icon = {
