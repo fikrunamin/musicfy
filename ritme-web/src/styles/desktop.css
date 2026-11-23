@@ -1,0 +1,162 @@
+/*
+ * C+E, the desktop room (handoff mfQL5/c4Mf6A/ctR0t/XgtCo). RoomScreen adds .room-desktop from
+ * 1024 px (useMediaQuery), so the layout and the content (full queue, inline panels) always agree.
+ * The tree is the phone's: the column wrappers only start boxing their content here.
+ */
+
+/* Phone: the wrappers are transparent, their children stay items of the .room column. */
+.room-col {
+  display: contents;
+}
+
+/* 24 px around and between; left 440, right 360, the queue takes the rest. */
+.room-desktop {
+  max-width: none;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0;
+  padding: 24px;
+  display: grid;
+  grid-template-columns: minmax(320px, 440px) minmax(300px, 1fr) minmax(300px, 360px);
+  grid-template-rows: auto minmax(0, 1fr);
+  column-gap: 24px;
+  row-gap: 0;
+  overflow: hidden;
+}
+
+/* The banner spans the three columns above them, instead of becoming a fourth grid item. */
+.room-desktop > .reconnect-banner {
+  position: static;
+  grid-column: 1 / -1;
+  margin: -24px -24px 16px;
+  padding: 6px 24px;
+}
+
+/* Each column scrolls on its own; the page itself never does. */
+.room-desktop .room-col {
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Room for focus rings inside the scroll box of the unboxed left column. */
+.room-desktop .room-left {
+  margin: -4px;
+  padding: 4px;
+}
+
+/* Header: logo, "Ritme · CODE" over "Tersinkron · N anggota", and the "Bagikan" pill. */
+.room-desktop .room-header {
+  min-height: 52px;
+}
+
+.room-logo {
+  flex-shrink: 0;
+}
+
+.room-desktop .room-heading h1 {
+  font-size: var(--fs-section);
+}
+
+.room-share {
+  min-height: var(--target);
+  padding: 0 18px;
+  font-size: var(--fs-body);
+}
+
+.room-desktop .now-playing {
+  gap: 14px;
+}
+
+/* Times beside the bar: 1:24 ──────── 3:41. */
+.room-desktop .np-progress {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+}
+
+.room-desktop .np-times {
+  display: contents;
+}
+
+.room-desktop .seek {
+  grid-row: 1;
+  grid-column: 2;
+}
+
+.room-desktop .np-times > :first-child {
+  grid-row: 1;
+  grid-column: 1;
+}
+
+.room-desktop .np-times > :last-child {
+  grid-row: 1;
+  grid-column: 3;
+}
+
+/* Previous, play, next in the middle: no queue button, the queue is the next column. */
+.room-desktop .np-controls {
+  justify-content: center;
+  gap: 40px;
+}
+
+.room-desktop .np-slot {
+  display: none;
+}
+
+/* The panels: translucent cards over the blurred backdrop. */
+.room-desktop .room-queue,
+.add-panel-inline,
+.room-side .members-panel {
+  border-radius: var(--r-card);
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--faint);
+}
+
+.room-desktop .room-queue {
+  padding: 20px 24px;
+  gap: 0;
+}
+
+/* At 1024 px the queue column is narrow: "Tambah lagu" goes under "Antrean" instead of out of the card. */
+.room-desktop .queue-header {
+  flex-wrap: wrap;
+}
+
+.room-desktop .room-side {
+  gap: 24px;
+}
+
+.add-panel-inline,
+.room-side .members-panel {
+  flex-shrink: 0;
+  padding: 20px 24px 24px;
+}
+
+.add-panel-inline .sheet-header,
+.room-side .members-header {
+  min-height: 0;
+}
+
+/* Members fill the column down to its end; leaving and ending sit at the bottom. */
+.room-side .members-panel {
+  flex: 1 0 auto;
+}
+
+.room-side .members-body {
+  flex: 1;
+}
+
+.room-side .members-leave {
+  margin-top: auto;
+}
+
+.add-panel-inline .add-results .row-trailing {
+  gap: 4px;
+}

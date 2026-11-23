@@ -16,6 +16,8 @@ interface Props {
   pageIsHttps?: boolean;
   /** Shows the close button (the panel is in a sheet). */
   onClose?: () => void;
+  /** sheet: inside the phone's "Tambah lagu" sheet. panel: inline in the desktop room's right column. */
+  variant?: 'sheet' | 'panel';
   /** Injected in tests. */
   fetchImpl?: typeof fetch;
   probe?: typeof probeMedia;
@@ -54,7 +56,8 @@ function tabForKey(key: string, i: number): Tab | null {
  * one tab stop (roving tabindex), arrows wrap, Home/End jump. Only the selected panel's content
  * is mounted, so leaving a tab cancels its lookups as before.
  */
-export function SearchPanel({ session, online, pageIsHttps = true, onClose, fetchImpl, probe }: Props) {
+export function SearchPanel({ session, online, pageIsHttps = true, onClose, variant = 'sheet', fetchImpl, probe }: Props) {
+  const inline = variant === 'panel';
   const [tab, setTab] = useState<Tab>('songs');
   const tabs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
 
@@ -67,8 +70,8 @@ export function SearchPanel({ session, online, pageIsHttps = true, onClose, fetc
     tabs.current[next]?.focus();
   };
 
-  return (
-    <div class="add-panel">
+  const content = (
+    <>
       <div class="sheet-header">
         <h2 id="add-title">{t.addTitle}</h2>
         {onClose && <IconButton icon="close" label={t.close} variant="filled" onClick={onClose} />}
@@ -97,18 +100,27 @@ export function SearchPanel({ session, online, pageIsHttps = true, onClose, fetc
         <div key={x.id} id={panelId(x.id)} class="add-tabpanel" role="tabpanel" aria-labelledby={tabId(x.id)} hidden={tab !== x.id}>
           {tab === x.id &&
             (x.id === 'songs' ? (
-              <SongSearch session={session} online={online} fetchImpl={fetchImpl} />
+              <SongSearch session={session} online={online} inline={inline} fetchImpl={fetchImpl} />
             ) : (
               <AddVideoPanel session={session} online={online} pageIsHttps={pageIsHttps} fetchImpl={fetchImpl} probe={probe} />
             ))}
         </div>
       ))}
-    </div>
+    </>
+  );
+  // In a sheet the dialog is named after the heading; inline, the section is.
+  return inline ? (
+    <section class="add-panel add-panel-inline" aria-labelledby="add-title">
+      {content}
+    </section>
+  ) : (
+    <div class="add-panel">{content}</div>
   );
 }
 
 /** Search submits on Enter/button only (the server allows 30 searches per minute per IP). */
-function SongSearch({ session, online, fetchImpl }: { session: SessionApi; online: boolean; fetchImpl?: typeof fetch }) {
+/** inline (desktop panel): the field shows only its search icon, and each result adds with a round "+". */
+function SongSearch({ session, online, inline, fetchImpl }: { session: SessionApi; online: boolean; inline: boolean; fetchImpl?: typeof fetch }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -140,6 +152,7 @@ function SongSearch({ session, online, fetchImpl }: { session: SessionApi; onlin
         <TextField
           id="search-input"
           label={t.searchLabel}
+          hideLabel={inline}
           leadingIcon="search"
           type="search"
           value={query}
@@ -175,9 +188,13 @@ function SongSearch({ session, online, fetchImpl }: { session: SessionApi; onlin
                 trailing={
                   <>
                     <IconButton icon="playlist_play" class="add-next" label={`${t.playNext}: ${r.title}`} disabled={!online} onClick={() => add(r, true)} />
-                    <Button class="add-one" disabled={!online} aria-label={`${t.addToQueue}: ${r.title}`} onClick={() => add(r, false)}>
-                      {t.addToQueue}
-                    </Button>
+                    {inline ? (
+                      <IconButton icon="add" variant="accent" class="add-one-round" label={`${t.addToQueue}: ${r.title}`} disabled={!online} onClick={() => add(r, false)} />
+                    ) : (
+                      <Button class="add-one" disabled={!online} aria-label={`${t.addToQueue}: ${r.title}`} onClick={() => add(r, false)}>
+                        {t.addToQueue}
+                      </Button>
+                    )}
                   </>
                 }
               />

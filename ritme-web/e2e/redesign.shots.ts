@@ -37,6 +37,32 @@ test('C listen, D remote, E queue @room', async ({ context }, info) => {
   await shot(a, info, 'E-queue-host');
 });
 
+test('C+E desktop room: before start, listen, remote @desktop', async ({ context }, info) => {
+  test.skip(!info.project.name.startsWith('desktop'), 'the three-column room exists from 1024 px only');
+  const { a } = await openRoom(context);
+  for (const song of SHOT_SONGS.slice(0, 5)) await addSong(a, 'x', song.title);
+  await expect(a.locator('main.room-desktop')).toHaveCount(1);
+  // The columns scroll on their own; the page itself fits the window.
+  expect(await a.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(900);
+  await shot(a, info, 'C-desktop-before-start');
+  await tap(a);
+  await expect(a.locator('.player [data-testid="fake-yt"]')).toHaveCount(1);
+  await shot(a, info, 'C-desktop-listen');
+
+  // A phone-width window and back: the same player element and frame, still playing (YouTube rule).
+  const frame = await a.locator('.player [data-testid="fake-yt"]').elementHandle();
+  await a.setViewportSize({ width: 390, height: 844 });
+  await expect(a.locator('main.room-desktop')).toHaveCount(0);
+  expect(await frame!.evaluate((el) => el.isConnected && el === document.querySelector('.player [data-testid="fake-yt"]'))).toBe(true);
+  await a.setViewportSize({ width: 1440, height: 900 });
+  await expect(a.locator('main.room-desktop')).toHaveCount(1);
+  expect(await frame!.evaluate((el) => el.isConnected && el === document.querySelector('.player [data-testid="fake-yt"]'))).toBe(true);
+  await expect.poll(() => a.evaluate(() => (window as unknown as { __fakeYt?: { playing: boolean } }).__fakeYt?.playing)).toBe(true);
+
+  await a.getByRole('button', { name: 'Mode remote' }).click();
+  await shot(a, info, 'D-desktop-remote');
+});
+
 test('toast, confirm dialog @overlays', async ({ context }, info) => {
   const { a } = await openRoom(context);
   await a.getByRole('button', { name: 'Bagikan' }).click();

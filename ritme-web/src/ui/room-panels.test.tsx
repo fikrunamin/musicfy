@@ -236,6 +236,36 @@ describe('SearchPanel', () => {
     expect(screen.queryByText(/0:00/)).toBeNull();
   });
 
+  it('as the desktop panel: a labelled region, an icon field and round "+" add buttons', async () => {
+    const session = fakeSession();
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify([song]), { status: 200 })) as unknown as typeof fetch;
+    render(<SearchPanel session={session} online fetchImpl={fetchImpl} variant="panel" />);
+    const region = screen.getByRole('region', { name: 'Tambah ke antrean' });
+    expect(within(region).queryByRole('button', { name: 'Tutup' })).toBeNull();
+    // The label stays for screen readers; the field shows the search icon instead.
+    const field = screen.getByLabelText('Cari lagu');
+    expect(document.querySelector(`label[for="${field.id}"]`)?.classList.contains('visually-hidden')).toBe(true);
+    expect(field.closest('.input-wrap-icon')).toBeTruthy();
+    fireEvent.input(field, { target: { value: 'rick' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cari' }));
+    const add = await screen.findByRole('button', { name: 'Tambah: Never Gonna Give You Up' });
+    expect(add.classList.contains('icon-btn')).toBe(true);
+    expect(add.textContent).toBe('');
+    fireEvent.click(add);
+    expect(session.add).toHaveBeenCalledWith(expect.objectContaining({ videoId: 'dQw4w9WgXcQ' }), false);
+  });
+
+  it('as the sheet: a visible field label and the "Tambah" text button', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify([song]), { status: 200 })) as unknown as typeof fetch;
+    render(<SearchPanel session={fakeSession()} online fetchImpl={fetchImpl} onClose={() => {}} />);
+    expect(screen.queryByRole('region')).toBeNull();
+    const field = screen.getByLabelText('Cari lagu');
+    expect(document.querySelector(`label[for="${field.id}"]`)?.classList.contains('visually-hidden')).toBe(false);
+    fireEvent.input(field, { target: { value: 'rick' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cari' }));
+    expect((await screen.findByRole('button', { name: 'Tambah: Never Gonna Give You Up' })).textContent).toBe('Tambah');
+  });
+
   it('explains rate limiting', async () => {
     const fetchImpl = vi.fn(async () => new Response('', { status: 429 })) as unknown as typeof fetch;
     render(<SearchPanel session={fakeSession()} online fetchImpl={fetchImpl} />);
