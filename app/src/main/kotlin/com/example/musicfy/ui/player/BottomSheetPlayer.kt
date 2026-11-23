@@ -706,6 +706,15 @@ fun BottomSheetPlayer(
                         .align(Alignment.TopCenter)
                         .padding(top = statusBarTopInset + 4.dp),
                 )
+                // Outside a room, a Ritme button in the top-right corner of the open player, on the
+                // chevron's right edge. Same fade as the pill; in a room the pill takes over. Not in
+                // the editor, where a tap on the shrunken player belongs to the studio.
+                if (playerStyle.flagshipFamily && !studioEngaged) com.example.musicfy.ui.screens.ritme.RitmeCornerButton(
+                    alphaProvider = { ((progressProvider() - 0.5f) * 2f).coerceIn(0f, 1f) * (1f - lyricsProgress) },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = statusBarTopInset + 4.dp, end = PlayerHorizontalPadding),
+                )
             },
             // In a Ritme room the player holds the room's item: it cannot be swiped away (leave from the Ritme sheet).
             onDismiss = if (ritmeActive) null else {

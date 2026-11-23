@@ -50,6 +50,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -118,6 +119,7 @@ fun PlayerActionMenu(
     // Shared by this menu and every sheet it opens, so they stack: the menu shrinks back and
     // peeks above "Change device output", a lyrics tool, etc. instead of being dimmed under it.
     val sheetStack = rememberMenuSheetStack()
+    val ritme = com.example.musicfy.ui.screens.ritme.rememberRitme()
 
     CompositionLocalProvider(LocalMenuSheetStack provides sheetStack) {
     MenuSheetSurface(
@@ -300,6 +302,18 @@ fun PlayerActionMenu(
                     enabled = false,
                     onClick = {},
                 )
+                if (com.example.musicfy.ritme.RitmeConfig.ENABLED) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    // Listen together: the start/join sheet, or the room sheet while in a room.
+                    MenuRow(
+                        icon = R.drawable.group,
+                        title = stringResource(R.string.ritme_name),
+                        onClick = {
+                            onDismiss()
+                            ritme.controller.openSheet()
+                        },
+                    )
+                }
 
                 MenuDivider()
 
