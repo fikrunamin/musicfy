@@ -226,6 +226,28 @@ class RitmeControllerTest {
         assertEquals("https://ritme.dubeli.id/r/K7M2QX", controller.shareLink("K7M2QX"))
     }
 
+    @Test
+    fun aRoomLinkOpensTheJoinFormAndNeverJoinsByItself() {
+        assertTrue(controller.openJoinLink("Listen with me on Ritme: https://ritme.dubeli.id/r/k7m2qx"))
+        assertEquals(RitmeSheetRequest.Kind.Entry(code = "K7M2QX"), controller.sheetRequest.value?.kind)
+        assertTrue(connector.connections.isEmpty())
+        controller.consumeSheetRequest(controller.sheetRequest.value!!.id)
+        assertFalse(controller.openJoinLink("https://www.reddit.com/r/travel"))
+        assertFalse(controller.openJoinLink("https://music.youtube.com/watch?v=dQw4w9WgXcQ"))
+        assertNull(controller.sheetRequest.value)
+    }
+
+    @Test
+    fun roomLinksOfASelfHostedServerOpenTheJoinForm() {
+        val selfHosted = object : RitmeSettings {
+            override val serverUrl = "http://192.168.1.5:8080"
+            override val displayName = "Budi"
+        }
+        val other = RitmeController(session, RitmeGate(), toasts, selfHosted)
+        assertTrue(other.openJoinLink("http://192.168.1.5:8080/r/K7M2QX"))
+        assertEquals(RitmeSheetRequest.Kind.Entry(code = "K7M2QX"), other.sheetRequest.value?.kind)
+    }
+
     // Carry-forward: no optimistic local play. A control-holder's Play is the room command only;
     // the device starts when the next snapshot says the room plays.
     @Test

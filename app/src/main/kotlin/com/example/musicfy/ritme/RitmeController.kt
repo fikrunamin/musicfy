@@ -66,6 +66,17 @@ class RitmeController @Inject constructor(
     fun openJoin(code: String) =
         request(if (session.state.value.inRoom) RitmeSheetRequest.Kind.Room else RitmeSheetRequest.Kind.Entry(code = code))
 
+    /**
+     * A room link from a deep link or shared text (`musicfy://ritme/{code}`, or `/r/{code}` on the
+     * official or the configured server): opens the join form with the code filled in. Joining
+     * still takes a tap. False if [text] holds no room link.
+     */
+    fun openJoinLink(text: String): Boolean {
+        val code = RitmeLinks.findRoomCode(text, listOf(RitmeConfig.DEFAULT_SERVER_URL, settings.serverUrl)) ?: return false
+        openJoin(code)
+        return true
+    }
+
     fun openStartWith(songs: List<MediaMetadata?>) =
         request(if (session.state.value.inRoom) RitmeSheetRequest.Kind.Room else RitmeSheetRequest.Kind.Entry(startWith = songs))
 

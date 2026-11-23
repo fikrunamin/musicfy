@@ -276,6 +276,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var syncUtils: SyncUtils
 
+    @Inject
+    lateinit var ritmeController: com.example.musicfy.ritme.RitmeController
+
     private lateinit var navController: NavHostController
     private var pendingIntent: Intent? = null
 
@@ -1370,6 +1373,16 @@ class MainActivity : ComponentActivity() {
 
     private fun handleDeepLinkIntent(intent: Intent, navController: NavHostController) {
         if (importSharedAudio(intent)) return
+        if (com.example.musicfy.ritme.RitmeConfig.ENABLED) {
+            // musicfy://ritme/{code}, https://<server>/r/{code}, or shared text holding either: the
+            // join form opens with the code filled in; joining still takes a tap.
+            val text = intent.data?.toString() ?: intent.getStringExtra(Intent.EXTRA_TEXT)
+            if (text != null && ritmeController.openJoinLink(text)) {
+                intent.data = null
+                intent.removeExtra(Intent.EXTRA_TEXT)
+                return
+            }
+        }
         val uri = intent.data ?: intent.extras?.getString(Intent.EXTRA_TEXT)?.toUri() ?: return
         intent.data = null
         intent.removeExtra(Intent.EXTRA_TEXT)
@@ -1486,6 +1499,7 @@ val SubSettingsRoutes = setOf(
     "audio_fx",
     "audio_quality",
     "crossmix_settings",
+    "ritme_settings",
     "modules",
     "module/{id}",
 )
