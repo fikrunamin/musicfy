@@ -20,6 +20,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 
 private val TrackWidth = 52.dp
@@ -63,11 +68,22 @@ fun AppSwitch(
     Box(
         modifier = modifier
             .size(TrackWidth, TrackHeight)
-            .toggleable(
-                value = checked,
-                enabled = enabled && onCheckedChange != null,
-                role = Role.Switch,
-                onValueChange = { onCheckedChange?.invoke(it) },
+            .then(
+                if (onCheckedChange != null) {
+                    Modifier.toggleable(
+                        value = checked,
+                        enabled = enabled,
+                        role = Role.Switch,
+                        onValueChange = onCheckedChange,
+                    )
+                } else {
+                    // Display-only: no pointer handling, so taps reach the parent row.
+                    Modifier.semantics {
+                        role = Role.Switch
+                        toggleableState = ToggleableState(checked)
+                        if (!enabled) disabled()
+                    }
+                }
             )
             .clip(RoundedCornerShape(50))
             .background(trackColor)

@@ -30,6 +30,10 @@ kotlin {
         }
         getByName("desktopTest").dependencies {
             implementation(libs.junit)
+            implementation(kotlin("test"))
+            @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+            implementation(compose.uiTest)
+            implementation(compose.desktop.currentOs)
         }
     }
 }
