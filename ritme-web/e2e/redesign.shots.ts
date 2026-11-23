@@ -1,5 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
-import { addSong, isolate, openRoom, showMembers } from './fixtures';
+import { addSong, closeSheet, isolate, openRoom, showMembers } from './fixtures';
 import { SHOT_SONGS, shot, withArtwork } from './shots';
 
 /**
@@ -43,4 +43,16 @@ test('toast, confirm dialog @overlays', async ({ context }, info) => {
   await members.getByRole('button', { name: /^Keluarkan/ }).first().click();
   await expect(a.getByRole('alertdialog')).toBeVisible();
   await shot(a, info, 'G-confirm-kick');
+});
+
+test('LIVE and locked controls @locked', async ({ context }, info) => {
+  const { a, b } = await openRoom(context);
+  await addSong(a, 'x', 'Lofi Radio 24/7');
+  await addSong(a, 'x', 'Kembali Pulang');
+  await (await showMembers(a)).getByRole('switch', { name: 'Anggota boleh kontrol' }).click();
+  await closeSheet(a);
+  await tap(b);
+  await b.getByRole('button', { name: 'Jeda' }).click();
+  await expect(b.getByRole('status').filter({ hasText: 'Host mengunci kontrol' })).toBeVisible();
+  await shot(b, info, 'C-live-locked');
 });

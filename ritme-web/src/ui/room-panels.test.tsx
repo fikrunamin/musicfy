@@ -116,7 +116,7 @@ describe('NowPlaying', () => {
 
   it('sends Pause and Next when control is allowed', () => {
     const session = fakeSession();
-    render(<NowPlaying session={session} room={playingRoom(true)} memberId="m2" unplayable={{}} online pageIsHttps />);
+    render(<NowPlaying session={session} room={playingRoom(true)} memberId="m2" unplayable={{}} online pageIsHttps mode="remote" />);
     expect(screen.getByText('Lagu Satu')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Jeda' }));
     expect(session.pause).toHaveBeenCalled();
@@ -124,29 +124,46 @@ describe('NowPlaying', () => {
     expect(session.next).toHaveBeenCalled();
   });
 
-  it('disables controls and explains why when the host locked them', () => {
-    render(<NowPlaying session={fakeSession()} room={playingRoom(false)} memberId="m2" unplayable={{}} online pageIsHttps />);
-    expect((screen.getByRole('button', { name: 'Jeda' }) as HTMLButtonElement).disabled).toBe(true);
+  it('dims locked controls, explains why, and answers a tap with the "Host mengunci kontrol" toast', () => {
+    const session = fakeSession();
+    render(<NowPlaying session={session} room={playingRoom(false)} memberId="m2" unplayable={{}} online pageIsHttps mode="remote" />);
+    const pause = screen.getByRole('button', { name: 'Jeda' });
+    expect(pause.getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Berikutnya' }).getAttribute('aria-disabled')).toBe('true');
     expect((screen.getByRole('slider', { name: 'Posisi lagu' }) as HTMLInputElement).disabled).toBe(true);
     expect(screen.getByText('Host mengunci kontrol')).toBeTruthy();
+    expect(pause.getAttribute('aria-describedby')).toBe(screen.getByText('Host mengunci kontrol').id);
+    fireEvent.click(pause);
+    fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }));
+    expect(session.pause).not.toHaveBeenCalled();
+    expect(session.next).not.toHaveBeenCalled();
+    expect(session.notify).toHaveBeenCalledTimes(2);
+    expect(session.notify).toHaveBeenCalledWith('forbidden');
+  });
+
+  it('disables the controls while offline, without the locked toast', () => {
+    const session = fakeSession();
+    render(<NowPlaying session={session} room={playingRoom(true)} memberId="m2" unplayable={{}} online={false} pageIsHttps mode="remote" />);
+    expect((screen.getByRole('button', { name: 'Jeda' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByText('Host mengunci kontrol')).toBeNull();
   });
 
   it('gives the seek slider the formatted position as aria-valuetext', () => {
     const paused = room({ queue: [entry('e1')], currentEntryId: 'e1', playback: { isPlaying: false, positionMs: 83_400, anchorServerTimeMs: 0 } });
-    render(<NowPlaying session={fakeSession()} room={paused} memberId="m1" unplayable={{}} online pageIsHttps />);
+    render(<NowPlaying session={fakeSession()} room={paused} memberId="m1" unplayable={{}} online pageIsHttps mode="remote" />);
     expect(screen.getByRole('slider', { name: 'Posisi lagu' }).getAttribute('aria-valuetext')).toBe('1:23');
   });
 
   it('shows a video with a 16:9 thumbnail, and a direct link with the domain it comes from', () => {
     const url = entry('e1', { kind: 'URL', videoId: '', url: 'https://www.xn--bcher-kva.example/a.mp4', artist: 'youtube.com', title: 'Klip' });
-    render(<NowPlaying session={fakeSession()} room={room({ queue: [url], currentEntryId: 'e1' })} memberId="m1" unplayable={{}} online pageIsHttps />);
-    expect(document.querySelectorAll('.now-row .thumb-wide')).toHaveLength(1);
+    render(<NowPlaying session={fakeSession()} room={room({ queue: [url], currentEntryId: 'e1' })} memberId="m1" unplayable={{}} online pageIsHttps mode="remote" />);
+    expect(document.querySelector('.stage.stage-wide .video-placeholder')?.textContent).toBe('bücher.example');
     expect(screen.getByText('dari bücher.example · oleh Kamu')).toBeTruthy();
   });
 
   it('shows LIVE instead of a seek bar for live entries', () => {
     const live = room({ queue: [entry('e1', { durationMs: 0 })], currentEntryId: 'e1' });
-    render(<NowPlaying session={fakeSession()} room={live} memberId="m1" unplayable={{}} online pageIsHttps />);
+    render(<NowPlaying session={fakeSession()} room={live} memberId="m1" unplayable={{}} online pageIsHttps mode="remote" />);
     expect(screen.getByText('LIVE')).toBeTruthy();
     expect(screen.queryByRole('slider')).toBeNull();
   });

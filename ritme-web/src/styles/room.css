@@ -1,0 +1,414 @@
+/* The room (flows C, D): header, mode switch, now playing with its one stage. Mobile first. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.backdrop-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(90px) saturate(1.4);
+  transform: scale(1.4);
+}
+
+.backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, var(--overlay) 0%, var(--overlay) 30%, var(--bg) 75%);
+}
+
+.backdrop-video::after {
+  background: linear-gradient(to bottom, var(--overlay-video) 0%, var(--bg) 60%);
+}
+
+.room {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: max(12px, env(safe-area-inset-top)) var(--gutter) max(32px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.reconnect-banner {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0 calc(-1 * var(--gutter));
+  min-height: 32px;
+  padding: 6px var(--gutter);
+  background: var(--warn);
+  color: var(--on-warn);
+  font-size: var(--fs-meta);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.room-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+}
+
+.room-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.room-heading h1 {
+  font-size: var(--fs-section);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.room-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+.room-members {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target);
+}
+
+/* Segmented control: faint track, the active side on the accent (handoff C/D). */
+.mode-switch {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--r-pill);
+  background: var(--faint);
+}
+
+.segmented button {
+  min-height: var(--target);
+  border: none;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-header);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.segmented button[aria-pressed='true'],
+.segmented button[aria-selected='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.mode-hint {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+/* Now playing. */
+.now-playing {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.np-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.np-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--fs-body);
+  color: var(--muted);
+  letter-spacing: var(--tracking);
+}
+
+.np-label .eq {
+  color: var(--text);
+}
+
+.np-sound {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+/* The one stage (brief §11): cover, player or error in the artwork slot. */
+.stage {
+  position: relative;
+  width: 100%;
+  border-radius: var(--r-card);
+  overflow: hidden;
+  background: var(--surface2);
+  /* YouTube: the player is at least 200 x 200 px. */
+  min-height: 200px;
+}
+
+.stage-square {
+  aspect-ratio: 1;
+}
+
+.stage-wide {
+  aspect-ratio: 16 / 9;
+}
+
+.stage > * {
+  position: absolute;
+  inset: 0;
+}
+
+.stage-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.stage-empty {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.player {
+  background: #000;
+  min-width: 200px;
+  min-height: 200px;
+}
+
+.player[hidden] {
+  display: none;
+}
+
+.player iframe,
+.player video,
+.player > div {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+.stage-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 16px;
+  background: #00000080;
+  text-align: center;
+}
+
+.gate-btn {
+  font-size: var(--fs-header);
+  padding: 0 24px;
+  min-height: 56px;
+  max-width: 100%;
+}
+
+.gate-reason {
+  color: #ffffffcc;
+  font-size: var(--fs-meta);
+}
+
+.stage-error {
+  background: var(--stage-error);
+  color: var(--on-dark);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+}
+
+.stage-error .icon {
+  color: var(--on-dark-muted);
+}
+
+.stage-error-title {
+  font-size: var(--fs-header);
+}
+
+.stage-error-reason,
+.stage-error-wait {
+  font-size: var(--fs-meta);
+  color: var(--on-dark-muted);
+}
+
+.stage-skip {
+  margin-top: 8px;
+  min-height: var(--target);
+  font-size: var(--fs-body);
+  background: #ffffff1f;
+  color: var(--on-dark);
+}
+
+.np-hint {
+  text-align: center;
+}
+
+.np-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.np-title {
+  font-size: var(--fs-title);
+  letter-spacing: var(--tracking-title);
+  line-height: 1.15;
+}
+
+.np-sub {
+  color: var(--muted);
+  font-size: var(--fs-header);
+}
+
+.np-warning {
+  color: var(--danger);
+  font-size: var(--fs-meta);
+}
+
+.np-live {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-body);
+}
+
+/* Seek bar: 4 px faint track, text-coloured fill up to --p. */
+.np-progress {
+  display: flex;
+  flex-direction: column;
+}
+
+.seek {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  /* 44 px touch target around the 4 px track. */
+  height: 44px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.seek::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--text) var(--p, 0%), var(--faint) var(--p, 0%));
+}
+
+.seek::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--text) var(--p, 0%), var(--faint) var(--p, 0%));
+}
+
+.seek::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--text);
+  opacity: 0;
+}
+
+.seek::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--text);
+  opacity: 0;
+}
+
+.seek:focus-visible::-webkit-slider-thumb,
+.seek:hover::-webkit-slider-thumb {
+  opacity: 1;
+}
+
+.seek:focus-visible::-moz-range-thumb,
+.seek:hover::-moz-range-thumb {
+  opacity: 1;
+}
+
+.seek:disabled {
+  cursor: not-allowed;
+}
+
+.np-times {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+.np-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 400px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.np-slot {
+  width: var(--target);
+  height: var(--target);
+  display: inline-grid;
+  place-items: center;
+}
+
+.np-controls .icon-btn-lg {
+  width: 72px;
+  height: 72px;
+}
+
+.np-empty {
+  color: var(--muted);
+  text-align: center;
+}
+
+.np-tip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+  text-align: center;
+}

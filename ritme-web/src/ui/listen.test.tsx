@@ -6,7 +6,8 @@ import { memoryStore, MODE_KEY } from '../net/storage';
 import { initialSession } from '../session/reducer';
 import { entry, room } from '../testing/builders';
 import { fakeSession } from '../testing/fake-session';
-import { ListenPanel } from './listen';
+import { ModeSwitch } from './listen';
+import { NowPlaying } from './now-playing';
 import { RoomScreen } from './room';
 
 const mocks = vi.hoisted(() => ({ log: [] as string[], opts: [] as unknown[] }));
@@ -37,26 +38,46 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('ListenPanel', () => {
-  it('shows the tap gate in listen mode and creates no player before the tap', () => {
-    render(<ListenPanel session={fakeSession()} room={room()} unplayable={{}} mode="listen" onModeChange={() => {}} pageIsHttps />);
-    expect(screen.getByRole('button', { name: 'Ketuk untuk ikut dengar' })).toBeTruthy();
-    expect(document.querySelector('.player')).toBeNull();
-  });
+type Room = ReturnType<typeof room>;
+const stage = (session: ReturnType<typeof fakeSession>, r: Room, mode: 'listen' | 'remote', unplayable: Record<string, true> = {}, memberId = 'm1') => (
+  <NowPlaying session={session} room={r} memberId={memberId} unplayable={unplayable} online pageIsHttps mode={mode} />
+);
+const gate = () => screen.getByRole('button', { name: 'Ketuk untuk ikut dengar' });
 
-  it('shows only the hint in remote mode', () => {
-    render(<ListenPanel session={fakeSession()} room={room()} unplayable={{}} mode="remote" onModeChange={() => {}} pageIsHttps />);
-    expect(screen.queryByRole('button', { name: 'Ketuk untuk ikut dengar' })).toBeNull();
-    expect(screen.getByText('Mode remote: kontrol saja, tanpa suara di perangkat ini.')).toBeTruthy();
-  });
-
+describe('ModeSwitch', () => {
   it('reports mode changes from aria-pressed toggle buttons', () => {
     const onModeChange = vi.fn();
-    render(<ListenPanel session={fakeSession()} room={room()} unplayable={{}} mode="listen" onModeChange={onModeChange} pageIsHttps />);
+    render(<ModeSwitch mode="listen" onModeChange={onModeChange} />);
     expect(screen.queryByRole('radio')).toBeNull();
     expect(screen.getByRole('button', { name: 'Mode dengar', pressed: true })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Mode remote', pressed: false }));
     expect(onModeChange).toHaveBeenCalledWith('remote');
+  });
+
+  it('explains remote mode only in remote mode', () => {
+    const view = render(<ModeSwitch mode="listen" onModeChange={() => {}} />);
+    expect(screen.queryByText('Mode remote: kontrol saja, tanpa suara di perangkat ini.')).toBeNull();
+    view.rerender(<ModeSwitch mode="remote" onModeChange={() => {}} />);
+    expect(screen.getByText('Mode remote: kontrol saja, tanpa suara di perangkat ini.')).toBeTruthy();
+  });
+});
+
+describe('the stage before the tap', () => {
+  it('shows the cover with the tap gate in listen mode and creates no player before the tap', () => {
+    render(stage(fakeSession(), room(), 'listen'));
+    expect(gate()).toBeTruthy();
+    expect(screen.getByText('Browser butuh satu ketukan sebelum memutar suara')).toBeTruthy();
+    expect(document.querySelector('.player')).toBeNull();
+    expect(document.querySelector('.stage .stage-empty')).toBeTruthy();
+  });
+
+  it('shows only the cover in remote mode: no gate, no player', () => {
+    const r = room({ queue: [entry('a', { thumbnailUrl: 'https://i.ytimg.com/vi/a/hqdefault.jpg' })], currentEntryId: 'a' });
+    render(stage(fakeSession(), r, 'remote'));
+    expect(screen.queryByRole('button', { name: 'Ketuk untuk ikut dengar' })).toBeNull();
+    expect(document.querySelector('.player')).toBeNull();
+    expect(document.querySelector('.stage img.stage-cover')?.getAttribute('src')).toBe('https://i.ytimg.com/vi/a/hqdefault.jpg');
+    expect(screen.queryByText('Biarkan layar menyala supaya musik tidak berhenti.')).toBeNull();
   });
 });
 
@@ -77,34 +98,41 @@ describe('RoomScreen', () => {
     expect(screen.getByRole('button', { name: 'Keluar Ritme' })).toBeTruthy();
   });
 
-  it('shows the reconnecting banner while offline', () => {
+  it('shows the reconnecting banner and status while offline', () => {
     const off = { ...state, connection: 'reconnecting' as const };
     render(<RoomScreen session={fakeSession(off)} state={off} prefs={memoryStore()} />);
-    expect(screen.getByText('Menyambung ulang…')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('Menyambung ulang…');
+    // The banner, and the header status in place of "Tersinkron".
+    expect(screen.getAllByText('Menyambung ulang…')).toHaveLength(2);
+    expect(screen.queryByText('Tersinkron')).toBeNull();
+  });
+
+  it('says Tersinkron while online', () => {
+    render(<RoomScreen session={fakeSession(state)} state={state} prefs={memoryStore()} />);
+    expect(screen.getByText('Tersinkron')).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
   });
 });
 
-describe('ListenPanel after the tap gate', () => {
-  const playing = () => room({ queue: [entry('a')], currentEntryId: 'a', playback: { isPlaying: true, positionMs: 0, anchorServerTimeMs: 0 } });
-  const panel = (session: ReturnType<typeof fakeSession>, r: ReturnType<typeof room>, mode: 'listen' | 'remote', unplayable: Record<string, true> = {}) => (
-    <ListenPanel session={session} room={r} unplayable={unplayable} mode={mode} onModeChange={() => {}} pageIsHttps />
-  );
+describe('the stage after the tap gate', () => {
+  const playing = (overrides: Parameters<typeof entry>[1] = {}) =>
+    room({ queue: [entry('a', overrides)], currentEntryId: 'a', playback: { isPlaying: true, positionMs: 0, anchorServerTimeMs: 0 } });
   const opts = () => mocks.opts[0] as ControllerOptions;
 
   it('creates the controller only after the tap and destroys it on remote and on unmount', async () => {
     const s = fakeSession();
     const r = playing();
-    const view = render(panel(s, r, 'listen'));
+    const view = render(stage(s, r, 'listen'));
     expect(mocks.log).not.toContain('new');
-    fireEvent.click(screen.getByRole('button', { name: 'Ketuk untuk ikut dengar' }));
+    fireEvent.click(gate());
     await Promise.resolve();
     expect(mocks.log.filter((l) => l === 'new')).toHaveLength(1);
-    view.rerender(panel(s, r, 'remote'));
+    view.rerender(stage(s, r, 'remote'));
     expect(mocks.log.at(-1)).toBe('destroy');
-    view.rerender(panel(s, r, 'listen'));
+    view.rerender(stage(s, r, 'listen'));
     // Back in listen mode the gate is shown again; the player needs a new tap.
     expect(mocks.log.filter((l) => l === 'new')).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Ketuk untuk ikut dengar' }));
+    fireEvent.click(gate());
     await Promise.resolve();
     expect(mocks.log.filter((l) => l === 'new')).toHaveLength(2);
     cleanup();
@@ -114,22 +142,43 @@ describe('ListenPanel after the tap gate', () => {
   it('shows the tap gate again after listen -> remote -> listen', async () => {
     const s = fakeSession();
     const r = playing();
-    const view = render(panel(s, r, 'listen'));
-    fireEvent.click(screen.getByRole('button', { name: 'Ketuk untuk ikut dengar' }));
+    const view = render(stage(s, r, 'listen'));
+    fireEvent.click(gate());
     await Promise.resolve();
     expect(document.querySelector('.player')).toBeTruthy();
-    view.rerender(panel(s, r, 'remote'));
+    view.rerender(stage(s, r, 'remote'));
     await Promise.resolve();
-    view.rerender(panel(s, r, 'listen'));
-    expect(screen.getByRole('button', { name: 'Ketuk untuk ikut dengar' })).toBeTruthy();
+    view.rerender(stage(s, r, 'listen'));
+    expect(gate()).toBeTruthy();
     expect(document.querySelector('.player')).toBeNull();
+  });
+
+  it('puts the player alone in the stage: no cover, gate or label over it', async () => {
+    render(stage(fakeSession(), playing({ thumbnailUrl: 'https://i.ytimg.com/vi/a/hqdefault.jpg' }), 'listen'));
+    fireEvent.click(gate());
+    await Promise.resolve();
+    const slot = document.querySelector('.stage')!;
+    expect([...slot.children].map((c) => c.className)).toEqual(['player']);
+    expect((slot.querySelector('.player') as HTMLElement).hidden).toBe(false);
+  });
+
+  it('keeps the same player element when the entry changes shape (song -> video)', async () => {
+    const s = fakeSession();
+    const view = render(stage(s, playing(), 'listen'));
+    fireEvent.click(gate());
+    await Promise.resolve();
+    const player = document.querySelector('.player');
+    view.rerender(stage(s, { ...playing({ kind: 'YOUTUBE_VIDEO' }), version: 2 }, 'listen'));
+    expect(document.querySelector('.stage')?.classList.contains('stage-wide')).toBe(true);
+    expect(document.querySelector('.player')).toBe(player);
+    expect(mocks.log.filter((l) => l === 'new')).toHaveLength(1);
   });
 
   it('resyncs the controller when the session asks for it, and unsubscribes on unmount', async () => {
     const s = fakeSession();
-    render(panel(s, playing(), 'listen'));
+    render(stage(s, playing(), 'listen'));
     expect(s.resyncListeners.size).toBe(0);
-    fireEvent.click(screen.getByRole('button', { name: 'Ketuk untuk ikut dengar' }));
+    fireEvent.click(gate());
     await Promise.resolve();
     expect(s.resyncListeners.size).toBe(1);
     for (const l of s.resyncListeners) l();
@@ -138,33 +187,47 @@ describe('ListenPanel after the tap gate', () => {
     expect(s.resyncListeners.size).toBe(0);
   });
 
-  it('marks the entry unplayable on the session and hides the player', async () => {
+  it('marks the entry unplayable on the session, hides the player and offers Lewati to members with control', async () => {
     const s = fakeSession();
-    const r = playing();
-    const view = render(panel(s, r, 'listen'));
-    fireEvent.click(screen.getByRole('button', { name: 'Ketuk untuk ikut dengar' }));
+    const r = playing({ kind: 'YOUTUBE_VIDEO' });
+    const view = render(stage(s, r, 'listen'));
+    fireEvent.click(gate());
     await Promise.resolve();
     expect((document.querySelector('.player') as HTMLElement).hidden).toBe(false);
     opts().onUnplayable('a');
     expect(s.markUnplayable).toHaveBeenCalledWith('a');
-    view.rerender(panel(s, { ...r, version: 2 }, 'listen', { a: true }));
+    view.rerender(stage(s, { ...r, version: 2 }, 'listen', { a: true }));
     expect((document.querySelector('.player') as HTMLElement).hidden).toBe(true);
+    expect(document.querySelector('.stage-error')?.textContent).toContain('Video ini tidak bisa diputar di web');
+    fireEvent.click(screen.getByRole('button', { name: 'Lewati' }));
+    expect(s.next).toHaveBeenCalled();
   });
 
-  it('shows the tap hint when the controller asks for a tap', async () => {
-    render(panel(fakeSession(), playing(), 'listen'));
-    fireEvent.click(screen.getByRole('button', { name: 'Ketuk untuk ikut dengar' }));
+  it('tells members without control that the host has to skip', async () => {
+    const s = fakeSession();
+    const r = { ...playing({ kind: 'YOUTUBE_VIDEO' }), settings: { guestsCanControl: false, guestsCanAdd: true } };
+    render(stage(s, r, 'listen', { a: true }, 'm2'));
+    fireEvent.click(gate());
+    await Promise.resolve();
+    expect(screen.queryByRole('button', { name: 'Lewati' })).toBeNull();
+    expect(screen.getByText('Menunggu host melewati video ini')).toBeTruthy();
+  });
+
+  it('shows the tap hint under the stage when the controller asks for a tap', async () => {
+    render(stage(fakeSession(), playing(), 'listen'));
+    fireEvent.click(gate());
     await Promise.resolve();
     expect(screen.queryByText('Ketuk pemutar untuk mulai')).toBeNull();
     await act(async () => opts().onNeedsTap(true));
-    expect(screen.getByText('Ketuk pemutar untuk mulai')).toBeTruthy();
+    const hint = screen.getByText('Ketuk pemutar untuk mulai');
+    expect(hint.closest('.stage')).toBeNull();
   });
 
   it('takes server time from the session', async () => {
     const s = fakeSession();
     s.serverNow = () => 12345;
-    render(panel(s, playing(), 'listen'));
-    fireEvent.click(screen.getByRole('button', { name: 'Ketuk untuk ikut dengar' }));
+    render(stage(s, playing(), 'listen'));
+    fireEvent.click(gate());
     await Promise.resolve();
     expect(opts().serverNow()).toBe(12345);
   });
