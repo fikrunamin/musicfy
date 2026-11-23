@@ -23,6 +23,8 @@ class RitmeConnection(
     private val onEvent: (ConnectionEvent) -> Unit,
 ) : ConnectionLike {
     private var socket: RitmeSocket? = null
+    /** Whether [socket] has reported onOpen. */
+    private var opened = false
     private var intent: JoinIntent? = null
     private var welcomed = false
     private var joined = false
@@ -66,9 +68,9 @@ class RitmeConnection(
 
     private fun open() {
         joined = false
+        opened = false
         lastInboundAt = timers.now()
         lastPongAt = Long.MIN_VALUE
-        var opened = false
         lateinit var current: RitmeSocket
         val listener = object : RitmeSocketListener {
             override fun onOpen() {
@@ -76,8 +78,6 @@ class RitmeConnection(
                 opened = true
                 send(joinMessage())
                 later(JOIN_TIMEOUT_MS) { if (!joined) drop(current) }
-                for (i in 0 until PING_BURST) later(i * PING_BURST_GAP_MS) { ping() }
-                later(PING_INTERVAL_MS) { pingLoop() }
             }
 
             override fun onMessage(text: String) {
@@ -121,7 +121,13 @@ class RitmeConnection(
                     } finally {
                         ack(message.state.version)
                         // Not if a listener already left: no timers may outlive the socket.
-                        if (current != null && socket === current) watchIdle(current)
+                        if (current != null && socket === current) {
+                            // Only now: the server queues Pongs behind the Welcome snapshot (~260 KB),
+                            // so earlier pings would carry that one-way delay into the offset.
+                            pingBurst()
+                            later(PING_INTERVAL_MS) { pingLoop() }
+                            watchIdle(current)
+                        }
                     }
                 }
             }
@@ -157,11 +163,8 @@ class RitmeConnection(
             return
         }
         val now = timers.now()
-        val since = droppedAt ?: now
-        if (droppedAt == null) {
-            droppedAt = now
-            emit(ConnectionEvent.Status(ConnectionStatus.RECONNECTING))
-        }
+        val firstDrop = droppedAt == null
+        val since = droppedAt ?: now.also { droppedAt = it }
         // Give up 30 s after the first drop: delays are clamped so a last attempt lands at the 30 s mark.
         val remaining = since + RECONNECT_GIVE_UP_MS - now
         if (remaining <= 0) {
@@ -174,6 +177,8 @@ class RitmeConnection(
             reconnectTimer = null
             if (!ended) open()
         }
+        // Emitted last: a throwing listener must not strand the connection without a reconnect.
+        if (firstDrop) emit(ConnectionEvent.Status(ConnectionStatus.RECONNECTING))
     }
 
     private fun finish(reason: EndReason) {
@@ -187,13 +192,18 @@ class RitmeConnection(
         emit(ConnectionEvent.Ended(reason))
     }
 
-    /** Forgets a socket: its timers cancelled, its callbacks ignored from now on, closed (or cancelled when [abort]). */
+    /**
+     * Forgets a socket: its timers cancelled, its callbacks ignored from now on. Closed normally
+     * (queued frames such as Leave go first), or cancelled when [abort] or when it never opened
+     * (nothing to flush, and a close would wait on a handshake that never started).
+     */
     private fun detach(s: RitmeSocket, abort: Boolean = false) {
+        val neverOpened = socket === s && !opened
         socketTimers.forEach { it.cancel() }
         socketTimers.clear()
         if (socket === s) socket = null
         joined = false
-        if (abort) s.cancel() else s.close()
+        if (abort || neverOpened) s.cancel() else s.close()
     }
 
     private fun ack(version: Long) {
@@ -216,6 +226,11 @@ class RitmeConnection(
             if (left <= 0) drop(current, abort = true) else later(left) { check() }
         }
         later(IDLE_TIMEOUT_MS) { check() }
+    }
+
+    /** [PING_BURST] Pings [PING_BURST_GAP_MS] apart: a fresh clock window after every Welcome. */
+    private fun pingBurst() {
+        for (i in 0 until PING_BURST) later(i * PING_BURST_GAP_MS) { ping() }
     }
 
     private fun pingLoop() {

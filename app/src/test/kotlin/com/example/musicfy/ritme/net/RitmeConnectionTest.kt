@@ -37,12 +37,36 @@ class RitmeConnectionTest {
     private fun ended(): EndReason? = events.filterIsInstance<ConnectionEvent.Ended>().singleOrNull()?.reason
 
     @Test
-    fun joinsAsSoonAsTheSocketOpensAndPingsInABurst() {
+    fun joinsAsSoonAsTheSocketOpensAndPingsOnlyAfterTheWelcome() {
         connection().start(JoinIntent.Join("K7M2QX", "Budi"))
         assertEquals("wss://ritme.test/ritme", sockets.last.url)
         assertTrue(sockets.last.sent.isEmpty())
+        sockets.last.autoPong(timers)
         sockets.last.open()
-        assertEquals(ClientMessage.Join(PROTOCOL_VERSION, "K7M2QX", "Budi", null), sockets.last.sentMessages().first())
+        assertEquals(listOf(ClientMessage.Join(PROTOCOL_VERSION, "K7M2QX", "Budi", null)), sockets.last.sentMessages())
+        // The server queues Pongs behind the Welcome snapshot: pinging before it would skew the clock.
+        timers.advanceBy(5_000)
+        assertEquals(0, sockets.last.sentMessages().count { it is ClientMessage.Ping })
+        sockets.last.receive(welcome(room(version = 3)))
+        timers.advanceBy(800)
+        val afterWelcome = sockets.last.sentMessages().drop(1)
+        assertEquals(ClientMessage.Ack(3), afterWelcome.first())
+        assertEquals((0..4).map { ClientMessage.Ping(5_000L + it * 200) }, afterWelcome.drop(1))
+        timers.advanceBy(30_000 - 800)
+        assertEquals(ClientMessage.Ping(35_000), sockets.last.sentMessages().last())
+    }
+
+    @Test
+    fun theBurstRunsAgainAfterAResumeWelcome() {
+        joined()
+        sockets.last.autoPong(timers)
+        timers.advanceBy(1_000)
+        sockets.last.drop()
+        timers.advanceBy(1_000)
+        sockets.last.open()
+        timers.advanceBy(1_000)
+        assertEquals(0, sockets.last.sentMessages().count { it is ClientMessage.Ping })
+        sockets.last.receive(welcome(room(version = 4)))
         timers.advanceBy(800)
         assertEquals(5, sockets.last.sentMessages().count { it is ClientMessage.Ping })
     }
@@ -180,7 +204,41 @@ class RitmeConnectionTest {
         c.leave()
         assertEquals(ClientMessage.Leave, sockets.last.sentMessages().last())
         assertTrue(sockets.last.closed)
+        assertFalse(sockets.last.cancelled) // a normal close, so the queued Leave goes out first
         assertEquals(EndReason.Left, ended())
+    }
+
+    @Test
+    fun leavingASocketThatNeverOpenedCancelsIt() {
+        val c = connection()
+        c.start(JoinIntent.Join("K7M2QX", "Budi"))
+        c.leave()
+        assertTrue(sockets.last.cancelled)
+        assertEquals(EndReason.Left, ended())
+
+        events.clear()
+        val d = connection()
+        d.start(JoinIntent.Join("K7M2QX", "Budi"))
+        sockets.last.open() // opened but not yet welcomed: closed normally
+        d.leave()
+        assertTrue(sockets.last.closed)
+        assertFalse(sockets.last.cancelled)
+    }
+
+    @Test
+    fun aListenerThrowingOnReconnectingDoesNotStrandTheConnection() {
+        val c = connection {
+            events += it
+            if (it == ConnectionEvent.Status(ConnectionStatus.RECONNECTING)) throw IllegalStateException("boom")
+        }
+        c.start(JoinIntent.Join("K7M2QX", "Budi"))
+        sockets.last.open()
+        sockets.last.receive(welcome(room(version = 3)))
+        assertThrows(IllegalStateException::class.java) { sockets.last.drop() }
+        timers.advanceBy(1_000)
+        assertEquals(2, sockets.sockets.size)
+        sockets.last.open()
+        assertEquals(ClientMessage.Join(PROTOCOL_VERSION, "K7M2QX", "Budi", "tok"), sockets.last.sentMessages().first())
     }
 
     @Test
