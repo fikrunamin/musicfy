@@ -1,0 +1,31 @@
+{
+  "responseContext": { "visitorData": "x" },
+  "queueDatas": [
+    {
+      "content": {
+        "playlistPanelVideoRenderer": {
+          "title": { "runs": [{ "text": "Never Gonna Give You Up" }] },
+          "longBylineText": {
+            "runs": [
+              { "text": "Rick Astley", "navigationEndpoint": { "browseEndpoint": { "browseId": "UCuAXFkgsw1L7xaCfnd5JJOw" } } },
+              { "text": " • " },
+              { "text": "Whenever You Need Somebody" },
+              { "text": " • " },
+              { "text": "1987" }
+            ]
+          },
+          "thumbnail": {
+            "thumbnails": [
+              { "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/sddefault.jpg", "width": 120, "height": 90 },
+              { "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg", "width": 480, "height": 360 }
+            ]
+          },
+          "lengthText": { "runs": [{ "text": "3:34" }] },
+          "videoId": "dQw4w9WgXcQ",
+          "selected": true,
+          "navigationEndpoint": { "watchEndpoint": { "videoId": "dQw4w9WgXcQ" } }
+        }
+      }
+    }
+  ]
+}

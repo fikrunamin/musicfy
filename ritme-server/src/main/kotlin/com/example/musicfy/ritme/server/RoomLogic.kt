@@ -14,7 +14,6 @@ import com.example.musicfy.ritme.protocol.RoomState
 import com.example.musicfy.ritme.protocol.currentEntry
 import com.example.musicfy.ritme.protocol.isLive
 import com.example.musicfy.ritme.protocol.positionAt
-import java.net.URI
 import java.text.Normalizer
 
 /** Side effects a command asks the stateful [Room] to carry out. */
@@ -312,7 +311,6 @@ object RoomLogic {
         positionMs.coerceIn(0, if (entry.isLive) Limits.MAX_DURATION_MS else entry.durationMs)
 
     private val VIDEO_ID = Regex("^[A-Za-z0-9_-]{1,${Limits.MAX_VIDEO_ID_LENGTH}}$")
-    private val YOUTUBE_THUMBNAIL_HOST_SUFFIXES = listOf(".ytimg.com", ".googleusercontent.com", ".ggpht.com")
 
     /**
      * Every field is bounded so a full queue stays small when it is broadcast: YouTube kinds carry
@@ -337,8 +335,7 @@ object RoomLogic {
         if (thumbnailUrl.length > Limits.MAX_THUMBNAIL_URL_LENGTH || !thumbnailUrl.startsWith("https://")) return false
         // Other members' devices load it directly: the same host rules as a URL entry's url.
         if (!youtube) return MediaUrlRules.isAcceptableMediaUrl(thumbnailUrl)
-        val host = runCatching { URI(thumbnailUrl).host }.getOrNull()?.lowercase() ?: return false
-        return host == "i.ytimg.com" || YOUTUBE_THUMBNAIL_HOST_SUFFIXES.any { host.endsWith(it) }
+        return isYouTubeImageUrl(thumbnailUrl)
     }
 
     private fun NewEntry.toQueueEntry(entryId: String, addedBy: String) =

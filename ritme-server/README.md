@@ -1,8 +1,8 @@
 # Ritme server
 
 Relay for Ritme (listen together). It keeps rooms in memory, syncs queue and playback over
-WebSocket `/ritme`, and offers metadata-only song search for the web client. It never streams
-audio and never writes to disk.
+WebSocket `/ritme`, and offers metadata-only song search and video info for the web client. It
+never streams audio and never writes to disk.
 
 ## Develop
 
@@ -102,6 +102,7 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
 | GET | `/healthz` | `ok` |
 | WS | `/ritme` | Room protocol (see `modules/ritme-protocol`) |
 | GET | `/api/search?q=` | Up to 20 songs `{videoId,title,artist,durationMs,thumbnailUrl}`; 30/min per IP (429), 300 uncached/min in total (503) |
+| GET | `/api/video?id=` | One YouTube video's metadata `{videoId,title,channel,durationMs,thumbnailUrl,live}` from InnerTube `music/get_queue` (no stream URLs). 400 for an id that is not 11 URL-safe characters, 404 when YouTube returns no such video, 30/min per IP (429, a bucket separate from search), 503 when the 300/min upstream budget shared with search is spent, 502 when YouTube fails. Cached 6 h; live videos and misses 5 min |
 | GET | `/`, `/r/{code}` | Web client (`ritme-web`), or the landing page with a `musicfy://ritme/{code}` button when `WEB_DIR` has no `index.html`. These and the static files are sent with `Content-Security-Policy: frame-ancestors 'none'` and `X-Frame-Options: DENY` |
 
 ## Protocol notes
@@ -172,7 +173,7 @@ What passes through memory while a room exists: display names, the queue (titles
 videoIds, URLs, thumbnail links), playback state and resume tokens. Client IP addresses are held
 only as rate-limit and connection-count keys (IPv6 reduced to its /64). None of this is ever
 persisted or logged: the server logs only startup, errors and periodic room/connection counts.
-Search queries are cached in memory for 10 minutes and never logged.
+Search queries (10 minutes) and looked-up video ids (up to 6 hours) are cached in memory and never logged.
 
 Caddy is configured not to log either: access logs are off and the request error log
 (`http.log.error`), Go's server log (`http.stdlib`, which would print client IPs on TLS errors)

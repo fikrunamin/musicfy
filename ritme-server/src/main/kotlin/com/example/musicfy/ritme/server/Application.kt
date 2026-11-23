@@ -1,6 +1,7 @@
 package com.example.musicfy.ritme.server
 
 import com.example.musicfy.ritme.protocol.RitmeJson
+import io.ktor.client.HttpClient
 import io.ktor.websocket.ChannelOverflow
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -34,9 +35,12 @@ class ServerDeps(
     val config: ServerConfig,
     val clock: Clock = SystemClock,
     val ids: IdGen = SecureIdGen(),
+    /** One client for every InnerTube call. */
+    http: HttpClient = defaultHttpClient(),
     /** Uncached InnerTube calls of every endpoint together (300/min). */
     val upstreamBudget: UpstreamBudget = UpstreamBudget(clock = clock),
-    val search: SearchService = SearchService(InnerTubeSearchBackend(defaultHttpClient()), clock, budget = upstreamBudget),
+    val search: SearchService = SearchService(InnerTubeSearchBackend(http), clock, budget = upstreamBudget),
+    val video: VideoInfoService = VideoInfoService(InnerTubeVideoBackend(http), clock, upstreamBudget),
     val socketLimits: SocketLimits = SocketLimits(),
     val peerStats: PeerStats = PeerStats(),
     val stateBudget: StateBudget = StateBudget(),
@@ -59,6 +63,7 @@ fun Application.ritmeModule(deps: ServerDeps) {
     val registry = RoomRegistry(deps.clock, deps.ids, deps.socketLimits.maxRooms, deps.stateBudget)
     val guard = ConnectionGuard(deps.socketLimits, deps.clock)
     val searchLimiter = IpRateLimiter(deps.clock)
+    val videoLimiter = IpRateLimiter(deps.clock, perMinute = Limits.VIDEO_PER_MINUTE)
 
     // Only Caddy can reach this server, so X-Forwarded-For is trustworthy. Caddy (no
     // trusted_proxies) replaces any client-sent value with the address it saw, so the last (and
@@ -136,6 +141,36 @@ fun Application.ritmeModule(deps: ServerDeps) {
                 return@get
             }
             call.respondText(RitmeJson.encodeToString(ListSerializer(SearchResult.serializer()), results), ContentType.Application.Json)
+        }
+
+        get("/api/video") {
+            val id = call.request.queryParameters["id"].orEmpty()
+            if (!VideoInfoService.isVideoId(id)) {
+                call.respond(HttpStatusCode.BadRequest)
+                return@get
+            }
+            if (!videoLimiter.tryAcquire(call.request.origin.remoteHost)) {
+                call.respond(HttpStatusCode.TooManyRequests)
+                return@get
+            }
+            val info = try {
+                deps.video.lookup(id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: UpstreamOverloadedException) {
+                call.respond(HttpStatusCode.ServiceUnavailable)
+                return@get
+            } catch (e: Exception) {
+                // Never log the id: what people watch is user content.
+                call.application.log.warn("video backend failed: ${e::class.simpleName}")
+                call.respond(HttpStatusCode.BadGateway)
+                return@get
+            }
+            if (info == null) {
+                call.respond(HttpStatusCode.NotFound)
+                return@get
+            }
+            call.respondText(RitmeJson.encodeToString(VideoInfo.serializer(), info), ContentType.Application.Json)
         }
 
         val webIndex = File(deps.config.webDir, "index.html")

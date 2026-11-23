@@ -133,4 +133,7 @@ object Limits {
     /** All uncached InnerTube calls together, search and video info (UpstreamBudget); beyond this both endpoints answer 503. */
     const val SEARCH_GLOBAL_PER_MINUTE = 300
     const val SEARCH_MAX_QUERY_LENGTH = 200
+
+    /** /api/video per client IP: a bucket of its own, so adding videos does not use up searches. */
+    const val VIDEO_PER_MINUTE = 30
 }
