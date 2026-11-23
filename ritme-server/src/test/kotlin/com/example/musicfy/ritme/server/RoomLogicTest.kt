@@ -489,6 +489,14 @@ class RoomLogicTest {
     }
 
     @Test
+    fun newRoomDropsInitialUrlEntriesThatBreakTheMediaUrlRules() {
+        val clip = NewEntry("", "Clip", "", null, 60_000, MediaKind.URL, "http://10.0.0.1/v.mp4")
+        val create = ClientMessage.Create(PROTOCOL_VERSION, "Host", listOf(clip, newEntry("ok"), clip.copy(url = "https://cdn.example/v.mp4")))
+        val queue = RoomLogic.newRoom("ABCDEF", HOST, "Host", create, now, ids).queue
+        assertEquals(listOf(null, "https://cdn.example/v.mp4"), queue.map { it.url })
+    }
+
+    @Test
     fun urlEntryThumbnailsFollowTheSameHostRules() {
         val url = NewEntry("", "Clip", "", null, 60_000, MediaKind.URL, "https://cdn.example/v.mp4")
         listOf("https://192.168.1.1/poster.jpg", "https://localhost/poster.jpg", "https://user@cdn.example/poster.jpg").forEach {

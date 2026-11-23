@@ -1,6 +1,7 @@
 package com.example.musicfy.ritme.protocol
 
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -18,12 +19,15 @@ class MediaUrlRulesTest {
 
     @Test
     fun everySharedCaseGetsItsVerdict() {
-        assertTrue("expected the fixture cases", cases.size >= 80)
-        cases.forEach { case ->
-            val url = case.getValue("url").jsonPrimitive.content
+        assertEquals("fixture case count", 120, cases.size)
+        val mismatches = cases.mapNotNull { case ->
+            val base = case.getValue("url").jsonPrimitive.content
+            val url = case["padTo"]?.jsonPrimitive?.int?.let { base.padEnd(it, 'a') } ?: base
             val expected = case.getValue("reject").jsonPrimitive.contentOrNull
-            assertEquals(url, expected, MediaUrlRules.check(url)?.name)
+            val actual = MediaUrlRules.check(url)?.name
+            "${base.take(80)} (length ${url.length}): expected $expected, was $actual".takeIf { actual != expected }
         }
+        assertEquals(emptyList<String>(), mismatches)
     }
 
     @Test

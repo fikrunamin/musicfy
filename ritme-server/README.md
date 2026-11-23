@@ -131,8 +131,9 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
   entries carry a `url` that passes `MediaUrlRules` (`modules/ritme-protocol`) and `videoId = ""`:
   http(s), at most 2048 chars, no whitespace (Unicode whitespace and U+FEFF included), control
   characters, backslash or `#fragment`, no `user:pass@`, and no local host (`localhost`,
-  `*.localhost`, `*.local`, `*.internal`, `*.lan`, `*.home.arpa`, single-label names,
-  loopback/private/link-local/CGNAT/unspecified/multicast/reserved IPv4 and IPv6 literals, IPv6
+  `*.localhost`, `*.local`, `*.internal`, `*.lan`, `*.home.arpa`, `*.localdomain` (also `4`/`6`),
+  single-label names, loopback/private/link-local/CGNAT/unspecified/multicast/reserved IPv4 and
+  IPv6 literals, including 192.0.0/24 and the 198.18/15 benchmark (proxy fake-IP) range, IPv6
   literals embedding such an IPv4 address (`::ffff:`, `::ffff:0:`, NAT64 `64:ff9b::/96`, 6to4
   `2002::/16`), the local-use NAT64 prefix `64:ff9b:1::/48`, or numeric hosts that are not a
   dotted quad). The server never resolves or fetches the URL. `thumbnailUrl` is null or https

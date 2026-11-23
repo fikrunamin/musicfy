@@ -139,15 +139,21 @@ layar penuh, atau pemutaran URL/HLS/DASH di pemutar utama. Rinciannya di
 
 `MediaUrlRules.isAcceptableMediaUrl(url)` di `:modules:ritme-protocol`, dipakai `RoomLogic.isValid`:
 
-1. Parse dengan `java.net.URI`. Skema `http`/`https`. Host wajib ada. Panjang ≤ 2048.
+1. Parse dengan parser yang ditulis tangan (bukan `java.net.URI`), supaya twin TypeScript
+   (`ritme-web/src/net/media-url-rules.ts`) memberi hasil yang persis sama. Skema `http`/`https`.
+   Host wajib ada. Panjang ≤ 2048.
 2. **Tolak userinfo** (`https://user:pass@host/...`). Kredensial tidak boleh ikut tersiar ke room.
-3. Tolak spasi dan karakter kontrol (`\p{Cc}`), backslash, dan fragment `#...` (dibuang oleh klien
-   sebelum mengirim. Server menolak kalau masih ada).
+3. Tolak spasi (termasuk spasi Unicode dan U+FEFF) dan karakter kontrol (`\p{Cc}`), backslash, dan
+   fragment `#...` (dibuang oleh klien sebelum mengirim. Server menolak kalau masih ada).
 4. **Tolak host lokal:** `localhost`, `*.localhost`, `*.local`, `*.internal`, literal IPv4/IPv6
    loopback, privat (10/8, 172.16/12, 192.168/16, fc00::/7), link-local (169.254/16, fe80::/10),
    CGNAT 100.64/10, `0.0.0.0`, multicast. Tujuannya: anggota tidak bisa menyuruh perangkat anggota lain
    mengakses router atau LAN-nya. Server **tidak** me-resolve DNS (lihat D6). Penjagaan setelah
-   resolusi DNS ada di Android (4.5).
+   resolusi DNS ada di Android (4.5). Implementasi juga menolak `*.lan`, `*.home.arpa`,
+   `*.localdomain` (Linux me-resolve `localhost.localdomain` ke loopback), nama satu label,
+   192.0.0/24, 198.18/15, 240/4, `fec0::/10`, IPv6 yang menyematkan IPv4 lokal (`::ffff:`,
+   `::ffff:0:`, NAT64, 6to4), `64:ff9b:1::/48`, dan host numerik yang bukan dotted quad. Daftar
+   lengkap: README server dan fixture `fixtures/rules/media-urls.json`.
 5. Dengan `streamType`/`referrer` (#3): `streamType` lenient (nilai tak dikenal → `UNKNOWN`, tetap
    diterima). `referrer` null, atau origin murni `https?://host[:port]/` tanpa path/query/userinfo,
    ≤ 200 karakter, dengan aturan host yang sama.
@@ -518,7 +524,7 @@ menghubungi host video tersebut secara langsung.
 ## 9. Testing
 
 **`:modules:ritme-protocol` / `:modules:ritme-media` (JUnit)**
-- `MediaUrlRules`: fixture `modules/ritme-protocol/fixtures/media-urls.json` (input → diterima/alasan
+- `MediaUrlRules`: fixture `modules/ritme-protocol/fixtures/rules/media-urls.json` (input → diterima/alasan
   ditolak). Mencakup userinfo, IP privat v4/v6, `localhost`, karakter kontrol, fragment, panjang,
   dan origin `referrer`.
 - `YouTubeLinks`: fixture `youtube-links.json` (semua bentuk link, `t=`/`list=`, id tidak valid).

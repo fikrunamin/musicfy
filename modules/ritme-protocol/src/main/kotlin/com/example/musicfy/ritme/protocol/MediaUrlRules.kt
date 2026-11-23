@@ -61,15 +61,20 @@ object MediaUrlRules {
 
     /** C0, space, DEL, C1 and U+00A0; the other Unicode White_Space characters; U+FEFF; backslash. */
     private fun isForbiddenCharacter(c: Char): Boolean =
-        c <= ' ' || c in '\u007F'..' ' || c == '\\' || c == ' ' || c in ' '..' ' ||
-            c == ' ' || c == ' ' || c == ' ' || c == ' ' || c == '　' || c == '﻿'
+        c <= ' ' || c in '\u007F'..'\u00A0' || c == '\\' || c == '\u1680' || c in '\u2000'..'\u200A' ||
+            c == '\u2028' || c == '\u2029' || c == '\u202F' || c == '\u205F' || c == '\u3000' || c == '\uFEFF'
 
     private val SCHEME = Regex("^([A-Za-z][A-Za-z0-9+.-]*):")
     private val PORT = Regex(":([0-9]{1,5})?")
     private val HOST_NAME = Regex("^[a-z0-9_-]+(\\.[a-z0-9_-]+)*\\.?$")
     private val NUMERIC_LABEL = Regex("^(0x[0-9a-f]*|[0-9]+)$")
     private val IPV4_PART = Regex("^(0|[1-9][0-9]{0,2})$")
-    private val LOCAL_SUFFIXES = listOf(".localhost", ".local", ".internal", ".lan", ".home.arpa")
+    private val LOCAL_NAMES = setOf("home.arpa", "localdomain", "localdomain4", "localdomain6")
+
+    /** `*.localdomain` too: Linux resolves `localhost.localdomain` (and RHEL `localhost4.localdomain4`) to loopback. */
+    private val LOCAL_SUFFIXES = listOf(
+        ".localhost", ".local", ".internal", ".lan", ".home.arpa", ".localdomain", ".localdomain4", ".localdomain6",
+    )
 
     /** The host part of [authority] (an IPv6 literal keeps its brackets), lowercased; null when malformed. */
     private fun hostOf(authority: String): String? {
@@ -100,7 +105,7 @@ object MediaUrlRules {
             return if (isLocalIpv4(v4)) Rejection.LOCAL_HOST else null
         }
         // Single-label names resolve through the LAN's search domain (router, nas, printer).
-        if ('.' !in name || name == "home.arpa" || LOCAL_SUFFIXES.any { name.endsWith(it) }) return Rejection.LOCAL_HOST
+        if ('.' !in name || name in LOCAL_NAMES || LOCAL_SUFFIXES.any { name.endsWith(it) }) return Rejection.LOCAL_HOST
         return null
     }
 
@@ -112,11 +117,16 @@ object MediaUrlRules {
         return bytes.takeIf { b -> b.all { it <= 255 } }
     }
 
-    /** 0/8, 10/8, 127/8, 100.64/10, 169.254/16, 172.16/12, 192.168/16, and 224/4 + 240/4 (multicast, reserved, broadcast). */
+    /**
+     * 0/8, 10/8, 127/8, 100.64/10, 169.254/16, 172.16/12, 192.0.0/24 (IETF protocol assignments),
+     * 192.168/16, 198.18/15 (benchmarking, also the fake-IP range of Clash/Surge proxies), and
+     * 224/4 + 240/4 (multicast, reserved, broadcast).
+     */
     private fun isLocalIpv4(a: IntArray): Boolean =
         a[0] == 0 || a[0] == 10 || a[0] == 127 || a[0] >= 224 ||
             (a[0] == 100 && a[1] in 64..127) || (a[0] == 169 && a[1] == 254) ||
-            (a[0] == 172 && a[1] in 16..31) || (a[0] == 192 && a[1] == 168)
+            (a[0] == 172 && a[1] in 16..31) || (a[0] == 192 && a[1] == 168) ||
+            (a[0] == 192 && a[1] == 0 && a[2] == 0) || (a[0] == 198 && a[1] in 18..19)
 
     /** 16 bytes, or null. Accepts `::` and a dotted IPv4 tail; no zone ids. */
     private fun parseIpv6(text: String): IntArray? {
