@@ -190,4 +190,14 @@ class RitmeSyncPlannerTest {
         val nearEnd = room(queue = listOf(e1), currentEntryId = "e1", playback = Playback(false, 199_000, 216_000))
         assertEquals(listOf(PlayerOp.SeekTo(199_000)), plan(nearEnd, 217_000, local(pos = 150_000), lastKey = keyAt(nearEnd, 217_000)).ops)
     }
+
+    @Test
+    fun aPausedSeekAwayFromTheEndRealignsAnEndedDevice() {
+        // This device played e1 to its end; then the room was paused and seeked back to 1:00.
+        val seekedBack = room(version = 4, queue = listOf(e1), currentEntryId = "e1", playback = Playback(false, 60_000, 220_000))
+        assertEquals(
+            listOf(PlayerOp.SeekTo(60_000)),
+            plan(seekedBack, 221_000, local(pos = 200_000, ended = true), lastKey = keyAt(seekedBack, 221_000)).ops,
+        )
+    }
 }

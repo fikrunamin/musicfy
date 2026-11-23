@@ -17,12 +17,13 @@ class RitmeLinksTest {
 
     @Test
     fun roomCodesAreFoundInLinksAndSharedText() {
-        assertEquals("K7M2QX", RitmeLinks.findRoomCode("musicfy://ritme/K7M2QX"))
-        assertEquals("K7M2QX", RitmeLinks.findRoomCode("https://ritme.dubeli.id/r/k7m2qx"))
-        assertEquals("K7M2QX", RitmeLinks.findRoomCode("Listen with me on Ritme: https://ritme.dubeli.id/r/K7M2QX"))
-        assertEquals("K7M2QX", RitmeLinks.findRoomCode("http://192.168.1.5:8080/r/K7M2QX"))
-        assertNull(RitmeLinks.findRoomCode("https://ritme.dubeli.id/r/K7M2QXY"))
-        assertNull(RitmeLinks.findRoomCode("https://music.youtube.com/watch?v=dQw4w9WgXcQ"))
+        val servers = listOf("https://ritme.dubeli.id", "http://192.168.1.5:8080")
+        assertEquals("K7M2QX", RitmeLinks.findRoomCode("musicfy://ritme/K7M2QX", servers))
+        assertEquals("K7M2QX", RitmeLinks.findRoomCode("https://ritme.dubeli.id/r/k7m2qx", servers))
+        assertEquals("K7M2QX", RitmeLinks.findRoomCode("Listen with me on Ritme: https://ritme.dubeli.id/r/K7M2QX", servers))
+        assertEquals("K7M2QX", RitmeLinks.findRoomCode("http://192.168.1.5:8080/r/K7M2QX", servers))
+        assertNull(RitmeLinks.findRoomCode("https://ritme.dubeli.id/r/K7M2QXY", servers))
+        assertNull(RitmeLinks.findRoomCode("https://music.youtube.com/watch?v=dQw4w9WgXcQ", servers))
     }
 
     @Test

@@ -347,7 +347,9 @@ class PlayerConnection(
     fun playNext(item: MediaItem) = playNext(listOf(item))
 
     fun playNext(items: List<MediaItem>) {
-        if (ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.AddItems(items.map { it.metadata }, playNext = true))) return
+        if (ritmeGate.isActive &&
+            ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.AddItems(items.map { it.metadata }, playNext = true))
+        ) return
 
         try {
             service.playNext(items)
@@ -360,7 +362,9 @@ class PlayerConnection(
     fun addToQueue(item: MediaItem) = addToQueue(listOf(item))
 
     fun addToQueue(items: List<MediaItem>) {
-        if (ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.AddItems(items.map { it.metadata }, playNext = false))) return
+        if (ritmeGate.isActive &&
+            ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.AddItems(items.map { it.metadata }, playNext = false))
+        ) return
 
         try {
             service.addToQueue(items)

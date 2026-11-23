@@ -20,12 +20,10 @@ object RitmeLinks {
         return code.takeIf { it.length == CODE_LENGTH && it.all { c -> c in CODE_ALPHABET } }
     }
 
-    /** The room code in a `musicfy://ritme/{code}` or `http(s)://<host>/r/{code}` link, also inside shared text. */
-    fun findRoomCode(text: String): String? = LINK.find(text)?.groupValues?.get(2)?.let(::normalizeCode)
-
     /**
-     * Like [findRoomCode], but an `http(s)://<host>/r/{code}` link only counts when its host is one
-     * of [serverUrls]' (any port), so shared text such as `reddit.com/r/travel` never opens a room.
+     * The room code in a `musicfy://ritme/{code}` or `http(s)://<host>/r/{code}` link, also inside
+     * shared text. An `http(s)` link only counts when its host is one of [serverUrls]' (any port),
+     * so shared text such as `reddit.com/r/travel` never opens a room.
      */
     fun findRoomCode(text: String, serverUrls: Collection<String>): String? {
         val hosts = serverUrls.mapNotNullTo(HashSet()) { hostOf(it) }

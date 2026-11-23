@@ -118,7 +118,8 @@ object RitmeSyncPlanner {
             !p.isPlaying -> {
                 if (!justLoaded && local.playWhenReady) ops += PlayerOp.Pause
                 val endWindow = entry.durationMs - END_TOLERANCE_MS
-                val heldAtEnd = local.ended || (expected >= endWindow && local.positionMs >= endWindow)
+                // Only while the room itself is at the end: a paused seek away from it realigns an ended device.
+                val heldAtEnd = expected >= endWindow && (local.ended || local.positionMs >= endWindow)
                 if (!justLoaded && !live && !heldAtEnd && abs(drift) > PAUSED_ALIGN_MS) ops += PlayerOp.SeekTo(expected)
                 if (local.speed != DriftCorrector.NORMAL) ops += PlayerOp.SetSpeed(DriftCorrector.NORMAL)
             }
