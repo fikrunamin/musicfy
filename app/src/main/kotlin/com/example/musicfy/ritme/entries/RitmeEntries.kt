@@ -56,6 +56,13 @@ object RitmeEntries {
             !Character.isWhitespace(it) && Character.getType(it) !in NOT_VISIBLE_TYPES && it !in BLANK_LETTERS
         }
 
+    /** At most [MAX_TEXT] chars (the server counts UTF-16 units), never ending on half a surrogate pair. */
+    private fun truncate(text: String): String {
+        if (text.length <= MAX_TEXT) return text
+        val cut = if (Character.isHighSurrogate(text[MAX_TEXT - 1])) MAX_TEXT - 1 else MAX_TEXT
+        return text.substring(0, cut)
+    }
+
     /** The thumbnail if the server accepts it for a YouTube entry, else null. */
     fun safeThumbnail(url: String?): String? {
         if (url == null || url.length > MAX_THUMBNAIL_LENGTH || !url.startsWith("https://")) return null
@@ -71,9 +78,9 @@ object RitmeEntries {
      */
     fun toNewEntry(song: MediaMetadata?): NewEntry? {
         if (song == null || song.localUri != null || !VIDEO_ID.matches(song.id)) return null
-        val title = song.title.trim().take(MAX_TEXT)
+        val title = truncate(song.title.trim())
         if (!hasVisibleText(title)) return null
-        val artist = song.artists.joinToString(", ") { it.name }.trim().take(MAX_TEXT)
+        val artist = truncate(song.artists.joinToString(", ") { it.name }.trim())
         return NewEntry(
             videoId = song.id,
             title = title,
