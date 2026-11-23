@@ -28,13 +28,10 @@ interface Props {
 const LOCKED_HINT_ID = 'controls-locked-hint';
 
 /** What the stage shows when there is no player to show (remote mode, before the tap, nothing playing). */
-function Cover({ entry }: { entry: QueueEntry | null }) {
+function Cover({ entry, gated }: { entry: QueueEntry | null; gated: boolean }) {
   if (!entry) {
-    return (
-      <div class="stage-empty">
-        <Icon name="album" size={56} />
-      </div>
-    );
+    // Under the tap gate the icon would only show as an arc around the button, so leave it out.
+    return <div class="stage-empty">{!gated && <Icon name="album" size={56} />}</div>;
   }
   const src = httpsThumbnail(entry.thumbnailUrl);
   if (src) return <img key={entry.entryId} class="stage-cover" src={src} alt="" referrerpolicy="no-referrer" />;
@@ -47,14 +44,14 @@ function Cover({ entry }: { entry: QueueEntry | null }) {
 }
 
 /** "Video ini tidak bisa diputar di web" in the stage, with Lewati for members with control. */
-function StageError({ entry, label, canSkip, onSkip }: { entry: QueueEntry; label: string | null; canSkip: boolean; onSkip: () => void }) {
+function StageError({ entry, label, canSkip, skipDisabled, onSkip }: { entry: QueueEntry; label: string | null; canSkip: boolean; skipDisabled: boolean; onSkip: () => void }) {
   return (
     <div class="stage-error">
       <Icon name="warning" size={28} />
       <p class="stage-error-title">{isVideoEntry(entry) ? t.videoUnplayableWeb : (label ?? t.unplayableWeb)}</p>
       <p class="stage-error-reason">{t.unplayableReason}</p>
       {canSkip ? (
-        <button type="button" class="btn btn-secondary stage-skip" onClick={onSkip}>
+        <button type="button" class="btn btn-secondary stage-skip" disabled={skipDisabled} onClick={onSkip}>
           <Icon name="skip_next" size={20} />
           <span class="btn-label">{t.skip}</span>
         </button>
@@ -84,7 +81,7 @@ export function NowPlaying({ session, room, memberId, unplayable, online, pageIs
   const wide = entry !== null && (isVideoEntry(entry) || live);
   const label = entry ? unplayableLabel(entry, unplayable, pageIsHttps) : null;
   const playing = room.playback.isPlaying;
-  const cover = <Cover entry={entry} />;
+  const cover = <Cover entry={entry} gated={mode === 'listen'} />;
 
   return (
     <section class={cx('now-playing', `np-${mode}`)} aria-labelledby="now-title">
@@ -109,7 +106,7 @@ export function NowPlaying({ session, room, memberId, unplayable, online, pageIs
             unplayable={unplayable}
             pageIsHttps={pageIsHttps}
             cover={cover}
-            unplayableSlot={entry && <StageError entry={entry} label={label} canSkip={control} onSkip={() => session.next()} />}
+            unplayableSlot={entry && <StageError entry={entry} label={label} canSkip={allowed} skipDisabled={!online} onSkip={() => session.next()} />}
             onNeedsTap={setNeedsTap}
           />
         ) : (

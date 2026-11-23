@@ -71,6 +71,14 @@ describe('the stage before the tap', () => {
     expect(document.querySelector('.stage .stage-empty')).toBeTruthy();
   });
 
+  it('keeps the empty listen stage calm: no placeholder icon peeks out behind the gate', () => {
+    const view = render(stage(fakeSession(), room(), 'listen'));
+    expect(gate()).toBeTruthy();
+    expect(document.querySelector('.stage .stage-empty svg')).toBeNull();
+    view.rerender(stage(fakeSession(), room(), 'remote'));
+    expect(document.querySelector('.stage .stage-empty svg')).toBeTruthy();
+  });
+
   it('shows only the cover in remote mode: no gate, no player', () => {
     const r = room({ queue: [entry('a', { thumbnailUrl: 'https://i.ytimg.com/vi/a/hqdefault.jpg' })], currentEntryId: 'a' });
     render(stage(fakeSession(), r, 'remote'));
@@ -211,6 +219,17 @@ describe('the stage after the tap gate', () => {
     await Promise.resolve();
     expect(screen.queryByRole('button', { name: 'Lewati' })).toBeNull();
     expect(screen.getByText('Menunggu host melewati video ini')).toBeTruthy();
+  });
+
+  it('keeps Lewati for a host who is offline, but disabled', async () => {
+    const s = fakeSession();
+    const r = playing({ kind: 'YOUTUBE_VIDEO' });
+    render(<NowPlaying session={s} room={r} memberId="m1" unplayable={{ a: true }} online={false} pageIsHttps mode="listen" />);
+    fireEvent.click(gate());
+    await Promise.resolve();
+    const skip = screen.getByRole('button', { name: 'Lewati' }) as HTMLButtonElement;
+    expect(skip.disabled).toBe(true);
+    expect(screen.queryByText('Menunggu host melewati video ini')).toBeNull();
   });
 
   it('shows the tap hint under the stage when the controller asks for a tap', async () => {
