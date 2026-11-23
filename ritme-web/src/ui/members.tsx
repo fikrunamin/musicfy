@@ -1,8 +1,8 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { RoomState } from '../protocol';
 import { isHost } from '../session/permissions';
 import type { SessionApi } from '../session/session';
-import { ConfirmDialog, behindModal } from './sheet';
+import { ConfirmDialog } from './sheet';
 import { t } from './strings';
 
 type Confirming = { kind: 'kick'; id: string; name: string } | { kind: 'end' } | null;
@@ -17,10 +17,20 @@ interface Props {
 export function MembersPanel({ session, room, memberId, online }: Props) {
   const host = online && isHost(room, memberId);
   const [confirming, setConfirming] = useState<Confirming>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const kicked = useRef(false);
+  // The kicked member's button disappears when the room update arrives, after the dialog closed;
+  // if that dropped focus to the page, bring it back to the panel.
+  useEffect(() => {
+    if (kicked.current && (!document.activeElement || document.activeElement === document.body)) {
+      heading.current?.focus();
+      kicked.current = false;
+    }
+  }, [room.members]);
   return (
     <section class="card" aria-labelledby="members-title">
-      <div {...behindModal(confirming !== null)}>
-      <h2 id="members-title">
+      <div>
+      <h2 id="members-title" ref={heading} tabIndex={-1}>
         {t.membersTitle} <span class="muted">· {room.members.length}</span>
       </h2>
       <ul class="members">
@@ -86,7 +96,9 @@ export function MembersPanel({ session, room, memberId, online }: Props) {
           title={t.confirmKick(confirming.name)}
           confirmLabel={t.kick}
           onCancel={() => setConfirming(null)}
+          returnFocus={heading}
           onConfirm={() => {
+            kicked.current = true;
             session.kick(confirming.id);
             setConfirming(null);
           }}

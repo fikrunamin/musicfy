@@ -40,6 +40,20 @@ describe('MembersPanel', () => {
     expect(native).not.toHaveBeenCalled();
   });
 
+  it('keeps focus in the panel after a confirmed kick removes the opener', () => {
+    const session = fakeSession();
+    const r = room();
+    const { rerender } = render(<MembersPanel session={session} room={r} memberId="m1" online />);
+    const opener = screen.getByRole('button', { name: 'Keluarkan' });
+    opener.focus();
+    fireEvent.click(opener);
+    confirmIn('Keluarkan Sari dari Ritme?', 'Keluarkan');
+    rerender(<MembersPanel session={session} room={{ ...r, members: r.members.filter((m) => m.id !== 'm2') }} memberId="m1" online />);
+    expect(opener.isConnected).toBe(false);
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement?.id).toBe('members-title');
+  });
+
   it('does not kick or end the room when the host declines the confirmation', () => {
     const session = fakeSession();
     render(<MembersPanel session={session} room={room()} memberId="m1" online />);

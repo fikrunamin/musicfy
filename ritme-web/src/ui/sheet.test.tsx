@@ -68,6 +68,109 @@ describe('Sheet', () => {
     fireEvent.keyDown(one, { key: 'Tab', shiftKey: true });
     expect(document.activeElement).toBe(two);
   });
+
+  it('lets everything outside the sheet go inert, anywhere in the tree, and restores it on close', () => {
+    function App() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <header>
+            <button type="button">Kepala</button>
+          </header>
+          <div class="toast-region" role="status" aria-live="polite" />
+          <main>
+            <section>
+              <button type="button" onClick={() => setOpen(true)}>
+                Buka
+              </button>
+            </section>
+            <aside>
+              <button type="button">Samping</button>
+            </aside>
+          </main>
+          {open && (
+            <Sheet labelledBy="t" onClose={() => setOpen(false)}>
+              <h2 id="t">Anggota</h2>
+              <button type="button">Satu</button>
+            </Sheet>
+          )}
+        </>
+      );
+    }
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Buka' }));
+    for (const name of ['Kepala', 'Samping', 'Buka']) {
+      const el = screen.getByText(name);
+      expect(el.closest('[inert]')).not.toBeNull();
+    }
+    expect(document.querySelector('.toast-region')!.hasAttribute('inert')).toBe(false);
+    expect(screen.getByRole('button', { name: 'Satu' }).closest('[inert]')).toBeNull();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(document.querySelectorAll('[inert]').length).toBe(0);
+    expect(document.querySelectorAll('[aria-hidden]').length).toBe(0);
+  });
+
+  it('keeps the scroll lock until the last of two nested modals closes', () => {
+    function Nested() {
+      const [dlg, setDlg] = useState(true);
+      return (
+        <Sheet labelledBy="t" onClose={() => {}}>
+          <h2 id="t">Anggota</h2>
+          <button type="button">Satu</button>
+          {dlg && <ConfirmDialog title="Yakin?" confirmLabel="Ya" onConfirm={() => {}} onCancel={() => setDlg(false)} />}
+        </Sheet>
+      );
+    }
+    render(<Nested />);
+    expect(document.body.classList.contains('modal-open')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Batal' }));
+    expect(document.body.classList.contains('modal-open')).toBe(true);
+    cleanup();
+    expect(document.body.classList.contains('modal-open')).toBe(false);
+  });
+
+  it('makes the sheet inert under a nested dialog and interactive again after Batal', () => {
+    function Nested() {
+      const [dlg, setDlg] = useState(false);
+      return (
+        <>
+          <Sheet labelledBy="t" onClose={() => {}}>
+            <h2 id="t">Anggota</h2>
+            <button type="button" onClick={() => setDlg(true)}>
+              Satu
+            </button>
+          </Sheet>
+          {dlg && <ConfirmDialog title="Yakin?" confirmLabel="Ya" onConfirm={() => {}} onCancel={() => setDlg(false)} />}
+        </>
+      );
+    }
+    render(<Nested />);
+    const sheet = document.querySelector('.sheet')!;
+    expect(sheet.closest('[inert]')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Satu' }));
+    expect(sheet.closest('[inert]')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Batal' }));
+    expect(sheet.closest('[inert]')).toBeNull();
+    expect(document.querySelectorAll('[inert]').length).toBe(0);
+  });
+
+  it('keeps handling Escape and Tab after focus dropped to body', () => {
+    const onClose = vi.fn();
+    render(
+      <Sheet labelledBy="t" onClose={onClose}>
+        <h2 id="t">Anggota</h2>
+        <button type="button">Satu</button>
+        <button type="button">Dua</button>
+      </Sheet>,
+    );
+    (document.activeElement as HTMLElement).blur();
+    expect(document.activeElement).toBe(document.body);
+    fireEvent.keyDown(document.body, { key: 'Tab' });
+    expect(document.querySelector('.sheet')!.contains(document.activeElement)).toBe(true);
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('ConfirmDialog', () => {
@@ -96,5 +199,23 @@ describe('ConfirmDialog', () => {
     fireEvent.click(document.querySelector('.sheet-scrim')!);
     expect(onCancel).toHaveBeenCalledTimes(3);
     expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('traps Tab and survives focus dropping to body', () => {
+    const { onCancel } = dialog();
+    const batal = screen.getByRole('button', { name: 'Batal' });
+    const ya = screen.getByRole('button', { name: 'Keluarkan' });
+    ya.focus();
+    fireEvent.keyDown(ya, { key: 'Tab' });
+    expect(document.activeElement).toBe(batal);
+    fireEvent.keyDown(batal, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(ya);
+    expect(screen.getByRole('alertdialog').getAttribute('tabindex')).toBe('-1');
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.keyDown(document.body, { key: 'Tab' });
+    expect(screen.getByRole('alertdialog').contains(document.activeElement)).toBe(true);
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });
