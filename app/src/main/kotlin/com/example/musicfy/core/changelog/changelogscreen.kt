@@ -81,6 +81,7 @@ import coil3.compose.AsyncImage
 import com.example.musicfy.BuildConfig
 import com.example.musicfy.LocalPlayerAwareWindowInsets
 import com.example.musicfy.R
+import com.example.musicfy.core.settings.UpdateSourceUrls
 import com.example.musicfy.core.updater.extractUrls
 import com.example.musicfy.core.updater.updateSourceUrls
 import kotlinx.coroutines.Dispatchers
@@ -241,7 +242,7 @@ fun ChangelogScreen(
                     var changelogUrl: String? = null
                     for (j in 0 until assets.length()) {
                         val asset = assets.getJSONObject(j)
-                        if (asset.getString("name") == "changelog.json") {
+                        if (asset.getString("name") == UpdateSourceUrls.CHANGELOG_ASSET) {
                             changelogUrl = asset.getString("browser_download_url")
                             break
                         }

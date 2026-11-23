@@ -2,7 +2,7 @@ package com.example.musicfy.ritme.server
 
 /** Shown at / and /r/{code} until the web client (ritme-web) is deployed into WEB_DIR. */
 object Landing {
-    const val RELEASES_URL = "https://github.com/realidkroo/musicfy/releases/latest"
+    const val RELEASES_URL = "https://github.com/fikrunamin/musicfy/releases"
     private val codePattern = Regex("^[${Limits.ROOM_CODE_ALPHABET}]{${Limits.ROOM_CODE_LENGTH}}$")
 
     /** Only a code matching the room-code alphabet is ever written into the page. */

@@ -85,6 +85,7 @@ jobs:
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
           DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
+          umask 077
           if [ -n "$RELEASE_KEYSTORE_BASE64" ] && [ -n "$RELEASE_KEYSTORE_PASSWORD" ] \
             && [ -n "$RELEASE_KEY_ALIAS" ] && [ -n "$RELEASE_KEY_PASSWORD" ]; then
             # app/build.gradle.kts signs release builds with app/keystore/release.keystore when
@@ -96,7 +97,7 @@ jobs:
           elif [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
             # Without the release keystore, app/build.gradle.kts signs release builds with the
             # debug config: ~/.android/debug.keystore (androiddebugkey / android).
-            echo "::warning title=Release APK signed with the DEBUG key::The RELEASE_KEYSTORE_BASE64, RELEASE_KEYSTORE_PASSWORD, RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD secrets are not all set, so musicfy.apk is signed with the fixed debug keystore (DEBUG_KEYSTORE_BASE64). It installs over other builds signed with that key, never over builds signed with a real release key. Add the four RELEASE_* secrets to sign releases with your own key."
+            echo "::warning title=Release APK signed with the DEBUG key::The RELEASE_KEYSTORE_BASE64, RELEASE_KEYSTORE_PASSWORD, RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD secrets are not all set, so musicfy.apk is signed with the fixed debug keystore (DEBUG_KEYSTORE_BASE64). It only replaces earlier release builds signed with this same key (never builds signed with a real release key). Add the four RELEASE_* secrets to sign releases with your own key."
             mkdir -p ~/.android
             echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
             echo "kind=debug" >> "$GITHUB_OUTPUT"
@@ -150,7 +151,7 @@ jobs:
           cat dist/changelog.json
 
       - name: Publish the GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ env.TAG }}
           name: Musicfy ${{ steps.version.outputs.name }}
@@ -160,3 +161,7 @@ jobs:
           files: |
             dist/musicfy.apk
             dist/changelog.json
+
+      - name: Remove signing keys
+        if: always()
+        run: rm -f app/keystore/release.keystore ~/.android/debug.keystore

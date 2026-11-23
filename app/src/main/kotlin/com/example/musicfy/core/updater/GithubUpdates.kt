@@ -224,10 +224,16 @@ suspend fun fetchLatestRelease(urls: UpdateSourceUrls): Result<GithubRelease?> =
     }
 }
 
-fun isNewerThanInstalled(candidateVersionText: String): Boolean {
-    val candidate = parseFullVersion(candidateVersionText)
-    val installed = parseFullVersion(BuildConfig.VERSION_NAME)
-    return candidate > installed
+fun isNewerThanInstalled(candidateVersionText: String): Boolean =
+    isNewerThanInstalled(candidateVersionText, BuildConfig.VERSION_NAME, BuildConfig.DEBUG)
+
+/**
+ * A debug install (com.example.musicfy.debug) never offers release updates: a release APK would
+ * install beside it as a second app and be offered forever.
+ */
+internal fun isNewerThanInstalled(candidateVersionText: String, installedVersionText: String, isDebug: Boolean): Boolean {
+    if (isDebug) return false
+    return parseFullVersion(candidateVersionText) > parseFullVersion(installedVersionText)
 }
 
 suspend fun downloadApk(

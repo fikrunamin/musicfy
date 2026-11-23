@@ -191,7 +191,9 @@ fun UpdateScreen(navController: NavHostController) {
             delay(1000L)
             checkForUpdate(
                 context = context,
-                onSuccess = { tag, isAvailable, changelog, size, date, description, imageUrl, apkUrl ->
+                onSuccess = { tag, releaseAvailable, changelog, size, date, description, imageUrl, apkUrl ->
+                    // A debug install never offers a release (it would install as a second app).
+                    val isAvailable = releaseAvailable && !BuildConfig.DEBUG
                     saveLastCheckedTime(context, LocalDateTime.now().format(DateTimeFormatter.ofPattern("d MMMM yyyy, h:mm a")))
                     saveUpdateAvailableState(context, isAvailable)
                     status = if (isAvailable) {
