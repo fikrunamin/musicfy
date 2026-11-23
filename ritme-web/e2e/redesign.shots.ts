@@ -1,5 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
-import { addSong, closeSheet, endRooms, isolate, openRoom, showMembers } from './fixtures';
+import { addSong, closeSheet, endRooms, isolate, openRoom, showAdd, showMembers } from './fixtures';
 import { SHOT_SONGS, shot, withArtwork } from './shots';
 
 /**
@@ -72,4 +72,20 @@ test('E queue: row actions, played, empty @queue', async ({ context }, info) => 
   // A middle row shows Putar sekarang, up, down and delete together: the widest bar.
   await a.getByRole('button', { name: `Aksi: ${SHOT_SONGS[3].title}` }).click(); // closes the first bar, opens this one
   await shot(a, info, 'E-queue-actions-middle');
+});
+
+test('F add sheet: results, no results @add', async ({ context }, info) => {
+  const { a } = await openRoom(context);
+  await addSong(a, 'x', SHOT_SONGS[0].title); // something playing behind the sheet, as in eBVC3
+  await showAdd(a);
+  await a.getByLabel('Cari lagu').fill('senja');
+  await a.getByRole('button', { name: 'Cari', exact: true }).click();
+  await expect(a.getByRole('button', { name: `Tambah: ${SHOT_SONGS[5].title}` })).toBeVisible();
+  await shot(a, info, 'F-add-sheet');
+  // Routes registered later win: this search answers nothing.
+  await context.route('**/api/search?**', (route) => route.fulfill({ json: [] }));
+  await a.getByLabel('Cari lagu').fill('tidak ada');
+  await a.getByRole('button', { name: 'Cari', exact: true }).click();
+  await expect(a.getByText('Tidak ada hasil.', { exact: true })).toBeVisible();
+  await shot(a, info, 'F-add-empty');
 });

@@ -86,7 +86,7 @@ export const t = {
   close: 'Tutup',
   cancel: 'Batal',
 
-  addVideo: 'Tambah video',
+  addTitle: 'Tambah ke antrean',
   addKindGroup: 'Yang ditambahkan',
   tabSongs: 'Lagu',
   tabVideo: 'Video',

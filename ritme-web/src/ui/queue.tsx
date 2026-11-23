@@ -116,7 +116,7 @@ function EmptyQueue({ onAdd }: { onAdd?: () => void }) {
       <p class="empty-title">{t.queueEmpty}</p>
       <p class="empty-sub">{t.nothingPlaying}</p>
       {onAdd && (
-        <Button variant="primary" icon="add" onClick={onAdd}>
+        <Button variant="primary" icon="add" class="queue-add" onClick={onAdd}>
           {t.addSong}
         </Button>
       )}
@@ -170,7 +170,7 @@ export function QueueList(props: Props) {
       <div class="queue-header">
         <h2 id="queue-title">{full ? t.queue : t.upNext}</h2>
         {onAdd && (
-          <Button icon="add" variant={full ? 'primary' : 'secondary'} onClick={onAdd}>
+          <Button icon="add" variant={full ? 'primary' : 'secondary'} class="queue-add" onClick={onAdd}>
             {t.addSong}
           </Button>
         )}

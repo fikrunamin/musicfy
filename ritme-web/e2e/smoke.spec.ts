@@ -1,5 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
-import { SONG, VIDEO, addSong, isolate, openRoom } from './fixtures';
+import { SONG, VIDEO, addSong, isolate, openRoom, showAdd } from './fixtures';
 
 test('two tabs in one room: the song tab A adds shows up in tab B', async ({ context }) => {
   await isolate(context);
@@ -41,7 +41,9 @@ test('a YouTube link and a direct mp4 link from the Video tab reach the other ta
   await isolate(context);
   const { a, b } = await openRoom(context);
 
-  await a.getByRole('button', { name: 'Video', exact: true }).click();
+  await showAdd(a);
+  await a.getByRole('tab', { name: 'Video', exact: true }).click();
+  await expect(a.getByRole('tab', { name: 'Video', exact: true })).toHaveAttribute('aria-selected', 'true');
   await a.getByLabel('Tempel link video').fill(`https://youtu.be/${VIDEO.videoId}?t=42`);
   await a.getByRole('button', { name: 'Pratinjau' }).click();
   await expect(a.getByText(`${VIDEO.channel} · 10:35`, { exact: true })).toBeVisible();
@@ -65,10 +67,10 @@ test('a YouTube link and a direct mp4 link from the Video tab reach the other ta
 test('the host can stop guests from adding', async ({ context }) => {
   await isolate(context);
   const { a, b } = await openRoom(context);
-  await expect(b.getByRole('heading', { name: 'Tambah lagu' })).toBeVisible();
+  await expect(b.getByRole('button', { name: 'Tambah lagu' })).toBeVisible();
   await a.getByRole('switch', { name: 'Anggota boleh menambah' }).click();
-  await expect(b.getByRole('heading', { name: 'Tambah lagu' })).toHaveCount(0);
-  await expect(a.getByRole('heading', { name: 'Tambah lagu' })).toBeVisible();
+  await expect(b.getByRole('button', { name: 'Tambah lagu' })).toHaveCount(0);
+  await expect(a.getByRole('button', { name: 'Tambah lagu' })).toBeVisible();
   await a.getByRole('switch', { name: 'Anggota boleh menambah' }).click();
-  await expect(b.getByRole('heading', { name: 'Tambah lagu' })).toBeVisible();
+  await expect(b.getByRole('button', { name: 'Tambah lagu' })).toBeVisible();
 });

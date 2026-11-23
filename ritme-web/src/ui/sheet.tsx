@@ -141,15 +141,17 @@ interface SheetProps {
   onClose: () => void;
   children: ComponentChildren;
   class?: string;
+  /** Where focus goes on close if what opened the sheet is gone. */
+  returnFocus?: RefObject<HTMLElement>;
 }
 
 /**
  * Bottom sheet (handoff "Sheet"): r28 top corners, handle. Render it only while open; whatever
  * is outside it goes inert by itself (see useModal).
  */
-export function Sheet({ labelledBy, onClose, children, class: cls }: SheetProps) {
+export function Sheet({ labelledBy, onClose, children, class: cls, returnFocus }: SheetProps) {
   const panel = useRef<HTMLDivElement>(null);
-  useModal(panel, onClose);
+  useModal(panel, onClose, undefined, returnFocus);
   return (
     <div class="sheet-layer">
       <div class="sheet-scrim" aria-hidden="true" onClick={onClose} />

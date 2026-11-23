@@ -415,8 +415,3 @@
   color: var(--muted);
   text-align: center;
 }
-
-/* Space between the search panel's Lagu/Video tabs and the field below. */
-#search-title ~ .segmented {
-  margin-bottom: 12px;
-}

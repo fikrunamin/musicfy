@@ -1,0 +1,69 @@
+/* "Tambah ke antrean" (flows F and L): header, Lagu/Video tabs, search row, result rows, status chips. */
+
+/* Tall enough for four results (handoff F), so switching tabs does not make the sheet jump. */
+.add-sheet {
+  min-height: min(560px, calc(100dvh - 48px));
+}
+
+.add-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.add-panel .sheet-header h2 {
+  font-size: var(--fs-section);
+}
+
+.add-tabpanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.add-tabpanel[hidden] {
+  display: none;
+}
+
+/* Field (label above) with the primary "Cari" on its baseline. */
+.add-search {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.add-search .btn {
+  flex-shrink: 0;
+}
+
+/* The live region stays in the tree while empty, without taking a gap. */
+.add-status:empty {
+  position: absolute;
+}
+
+.add-chip {
+  width: fit-content;
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: var(--fs-meta);
+}
+
+.add-results .row-trailing {
+  gap: 8px;
+}
+
+.add-next {
+  color: var(--muted);
+}
+
+.add-one {
+  min-height: var(--target);
+  padding: 0 18px;
+  font-size: var(--fs-body);
+}
+
+.meta-live {
+  color: var(--danger);
+}

@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { KeyValueStore } from '../net/storage';
 import { MODE_KEY } from '../net/storage';
 import { type RoomState, currentEntry } from '../protocol';
@@ -14,6 +14,7 @@ import { MembersPanel } from './members';
 import { NowPlaying } from './now-playing';
 import { QueueList } from './queue';
 import { SearchPanel } from './search';
+import { Sheet } from './sheet';
 import { t } from './strings';
 
 interface Props {
@@ -41,8 +42,6 @@ export async function share(code: string, session: SessionApi): Promise<void> {
 }
 
 const showQueue = () => document.getElementById('queue-title')?.scrollIntoView({ block: 'start' });
-/** Until the add sheet exists (next task), "Tambah lagu" takes the member to the search field. */
-const showAdd = () => document.getElementById('search-input')?.focus();
 
 export function RoomScreen({ session, state, prefs }: Props) {
   const { room, memberId, unplayable } = state;
@@ -55,11 +54,34 @@ export function RoomScreen({ session, state, prefs }: Props) {
   };
   const shared = { session, room, memberId, unplayable, online, pageIsHttps: https };
   const entry = currentEntry(room);
+  const mayAdd = canAdd(room, memberId);
+  const [adding, setAdding] = useState(false);
+  const main = useRef<HTMLElement>(null);
+  const title = useRef<HTMLHeadingElement>(null);
+  /**
+   * Where focus goes when the sheet closes and the "Tambah lagu" that opened it is gone: the one
+   * shown now (the empty state's and the queue header's are different buttons), else the title.
+   */
+  const addReturn = useMemo(
+    () => ({
+      get current(): HTMLElement | null {
+        return main.current?.querySelector<HTMLElement>('.queue-add') ?? title.current;
+      },
+    }),
+    [],
+  );
+  // The host locking adding closes the sheet and hides "Tambah lagu"; unlocking later must not
+  // reopen the sheet by itself. The sheet gave focus back to its opener before that was removed.
+  useEffect(() => {
+    if (!adding || mayAdd) return;
+    setAdding(false);
+    if (!document.activeElement || document.activeElement === document.body) title.current?.focus();
+  }, [adding, mayAdd]);
 
   return (
     <>
       <Backdrop url={entry?.thumbnailUrl ?? null} video={entry !== null && isVideoEntry(entry)} />
-      <main class="room">
+      <main ref={main} class="room">
         {!online && (
           <p class="reconnect-banner" role="status">
             <Icon name="sync" size={18} />
@@ -68,7 +90,9 @@ export function RoomScreen({ session, state, prefs }: Props) {
         )}
         <header class="room-header">
           <div class="room-heading">
-            <h1>{t.roomTitle(room.code)}</h1>
+            <h1 ref={title} tabIndex={-1}>
+              {t.roomTitle(room.code)}
+            </h1>
             <p class="room-status">
               <SyncDot state={online ? 'online' : 'reconnecting'} />
               {online ? t.synced : t.reconnecting}
@@ -83,9 +107,8 @@ export function RoomScreen({ session, state, prefs }: Props) {
 
         <ModeSwitch mode={mode} onModeChange={changeMode} />
         <NowPlaying {...shared} mode={mode} onShowQueue={showQueue} />
-        <QueueList {...shared} onAdd={canAdd(room, memberId) ? showAdd : undefined} />
-        {/* Hidden, not disabled, while the host keeps guests from adding (spec 8). */}
-        {canAdd(room, memberId) && <SearchPanel session={session} online={online} pageIsHttps={https} />}
+        {/* "Tambah lagu" is hidden, not disabled, while the host keeps guests from adding (spec 8). */}
+        <QueueList {...shared} onAdd={mayAdd ? () => setAdding(true) : undefined} />
         <MembersPanel session={session} room={room} memberId={memberId} online={online} />
 
         {/* Ending the room lives in the members panel's host section, right above. */}
@@ -95,6 +118,11 @@ export function RoomScreen({ session, state, prefs }: Props) {
           </button>
         </footer>
       </main>
+      {adding && mayAdd && (
+        <Sheet labelledBy="add-title" class="add-sheet" onClose={() => setAdding(false)} returnFocus={addReturn}>
+          <SearchPanel session={session} online={online} pageIsHttps={https} onClose={() => setAdding(false)} />
+        </Sheet>
+      )}
     </>
   );
 }

@@ -174,25 +174,27 @@ describe('SearchPanel', () => {
 
   it('switches between the Lagu and Video tabs', () => {
     render(<SearchPanel session={fakeSession()} online />);
-    expect(screen.getByRole('heading', { name: 'Tambah lagu' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Video' }));
-    expect(screen.getByRole('heading', { name: 'Tambah video' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Tambah ke antrean' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Lagu', selected: true })).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Video' }));
+    expect(screen.getByRole('tab', { name: 'Video', selected: true })).toBeTruthy();
     expect(screen.getByLabelText('Tempel link video')).toBeTruthy();
     expect(screen.queryByLabelText('Cari lagu')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Lagu' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Lagu' }));
+    expect(screen.getByRole('tab', { name: 'Lagu', selected: true })).toBeTruthy();
     expect(screen.getByLabelText('Cari lagu')).toBeTruthy();
   });
 
   it('refuses http media links on an https page by default and allows them when told the page is http', async () => {
     const probe = vi.fn(async () => ({ kind: 'timeout' as const }));
     const { unmount } = render(<SearchPanel session={fakeSession()} online probe={probe} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Video' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Video' }));
     fireEvent.input(screen.getByLabelText('Tempel link video'), { target: { value: 'http://cdn.example.com/a.mp4' } });
     fireEvent.click(screen.getByRole('button', { name: 'Pratinjau' }));
     expect((await screen.findByRole('alert')).textContent).toBe('Halaman harus https untuk link http');
     unmount();
     render(<SearchPanel session={fakeSession()} online pageIsHttps={false} probe={probe} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Video' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Video' }));
     fireEvent.input(screen.getByLabelText('Tempel link video'), { target: { value: 'http://cdn.example.com/a.mp4' } });
     fireEvent.click(screen.getByRole('button', { name: 'Pratinjau' }));
     expect(await screen.findByText('dari cdn.example.com · Durasi tidak diketahui')).toBeTruthy();
