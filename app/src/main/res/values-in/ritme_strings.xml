@@ -30,6 +30,9 @@
     <string name="ritme_start">Mulai Ritme</string>
     <string name="ritme_start_desc">Dengar bareng teman, sinkron</string>
     <string name="ritme_start_with_this">Mulai Ritme dengan ini</string>
+    <string name="ritme_start_with_playlist">Mulai Ritme dengan playlist ini</string>
+    <string name="ritme_start_with_album">Mulai Ritme dengan album ini</string>
+    <string name="ritme_start_with_selection">Mulai Ritme dengan lagu terpilih</string>
     <string name="ritme_join">Gabung</string>
     <string name="ritme_join_title">Gabung Ritme</string>
     <string name="ritme_code_label">Kode 6 karakter</string>

@@ -268,6 +268,15 @@ class PlayerConnection(
         if (!ritmeGate.intercept(action)) local()
     }
 
+    /**
+     * Play/Shuffle on a playlist, album or artist page (and those menus) while in a Ritme room:
+     * [songs] - built only then, in play order, already shuffled for Shuffle - go to the end of the
+     * room queue ("Added N songs to Ritme") instead of replacing the local queue. False outside a
+     * room, where the caller plays as usual.
+     */
+    inline fun addAllToRitme(songs: () -> List<com.example.musicfy.models.MediaMetadata?>): Boolean =
+        ritmeGate.isActive && ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.AddAll(songs()))
+
     private var attachedPlayer: Player? = null
 
     init {

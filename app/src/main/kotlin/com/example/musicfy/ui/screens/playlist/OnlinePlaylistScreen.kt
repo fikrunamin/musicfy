@@ -2,6 +2,7 @@
 
 package com.example.musicfy.ui.screens.playlist
 
+import com.example.musicfy.models.toMediaMetadata
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -311,6 +312,11 @@ fun OnlinePlaylistScreen(
                     stats = playlistStats(context.resources.getQuantityString(R.plurals.n_song, songs.size, songs.size), totalSeconds),
                     isPlaying = isThisQueue && isPlaying,
                     onPlayClick = {
+                        // In a Ritme room Play and Shuffle add the songs loaded so far (the page keeps
+                        // loading the rest in the background) to the end of the room queue.
+                        if (playerConnection.addAllToRitme { songs.map { it.toMediaMetadata() } }) {
+                            return@PlaylistHeader
+                        }
                         if (isThisQueue) {
                             playerConnection.togglePlayPause()
                         } else {
@@ -325,6 +331,9 @@ fun OnlinePlaylistScreen(
                         }
                     },
                     onShuffleClick = {
+                        if (playerConnection.addAllToRitme { songs.shuffled().map { it.toMediaMetadata() } }) {
+                            return@PlaylistHeader
+                        }
                         playerConnection.playQueue(
                             YouTubePlaylistQueue(
                                 playlistId = currentPlaylist.id,

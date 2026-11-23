@@ -50,7 +50,10 @@ class RitmeSession @Inject constructor(
     val clock = ClockSync()
 
     private var conn: ConnectionLike? = null
-    /** Add batches still owed to the room that Create made (the Create held at most 200 entries). */
+    /**
+     * Add batches still owed to the room: a Create's entries past the first 200, and the rest of a
+     * paced list add ([addPaced]).
+     */
     private val pendingOverflow = ArrayDeque<List<NewEntry>>()
     private var overflowTimer: RitmeTimer? = null
 
@@ -102,6 +105,31 @@ class RitmeSession @Inject constructor(
     fun previous(): Boolean = send(Command.Previous)
     fun playEntry(entryId: String): Boolean = send(Command.PlayEntry(entryId))
     fun add(entries: List<NewEntry>, playNext: Boolean): Boolean = send(Command.Add(entries, playNext))
+
+    /**
+     * A long list for the end of the queue (a whole playlist or album): the first batch now, the
+     * rest through the same pump as a big Create's overflow, [OVERFLOW_GAP_MS] apart, so a few
+     * hundred songs do not go out as back-to-back Adds (each one a full snapshot to every member).
+     * Behind overflow still owed, so the order holds. A drop pauses the pump; the resume Welcome
+     * picks it up again. True if the batches are on their way (the first one sent, or queued
+     * behind overflow); false while offline, when nothing is sent or kept.
+     */
+    fun addPaced(batches: List<List<NewEntry>>): Boolean {
+        threadCheck.check()
+        if (batches.isEmpty() || !canSend()) return false
+        val c = conn ?: return false
+        val code = _state.value.room?.code ?: return false
+        if (pendingOverflow.isEmpty()) {
+            if (!add(batches.first(), playNext = false)) return false
+            pendingOverflow.addAll(batches.drop(1))
+        } else {
+            pendingOverflow.addAll(batches)
+        }
+        if (overflowTimer == null && pendingOverflow.isNotEmpty()) {
+            overflowTimer = timers.schedule(OVERFLOW_GAP_MS) { pumpOverflow(c, code) }
+        }
+        return true
+    }
     fun remove(entryId: String): Boolean = send(Command.Remove(entryId))
     fun move(entryId: String, afterEntryId: String?): Boolean = send(Command.Move(entryId, afterEntryId))
     fun setGuestsCanControl(value: Boolean): Boolean = send(Command.SetSettings(RoomSettings(guestsCanControl = value)))

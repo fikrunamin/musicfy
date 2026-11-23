@@ -2,6 +2,7 @@
 
 package com.example.musicfy.ui.screens.artist
 
+import com.example.musicfy.models.toMediaMetadata
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
@@ -82,6 +83,8 @@ fun ArtistSongsScreen(
     fun play(startIndex: Int = 0, shuffled: Boolean = false) {
         if (songs.isEmpty()) return
         val list = if (shuffled) songs.shuffled() else songs
+        // The Play and Shuffle buttons (startIndex 0): in a Ritme room the songs go to the end of the room queue.
+        if (startIndex == 0 && playerConnection.addAllToRitme { list.map { it.toMediaMetadata() } }) return
         playerConnection.playQueue(ListQueue(title = title, items = list.map { it.toMediaItem() }, startIndex = startIndex))
     }
 
@@ -101,7 +104,7 @@ fun ArtistSongsScreen(
                 ),
                 stats = com.example.musicfy.ui.screens.playlist.generatedStats(songs.size, totalSeconds),
                 isPlaying = isThisQueue && isPlaying,
-                onPlayClick = { if (isThisQueue) playerConnection.togglePlayPause() else play() },
+                onPlayClick = { if (isThisQueue && !playerConnection.ritmeGate.isActive) playerConnection.togglePlayPause() else play() },
                 onShuffleClick = { play(shuffled = true) },
                 onCreatorClick = { creator -> creator.artistId?.let { navController.navigate("artist/$it") } },
                 sortControl = {

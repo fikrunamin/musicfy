@@ -280,4 +280,70 @@ class RitmeSessionTest {
         assertFalse(session.trackEnded("e2"))
         assertEquals(listOf("e1"), connector.last.trackEnds)
     }
+
+    @Test
+    fun aPacedAddSendsTheFirstBatchNowAndTheRestApart() {
+        joinedRoom()
+        val batches = listOf(listOf(newEntry("aaaa")), listOf(newEntry("bbbb")), listOf(newEntry("cccc")))
+        assertTrue(session.addPaced(batches))
+        assertEquals(listOf<Command>(Command.Add(batches[0])), connector.last.commands)
+        timers.advanceBy(RitmeSession.OVERFLOW_GAP_MS - 1)
+        assertEquals(1, connector.last.commands.size)
+        timers.advanceBy(1)
+        assertEquals(2, connector.last.commands.size)
+        timers.advanceBy(RitmeSession.OVERFLOW_GAP_MS)
+        assertEquals(batches.map { Command.Add(it) }, connector.last.commands)
+        assertTrue(connector.last.commands.all { !(it as Command.Add).playNext })
+        assertEquals(0, timers.pendingCount())
+    }
+
+    @Test
+    fun aPacedAddQueuesBehindOverflowStillOwed() {
+        val owed = listOf(newEntry("bbbb"))
+        session.create(
+            "https://ritme.dubeli.id",
+            "Budi",
+            InitialQueue(first = listOf(newEntry("aaaa")), startIndex = 0, startPositionMs = 0, overflow = listOf(owed), skipped = 0),
+        )
+        connector.last.welcome(room())
+        val added = listOf(listOf(newEntry("cccc")), listOf(newEntry("dddd")))
+        assertTrue(session.addPaced(added))
+        assertTrue(connector.last.commands.isEmpty()) // the Create's overflow goes first
+        timers.advanceBy(RitmeSession.OVERFLOW_DELAY_MS + 2 * RitmeSession.OVERFLOW_GAP_MS)
+        assertEquals((listOf(owed) + added).map { Command.Add(it) }, connector.last.commands)
+    }
+
+    @Test
+    fun aPacedAddPausedByADropFinishesAfterTheResumeWelcome() {
+        joinedRoom()
+        val batches = listOf(listOf(newEntry("aaaa")), listOf(newEntry("bbbb")), listOf(newEntry("cccc")))
+        assertTrue(session.addPaced(batches))
+        connector.last.emit(ConnectionEvent.Status(ConnectionStatus.RECONNECTING))
+        timers.advanceBy(5_000)
+        assertEquals(1, connector.last.commands.size)
+        connector.last.welcome(room(version = 6))
+        timers.advanceBy(RitmeSession.OVERFLOW_DELAY_MS + RitmeSession.OVERFLOW_GAP_MS)
+        assertEquals(batches.map { Command.Add(it) }, connector.last.commands)
+    }
+
+    @Test
+    fun aPacedAddWhileOfflineSendsAndKeepsNothing() {
+        joinedRoom()
+        connector.last.emit(ConnectionEvent.Status(ConnectionStatus.RECONNECTING))
+        assertFalse(session.addPaced(listOf(listOf(newEntry("aaaa")), listOf(newEntry("bbbb")))))
+        assertFalse(session.addPaced(emptyList()))
+        connector.last.welcome(room(version = 6))
+        timers.advanceBy(10_000)
+        assertTrue(connector.last.commands.isEmpty())
+    }
+
+    @Test
+    fun leavingDropsTheRestOfAPacedAdd() {
+        joinedRoom()
+        assertTrue(session.addPaced(listOf(listOf(newEntry("aaaa")), listOf(newEntry("bbbb")))))
+        session.leave() // the fake connection ends right away
+        timers.advanceBy(10_000)
+        assertEquals(1, connector.last.commands.size)
+        assertEquals(0, timers.pendingCount())
+    }
 }

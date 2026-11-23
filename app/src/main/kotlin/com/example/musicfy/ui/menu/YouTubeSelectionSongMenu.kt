@@ -2,6 +2,8 @@
 
 package com.example.musicfy.ui.menu
 
+import androidx.compose.runtime.collectAsState
+import com.example.musicfy.ritme.entries.RitmeEntries
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -62,6 +64,12 @@ fun YouTubeSelectionSongMenu(
     val playerConnection = LocalPlayerConnection.current ?: return
     val coroutineScope = rememberCoroutineScope()
     val syncUtils = LocalSyncUtils.current
+
+    val ritme = com.example.musicfy.ui.screens.ritme.rememberRitme()
+    val ritmeActive by playerConnection.ritmeGate.active.collectAsState()
+    // "Start Ritme with selected songs" only when one of them can go into a room.
+    val hasShareable = remember(songSelection) { RitmeEntries.hasShareable(songSelection.map { it.toMediaMetadata() }) }
+    val canStartRitme = com.example.musicfy.ritme.RitmeConfig.ENABLED && !ritmeActive && hasShareable
 
     var showChoosePlaylistDialog by rememberSaveable {
         mutableStateOf(false)
@@ -212,12 +220,15 @@ fun YouTubeSelectionSongMenu(
                         icon = { Icon(painterResource(R.drawable.play), null) },
                         title = { Text(stringResource(R.string.play)) },
                         onClick = {
-                            playerConnection.playQueue(
-                                ListQueue(
-                                    title = context.getString(R.string.queue_all_songs),
-                                    items = songSelection.map { it.toMediaItem() },
-                                ),
-                            )
+                            // In a Ritme room the selection goes to the end of the room queue.
+                            if (!playerConnection.addAllToRitme { songSelection.map { it.toMediaMetadata() } }) {
+                                playerConnection.playQueue(
+                                    ListQueue(
+                                        title = context.getString(R.string.queue_all_songs),
+                                        items = songSelection.map { it.toMediaItem() },
+                                    ),
+                                )
+                            }
                             clearAction()
                             onDismiss()
                         },
@@ -226,12 +237,15 @@ fun YouTubeSelectionSongMenu(
                         icon = { Icon(painterResource(R.drawable.shuffle), null) },
                         title = { Text(stringResource(R.string.shuffle)) },
                         onClick = {
-                            playerConnection.playQueue(
-                                ListQueue(
-                                    title = context.getString(R.string.queue_all_songs),
-                                    items = songSelection.shuffled().map { it.toMediaItem() },
-                                ),
-                            )
+                            val shuffled = songSelection.shuffled()
+                            if (!playerConnection.addAllToRitme { shuffled.map { it.toMediaMetadata() } }) {
+                                playerConnection.playQueue(
+                                    ListQueue(
+                                        title = context.getString(R.string.queue_all_songs),
+                                        items = shuffled.map { it.toMediaItem() },
+                                    ),
+                                )
+                            }
                             clearAction()
                             onDismiss()
                         },
@@ -241,6 +255,16 @@ fun YouTubeSelectionSongMenu(
                         title = { Text(stringResource(R.string.add_to_queue)) },
                         onClick = {
                             playerConnection.addToQueue(songSelection.map { it.toMediaItem() })
+                            clearAction()
+                            onDismiss()
+                        },
+                    ) else null,
+                    // The same row as YouTubeSongMenu's "Start Ritme with this", for the selected songs.
+                    if (canStartRitme) Material3MenuItemData(
+                        icon = { Icon(painterResource(R.drawable.group), null) },
+                        title = { Text(stringResource(R.string.ritme_start_with_selection)) },
+                        onClick = {
+                            ritme.controller.openStartWith(songSelection.map { it.toMediaMetadata() })
                             clearAction()
                             onDismiss()
                         },

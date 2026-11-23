@@ -158,6 +158,8 @@ fun ArtistItemsScreen(
     fun playSongs(start: SongItem? = null, shuffled: Boolean = false) {
         if (songs.isEmpty()) return
         val list = if (shuffled) songs.shuffled() else songs
+        // The Play and Shuffle buttons (no start song): in a Ritme room the songs go to the end of the room queue.
+        if (start == null && playerConnection.addAllToRitme { list.map { it.toMediaMetadata() } }) return
         playerConnection.playQueue(
             ListQueue(
                 title = heading,
@@ -255,7 +257,7 @@ fun ArtistItemsScreen(
                     ),
                     stats = "${songs.size} ${if (songs.size == 1) "song" else "songs"}",
                     isPlaying = isThisQueue && isPlaying,
-                    onPlayClick = { if (isThisQueue) playerConnection.togglePlayPause() else playSongs() },
+                    onPlayClick = { if (isThisQueue && !playerConnection.ritmeGate.isActive) playerConnection.togglePlayPause() else playSongs() },
                     onShuffleClick = { playSongs(shuffled = true) },
                     onCreatorClick = { creator -> creator.artistId?.let { navController.navigate("artist/$it") } },
                 )

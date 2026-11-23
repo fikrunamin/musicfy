@@ -2,6 +2,7 @@
 
 package com.example.musicfy.ui.menu
 
+import com.example.musicfy.models.toMediaMetadata
 import com.example.musicfy.ui.component.SheetDivider
 import com.example.musicfy.ui.component.SheetHeaderButton
 import com.example.musicfy.ui.component.SheetHeader
@@ -99,16 +100,17 @@ fun ArtistMenu(
                                     text = stringResource(R.string.play),
                                     onClick = {
                                         coroutineScope.launch {
-                                            val songs = withContext(Dispatchers.IO) {
+                                            val artistSongs = withContext(Dispatchers.IO) {
                                                 database
                                                     .artistSongs(artist.id, ArtistSongSortType.CREATE_DATE, true)
                                                     .first()
-                                                    .map { it.toMediaItem() }
                                             }
+                                            // In a Ritme room the songs go to the end of the room queue.
+                                            if (playerConnection.addAllToRitme { artistSongs.map { it.toMediaMetadata() } }) return@launch
                                             playerConnection.playQueue(
                                                 ListQueue(
                                                     title = artist.artist.name,
-                                                    items = songs,
+                                                    items = artistSongs.map { it.toMediaItem() },
                                                 ),
                                             )
                                         }
@@ -130,17 +132,17 @@ fun ArtistMenu(
                                     text = stringResource(R.string.shuffle),
                                     onClick = {
                                         coroutineScope.launch {
-                                            val songs = withContext(Dispatchers.IO) {
+                                            val artistSongs = withContext(Dispatchers.IO) {
                                                 database
                                                     .artistSongs(artist.id, ArtistSongSortType.CREATE_DATE, true)
                                                     .first()
-                                                    .map { it.toMediaItem() }
                                                     .shuffled()
                                             }
+                                            if (playerConnection.addAllToRitme { artistSongs.map { it.toMediaMetadata() } }) return@launch
                                             playerConnection.playQueue(
                                                 ListQueue(
                                                     title = artist.artist.name,
-                                                    items = songs,
+                                                    items = artistSongs.map { it.toMediaItem() },
                                                 ),
                                             )
                                         }

@@ -110,11 +110,18 @@ object RitmeEntries {
         )
     }
 
-    fun toAddBatches(songs: List<MediaMetadata?>): AddBatches {
+    /**
+     * [songs] as Add batches of at most [MAX_BATCH]: shareable songs only, at most [limit] (and never
+     * more than [MAX_QUEUE]); [AddBatches.skipped] counts the songs that cannot be shared.
+     */
+    fun toAddBatches(songs: List<MediaMetadata?>, limit: Int = MAX_QUEUE): AddBatches {
         val mapped = songs.map(::toNewEntry)
-        val entries = mapped.filterNotNull().take(MAX_QUEUE)
+        val entries = mapped.filterNotNull().take(limit.coerceIn(0, MAX_QUEUE))
         return AddBatches(entries.chunked(MAX_BATCH), entries.size, mapped.count { it == null })
     }
+
+    /** True if at least one of [songs] can go into a room (not a local file, nothing the server refuses). */
+    fun hasShareable(songs: List<MediaMetadata?>): Boolean = songs.any { toNewEntry(it) != null }
 
     /** Android plays YouTube kinds by videoId (YOUTUBE_VIDEO audio-only); URL and UNKNOWN are not supported yet. */
     fun isPlayable(entry: QueueEntry): Boolean =

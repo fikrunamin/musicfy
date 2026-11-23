@@ -34,6 +34,9 @@
     <string name="ritme_start">Start Ritme</string>
     <string name="ritme_start_desc">Listen together with friends, in sync</string>
     <string name="ritme_start_with_this">Start Ritme with this</string>
+    <string name="ritme_start_with_playlist">Start Ritme with this playlist</string>
+    <string name="ritme_start_with_album">Start Ritme with this album</string>
+    <string name="ritme_start_with_selection">Start Ritme with selected songs</string>
     <string name="ritme_join">Join</string>
     <string name="ritme_join_title">Join a Ritme</string>
     <string name="ritme_code_label">6-character code</string>

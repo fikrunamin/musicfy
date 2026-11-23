@@ -2,6 +2,9 @@
 
 package com.example.musicfy.ui.screens.artist
 
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import com.music.innertube.YouTube
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -247,7 +250,21 @@ fun ArtistScreen(
     val isThisQueue = name.isNotEmpty() && queueTitle == name
     val liked = libraryArtist?.artist?.bookmarkedAt != null
 
+    // In a Ritme room the header's Play and the top songs' Shuffle add the same songs Play would
+    // start with (top songs, else the saved ones) to the end of the room queue, shuffled for Shuffle.
+    fun addTopSongsToRitme(shuffled: Boolean) {
+        coroutineScope.launch {
+            val top = if (page != null) viewModel.topSongs() else emptyList()
+            val songs = if (top.isNotEmpty()) top.map { it.toMediaMetadata() } else librarySongs.map { it.toMediaMetadata() }
+            playerConnection.addAllToRitme { if (shuffled) songs.shuffled() else songs }
+        }
+    }
+
     fun playTopSongs() {
+        if (playerConnection.ritmeGate.isActive) {
+            addTopSongsToRitme(shuffled = false)
+            return
+        }
         coroutineScope.launch {
             val top = if (page != null) viewModel.topSongs() else emptyList()
             when {
@@ -362,7 +379,7 @@ fun ArtistScreen(
                                 liked = liked,
                                 subscribed = subscribed,
                                 showSubscribe = signedIn && page?.artist?.channelId != null,
-                                onPlay = { if (isThisQueue) playerConnection.togglePlayPause() else playTopSongs() },
+                                onPlay = { if (isThisQueue && !playerConnection.ritmeGate.isActive) playerConnection.togglePlayPause() else playTopSongs() },
                                 onLike = viewModel::toggleLike,
                                 onSubscribe = viewModel::toggleSubscribe,
                             )
@@ -391,6 +408,13 @@ fun ArtistScreen(
                             onReleasePlay = {
                                 when {
                                     releasePlaying -> playerConnection.togglePlayPause()
+                                    // In a Ritme room the album's songs go to the end of the room queue.
+                                    releaseAlbum != null && playerConnection.ritmeGate.isActive -> coroutineScope.launch {
+                                        val songs = withContext(Dispatchers.IO) {
+                                            YouTube.album(releaseAlbum.browseId).getOrNull()?.songs.orEmpty()
+                                        }
+                                        playerConnection.addAllToRitme { songs.map { it.toMediaMetadata() } }
+                                    }
                                     releaseAlbum != null -> playerConnection.playQueue(YouTubeAlbumRadio(releaseAlbum.playlistId))
                                     releaseSong != null -> playSong(releaseSong)
                                 }
@@ -438,7 +462,8 @@ fun ArtistScreen(
                                 page?.artist?.shuffleEndpoint?.let { endpoint ->
                                     ArtistMenuItem(text = "Shuffle", icon = R.drawable.shuffle) {
                                         dismiss()
-                                        playerConnection.playQueue(YouTubeQueue(endpoint))
+                                        if (playerConnection.ritmeGate.isActive) addTopSongsToRitme(shuffled = true)
+                                        else playerConnection.playQueue(YouTubeQueue(endpoint))
                                     }
                                 }
                                 page?.artist?.radioEndpoint?.let { endpoint ->

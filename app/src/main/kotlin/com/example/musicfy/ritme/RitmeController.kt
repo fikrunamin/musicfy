@@ -3,6 +3,7 @@ package com.example.musicfy.ritme
 import com.example.musicfy.models.MediaMetadata
 import com.example.musicfy.ritme.entries.RitmeEntries
 import com.example.musicfy.ritme.protocol.RoomState
+import com.example.musicfy.ritme.session.NoticeKey
 import com.example.musicfy.ritme.session.RitmePermissions
 import com.example.musicfy.ritme.session.RitmeSession
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -133,6 +134,7 @@ class RitmeController @Inject constructor(
             is RitmeLocalAction.AddItems -> add(action.songs, action.playNext)
             is RitmeLocalAction.PlayQueue ->
                 if (action.songs.isEmpty()) notifier.show(RitmeToast.NotAvailable) else add(action.songs, playNext = false)
+            is RitmeLocalAction.AddAll -> addAll(room, action.songs)
             RitmeLocalAction.QueueEdit,
             RitmeLocalAction.Shuffle,
             RitmeLocalAction.Repeat,
@@ -171,6 +173,26 @@ class RitmeController @Inject constructor(
             !RitmePermissions.canControl(room, me) -> notifier.show(RitmeToast.ControlsLocked)
             !send() -> notifier.show(RitmeToast.Reconnecting)
         }
+    }
+
+    /**
+     * Play/Shuffle on a playlist, album or artist page: the list goes to the end of the room queue
+     * in the order given, as much of it as the room still holds (the server's [RitmeEntries.MAX_QUEUE]
+     * counts every entry, played ones too, and refuses a whole Add past it), the batches after the
+     * first paced by the session. Local files are skipped; only local files: the skipped toast.
+     */
+    private fun addAll(room: RoomState, songs: List<MediaMetadata?>) {
+        val space = RitmeEntries.MAX_QUEUE - room.queue.size
+        if (space <= 0) {
+            notifier.show(RitmeToast.CommandFailed(NoticeKey.QUEUE_FULL))
+            return
+        }
+        val batches = RitmeEntries.toAddBatches(songs, limit = space)
+        if (batches.count == 0) {
+            notifier.show(if (batches.skipped > 0) RitmeToast.SkippedLocal(batches.skipped) else RitmeToast.NotAvailable)
+            return
+        }
+        notifier.show(if (session.addPaced(batches.batches)) RitmeToast.Added(batches.count) else RitmeToast.Reconnecting)
     }
 
     private fun add(songs: List<MediaMetadata?>, playNext: Boolean) {

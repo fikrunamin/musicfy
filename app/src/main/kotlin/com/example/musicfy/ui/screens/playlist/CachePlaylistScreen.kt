@@ -2,6 +2,7 @@
 
 package com.example.musicfy.ui.screens.playlist
 
+import com.example.musicfy.models.toMediaMetadata
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -139,6 +140,8 @@ fun CachePlaylistScreen(
     fun play(startIndex: Int = 0, shuffled: Boolean = false) {
         if (sortedSongs.isEmpty()) return
         val list = if (shuffled) sortedSongs.shuffled() else sortedSongs
+        // The Play and Shuffle buttons (startIndex 0): in a Ritme room the songs go to the end of the room queue.
+        if (startIndex == 0 && playerConnection.addAllToRitme { list.map { it.toMediaMetadata() } }) return
         playerConnection.playQueue(ListQueue(title = title, items = list.map { it.toMediaItem() }, startIndex = startIndex))
     }
 
@@ -150,7 +153,7 @@ fun CachePlaylistScreen(
         contentPadding = LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Bottom)
             .union(WindowInsets.ime).asPaddingValues(),
         isPlaying = isThisQueue && isPlaying,
-        onPlayClick = { if (isThisQueue) playerConnection.togglePlayPause() else play() },
+        onPlayClick = { if (isThisQueue && !playerConnection.ritmeGate.isActive) playerConnection.togglePlayPause() else play() },
         onShuffleClick = { play(shuffled = true) },
         query = query,
         onQueryChange = { query = it },

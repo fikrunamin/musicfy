@@ -2,6 +2,8 @@
 
 package com.example.musicfy.ui.menu
 
+import com.example.musicfy.ritme.entries.RitmeEntries
+import com.example.musicfy.models.toMediaMetadata
 import com.example.musicfy.ui.component.SheetDivider
 import com.example.musicfy.ui.component.SheetHeaderButton
 import com.example.musicfy.ui.component.SheetHeader
@@ -97,6 +99,13 @@ fun YouTubeAlbumMenu(
     val album by database.albumWithSongs(albumItem.id).collectAsState(initial = null)
     val isPinned by database.speedDialDao.isPinned(albumItem.id).collectAsState(initial = false)
     val coroutineScope = rememberCoroutineScope()
+
+    val ritme = com.example.musicfy.ui.screens.ritme.rememberRitme()
+    val ritmeActive by playerConnection.ritmeGate.active.collectAsState()
+    // The album's songs once the menu has them (saved, or fetched and saved just above).
+    val albumSongs = album?.songs.orEmpty()
+    val hasShareable = remember(albumSongs) { RitmeEntries.hasShareable(albumSongs.map { it.toMediaMetadata() }) }
+    val canStartRitme = com.example.musicfy.ritme.RitmeConfig.ENABLED && !ritmeActive && hasShareable
 
     LaunchedEffect(Unit) {
         database.album(albumItem.id).collect { album ->
@@ -291,7 +300,8 @@ fun YouTubeAlbumMenu(
                             onClick = {
                                 onDismiss()
                                 album?.songs?.let { songs ->
-                                    if (songs.isNotEmpty()) {
+                                    // In a Ritme room the album goes to the end of the room queue.
+                                    if (songs.isNotEmpty() && !playerConnection.addAllToRitme { songs.map { it.toMediaMetadata() } }) {
                                         playerConnection.playQueue(YouTubeAlbumRadio(albumItem.playlistId))
                                     }
                                 }
@@ -362,7 +372,7 @@ fun YouTubeAlbumMenu(
                             onClick = {
                                 onDismiss()
                                 album?.songs?.let { songs ->
-                                    if (songs.isNotEmpty()) {
+                                    if (songs.isNotEmpty() && !playerConnection.addAllToRitme { songs.shuffled().map { it.toMediaMetadata() } }) {
                                         playerConnection.playQueue(YouTubeAlbumRadio(albumItem.playlistId))
                                     }
                                 }
@@ -410,6 +420,22 @@ fun YouTubeAlbumMenu(
                                     ?.songs
                                     ?.map { it.toMediaItem() }
                                     ?.let(playerConnection::addToQueue)
+                                onDismiss()
+                            }
+                        )
+                    } else null,
+                    // The same row as YouTubeSongMenu's "Start Ritme with this", for the whole album.
+                    if (canStartRitme) {
+                        Material3MenuItemData(
+                            title = { Text(text = stringResource(R.string.ritme_start_with_album)) },
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.group),
+                                    contentDescription = null,
+                                )
+                            },
+                            onClick = {
+                                ritme.controller.openStartWith(albumSongs.map { it.toMediaMetadata() })
                                 onDismiss()
                             }
                         )

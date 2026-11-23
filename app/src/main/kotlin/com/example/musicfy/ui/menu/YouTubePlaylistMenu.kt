@@ -2,6 +2,7 @@
 
 package com.example.musicfy.ui.menu
 
+import com.example.musicfy.ritme.entries.RitmeEntries
 import com.example.musicfy.ui.component.SheetDivider
 import com.example.musicfy.ui.component.SheetHeaderButton
 import com.example.musicfy.ui.component.SheetHeader
@@ -161,6 +162,26 @@ fun YouTubePlaylistMenu(
     val playerConnection = LocalPlayerConnection.current ?: return
     val dbPlaylist by database.playlistByBrowseId(playlist.id).collectAsState(initial = null)
     val isPinned by database.speedDialDao.isPinned(playlist.id).collectAsState(initial = false)
+
+    val ritme = com.example.musicfy.ui.screens.ritme.rememberRitme()
+    val ritmeActive by playerConnection.ritmeGate.active.collectAsState()
+    // The songs the menu was given, or else the whole playlist fetched (as Play next/Add to queue do).
+    suspend fun allSongs(): List<SongItem> = songs.ifEmpty {
+        withContext(Dispatchers.IO) { YouTube.playlist(playlist.id).completed().getOrNull()?.songs.orEmpty() }
+    }
+    // Shown before the songs are fetched; given songs must include one a room can take.
+    val hasShareable = remember(songs) { songs.isEmpty() || RitmeEntries.hasShareable(songs.map { it.toMediaMetadata() }) }
+    val canStartRitme = com.example.musicfy.ritme.RitmeConfig.ENABLED && !ritmeActive && hasShareable
+
+    // In a Ritme room Play and Shuffle add the playlist's songs to the end of the room queue.
+    fun addToRitmeInRoom(shuffled: Boolean): Boolean {
+        if (!playerConnection.ritmeGate.isActive) return false
+        coroutineScope.launch {
+            val all = allSongs()
+            playerConnection.addAllToRitme { (if (shuffled) all.shuffled() else all).map { it.toMediaMetadata() } }
+        }
+        return true
+    }
 
     var showChoosePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showImportPlaylistDialog by rememberSaveable { mutableStateOf(false) }
@@ -371,7 +392,7 @@ fun YouTubePlaylistMenu(
                                     },
                                     text = stringResource(R.string.play),
                                     onClick = {
-                                        playerConnection.playQueue(YouTubeQueue(playEndpoint))
+                                        if (!addToRitmeInRoom(shuffled = false)) playerConnection.playQueue(YouTubeQueue(playEndpoint))
                                         onDismiss()
                                     }
                                 )
@@ -390,7 +411,7 @@ fun YouTubePlaylistMenu(
                                     },
                                     text = stringResource(R.string.shuffle),
                                     onClick = {
-                                        playerConnection.playQueue(YouTubeQueue(shuffleEndpoint))
+                                        if (!addToRitmeInRoom(shuffled = true)) playerConnection.playQueue(YouTubeQueue(shuffleEndpoint))
                                         onDismiss()
                                     }
                                 )
@@ -482,6 +503,25 @@ fun YouTubePlaylistMenu(
                                         }.let { songs ->
                                             playerConnection.addToQueue(songs.map { it.toMediaItem() })
                                         }
+                                }
+                                onDismiss()
+                            }
+                        )
+                    } else null,
+                    // The same row as YouTubeSongMenu's "Start Ritme with this", for the whole playlist.
+                    if (canStartRitme) {
+                        Material3MenuItemData(
+                            title = { Text(text = stringResource(R.string.ritme_start_with_playlist)) },
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.group),
+                                    contentDescription = null,
+                                )
+                            },
+                            onClick = {
+                                coroutineScope.launch {
+                                    val all = allSongs().map { it.toMediaMetadata() }
+                                    if (RitmeEntries.hasShareable(all)) ritme.controller.openStartWith(all)
                                 }
                                 onDismiss()
                             }

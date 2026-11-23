@@ -2,6 +2,7 @@
 
 package com.example.musicfy.ui.screens.playlist
 
+import com.example.musicfy.models.toMediaMetadata
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -325,6 +326,12 @@ fun AutoPlaylistScreen(
         )
     }
 
+    // The Play and Shuffle buttons: in a Ritme room the songs go to the end of the room queue.
+    fun playOrAddToRitme(items: List<Song>) {
+        if (playerConnection.addAllToRitme { items.map { it.toMediaMetadata() } }) return
+        playAll(items)
+    }
+
     val isLiked = viewModel.playlist == "liked"
     // the Local page's liked songs wear the same cover as Liked songs, the one its card shows
     val hasLikedCover = isLiked || viewModel.playlist == "local_liked"
@@ -477,9 +484,9 @@ fun AutoPlaylistScreen(
                     ),
                     isPlaying = isThisQueue && isPlaying,
                     onPlayClick = {
-                        if (isThisQueue) playerConnection.togglePlayPause() else playAll(current)
+                        if (isThisQueue && !playerConnection.ritmeGate.isActive) playerConnection.togglePlayPause() else playOrAddToRitme(current)
                     },
-                    onShuffleClick = { playAll(current.shuffled()) },
+                    onShuffleClick = { playOrAddToRitme(current.shuffled()) },
                     sortControl = {
                         if (isLiked) {
                             PlaylistSortControl(

@@ -416,6 +416,12 @@ fun LocalPlaylistScreen(
         database.query { insert(PlaylistEvent(playlistId = current.id, timestamp = LocalDateTime.now())) }
     }
 
+    // The Play and Shuffle buttons: in a Ritme room the songs go to the end of the room queue.
+    fun playOrAddToRitme(items: List<com.example.musicfy.db.entities.PlaylistSong>) {
+        if (playerConnection.addAllToRitme { items.map { it.song.toMediaMetadata() } }) return
+        play(items)
+    }
+
     PlaylistDetailScaffold(
         sharedElementKey = "playlist-${viewModel.playlistId}",
         coverUrl = coverUrl,
@@ -593,9 +599,9 @@ fun LocalPlaylistScreen(
                     ),
                     isPlaying = isThisQueue && isPlaying,
                     onPlayClick = {
-                        if (isThisQueue) playerConnection.togglePlayPause() else play(songs)
+                        if (isThisQueue && !playerConnection.ritmeGate.isActive) playerConnection.togglePlayPause() else playOrAddToRitme(songs)
                     },
-                    onShuffleClick = { play(songs.shuffled()) },
+                    onShuffleClick = { playOrAddToRitme(songs.shuffled()) },
                     isSaved = if (savedRemote) currentPlaylist.playlist.bookmarkedAt != null else null,
                     onSaveClick = {
                         database.query { update(currentPlaylist.playlist.toggleLike()) }

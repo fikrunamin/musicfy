@@ -227,4 +227,22 @@ class RitmeEntriesTest {
         assertFalse(RitmeEntries.hasVisibleText("\u2800")) // blank braille
         assertFalse(RitmeEntries.hasVisibleText("\u200D\u200C\u00AD\u2060")) // format characters only
     }
+
+    @Test
+    fun addBatchesStopAtTheGivenLimit() {
+        val songs = (1..300).map { song("s$it") }
+        val b = RitmeEntries.toAddBatches(songs, limit = 250)
+        assertEquals(listOf(200, 50), b.batches.map { it.size })
+        assertEquals(250, b.count)
+        // the limit never lifts the server's own cap, and a negative one adds nothing
+        assertEquals(500, RitmeEntries.toAddBatches((1..600).map { song("s$it") }, limit = 900).count)
+        assertEquals(0, RitmeEntries.toAddBatches(songs, limit = -3).count)
+    }
+
+    @Test
+    fun hasShareableIgnoresLocalAndInvalidSongs() {
+        assertFalse(RitmeEntries.hasShareable(emptyList()))
+        assertFalse(RitmeEntries.hasShareable(listOf(null, song(localUri = "content://1"), song(id = "bad id!"))))
+        assertTrue(RitmeEntries.hasShareable(listOf(song(localUri = "content://1"), song("ok"))))
+    }
 }

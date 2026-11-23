@@ -19,6 +19,11 @@ sealed interface RitmeLocalAction {
     data class AddItems(val songs: List<MediaMetadata?>, val playNext: Boolean) : RitmeLocalAction
     /** Tapping a song/album to play it: the songs it would start with. */
     data class PlayQueue(val songs: List<MediaMetadata?>) : RitmeLocalAction
+    /**
+     * Play/Shuffle on a playlist, album or artist page (or those menus): every song of it, in the
+     * order given (already shuffled for Shuffle), to the end of the room queue.
+     */
+    data class AddAll(val songs: List<MediaMetadata?>) : RitmeLocalAction
     /** Reordering or removing in the local queue page. */
     data object QueueEdit : RitmeLocalAction
     data object Shuffle : RitmeLocalAction

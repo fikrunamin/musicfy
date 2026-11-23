@@ -2,6 +2,8 @@
 
 package com.example.musicfy.ui.menu
 
+import com.example.musicfy.ritme.entries.RitmeEntries
+import com.example.musicfy.models.toMediaMetadata
 import com.example.musicfy.ui.component.SheetDivider
 import com.example.musicfy.ui.component.SheetHeaderButton
 import com.example.musicfy.ui.component.SheetHeader
@@ -109,6 +111,12 @@ fun PlaylistMenu(
     }
 
     val editable: Boolean = playlist.playlist.isEditable == true
+
+    val ritme = com.example.musicfy.ui.screens.ritme.rememberRitme()
+    val ritmeActive by playerConnection.ritmeGate.active.collectAsState()
+    // "Start Ritme with this playlist" only when it holds a song a room can take (local files never go).
+    val hasShareable = remember(songs) { RitmeEntries.hasShareable(songs.map { it.toMediaMetadata() }) }
+    val canStartRitme = com.example.musicfy.ritme.RitmeConfig.ENABLED && !ritmeActive && hasShareable
 
     val isPinned by database.speedDialDao.isPinned(playlist.id).collectAsState(initial = false)
 
@@ -277,7 +285,8 @@ fun PlaylistMenu(
                             text = stringResource(R.string.play),
                             onClick = {
                                 onDismiss()
-                                if (songs.isNotEmpty()) {
+                                // In a Ritme room the playlist goes to the end of the room queue.
+                                if (songs.isNotEmpty() && !playerConnection.addAllToRitme { songs.map { it.toMediaMetadata() } }) {
                                     playerConnection.playQueue(
                                         ListQueue(
                                             title = playlist.playlist.name,
@@ -300,12 +309,15 @@ fun PlaylistMenu(
                             onClick = {
                                 onDismiss()
                                 if (songs.isNotEmpty()) {
-                                    playerConnection.playQueue(
-                                        ListQueue(
-                                            title = playlist.playlist.name,
-                                            items = songs.shuffled().map(Song::toMediaItem)
+                                    val shuffled = songs.shuffled()
+                                    if (!playerConnection.addAllToRitme { shuffled.map { it.toMediaMetadata() } }) {
+                                        playerConnection.playQueue(
+                                            ListQueue(
+                                                title = playlist.playlist.name,
+                                                items = shuffled.map(Song::toMediaItem)
+                                            )
                                         )
-                                    )
+                                    }
                                 }
                             }
                         ),
@@ -400,6 +412,24 @@ fun PlaylistMenu(
                                 onClick = {
                                     onDismiss()
                                     playerConnection.addToQueue(songs.map { it.toMediaItem() })
+                                }
+                            )
+                        )
+                    }
+                    // The same row as SongMenu's "Start Ritme with this", for the whole playlist.
+                    if (canStartRitme) {
+                        add(
+                            Material3MenuItemData(
+                                title = { Text(text = stringResource(R.string.ritme_start_with_playlist)) },
+                                icon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.group),
+                                        contentDescription = null,
+                                    )
+                                },
+                                onClick = {
+                                    onDismiss()
+                                    ritme.controller.openStartWith(songs.map { it.toMediaMetadata() })
                                 }
                             )
                         )

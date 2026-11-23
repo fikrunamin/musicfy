@@ -2,6 +2,8 @@
 
 package com.example.musicfy.ui.menu
 
+import com.example.musicfy.ritme.entries.RitmeEntries
+import com.example.musicfy.models.toMediaMetadata
 import com.example.musicfy.ui.component.SheetDivider
 import com.example.musicfy.ui.component.SheetHeaderButton
 import com.example.musicfy.ui.component.SheetHeader
@@ -109,6 +111,12 @@ fun AlbumMenu(
     }
 
     val coroutineScope = rememberCoroutineScope()
+
+    val ritme = com.example.musicfy.ui.screens.ritme.rememberRitme()
+    val ritmeActive by playerConnection.ritmeGate.active.collectAsState()
+    // "Start Ritme with this album" only when it holds a song a room can take (local files never go).
+    val hasShareable = remember(songs) { RitmeEntries.hasShareable(songs.map { it.toMediaMetadata() }) }
+    val canStartRitme = com.example.musicfy.ritme.RitmeConfig.ENABLED && !ritmeActive && hasShareable
 
     LaunchedEffect(Unit) {
         database.albumSongs(album.id).collect {
@@ -311,7 +319,8 @@ fun AlbumMenu(
                             text = stringResource(R.string.play),
                             onClick = {
                                 onDismiss()
-                                if (songs.isNotEmpty()) {
+                                // In a Ritme room the album goes to the end of the room queue.
+                                if (songs.isNotEmpty() && !playerConnection.addAllToRitme { songs.map { it.toMediaMetadata() } }) {
                                     playerConnection.playQueue(
                                         ListQueue(
                                             title = album.album.title,
@@ -385,14 +394,15 @@ fun AlbumMenu(
                             text = stringResource(R.string.shuffle),
                             onClick = {
                                 onDismiss()
-                                if (songs.isNotEmpty()) {
+                                val shuffled = songs.shuffled()
+                                if (songs.isNotEmpty() && !playerConnection.addAllToRitme { shuffled.map { it.toMediaMetadata() } }) {
                                     album.album.playlistId?.let { playlistId ->
                                         playerConnection.service.getAutomix(playlistId)
                                     }
                                     playerConnection.playQueue(
                                         ListQueue(
                                             title = album.album.title,
-                                            items = songs.shuffled().map(Song::toMediaItem)
+                                            items = shuffled.map(Song::toMediaItem)
                                         )
                                     )
                                 }
@@ -435,6 +445,22 @@ fun AlbumMenu(
                             onClick = {
                                 onDismiss()
                                 playerConnection.addToQueue(songs.map { it.toMediaItem() })
+                            }
+                        )
+                    } else null,
+                    // The same row as SongMenu's "Start Ritme with this", for the whole album.
+                    if (canStartRitme) {
+                        Material3MenuItemData(
+                            title = { Text(text = stringResource(R.string.ritme_start_with_album)) },
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.group),
+                                    contentDescription = null,
+                                )
+                            },
+                            onClick = {
+                                onDismiss()
+                                ritme.controller.openStartWith(songs.map { it.toMediaMetadata() })
                             }
                         )
                     } else null,

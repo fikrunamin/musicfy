@@ -161,6 +161,8 @@ fun SectionDetailScreen(
     fun playAll(startItem: Any? = null, shuffled: Boolean = false) {
         if (localSongs.isNotEmpty()) {
             val list = if (shuffled) localSongs.shuffled() else localSongs
+            // The Play and Shuffle buttons (no start item): in a Ritme room the songs go to the end of the room queue.
+            if (startItem == null && playerConnection.addAllToRitme { list.map { it.toMediaMetadata() } }) return
             playerConnection.playQueue(
                 ListQueue(
                     title = title,
@@ -170,6 +172,7 @@ fun SectionDetailScreen(
             )
         } else if (ytSongs.isNotEmpty()) {
             val list = if (shuffled) ytSongs.shuffled() else ytSongs
+            if (startItem == null && playerConnection.addAllToRitme { list.map { it.toMediaMetadata() } }) return
             playerConnection.playQueue(
                 ListQueue(
                     title = title,
@@ -224,7 +227,7 @@ fun SectionDetailScreen(
         contentPadding = LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Bottom)
             .union(WindowInsets.ime).asPaddingValues(),
         isPlaying = isThisQueue && isPlaying,
-        onPlayClick = { if (isThisQueue) playerConnection.togglePlayPause() else playAll() },
+        onPlayClick = { if (isThisQueue && !playerConnection.ritmeGate.isActive) playerConnection.togglePlayPause() else playAll() },
         onShuffleClick = { playAll(shuffled = true) },
         query = query,
         onQueryChange = { query = it },

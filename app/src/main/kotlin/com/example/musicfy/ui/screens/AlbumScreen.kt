@@ -2,6 +2,7 @@
 
 package com.example.musicfy.ui.screens
 
+import com.example.musicfy.models.toMediaMetadata
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -177,6 +178,15 @@ fun AlbumScreen(
         )
     }
 
+    // The Play and Shuffle buttons: in a Ritme room the album's songs go to the end of the room queue.
+    fun playAll(shuffled: Boolean = false) {
+        val current = album ?: return
+        if (playerConnection.addAllToRitme {
+                (if (shuffled) current.songs.shuffled() else current.songs).map { it.toMediaMetadata() }
+            }) return
+        play(shuffled = shuffled)
+    }
+
     PlaylistDetailScaffold(
         sharedElementKey = "album-${viewModel.albumId}",
         coverUrl = album?.album?.thumbnailUrl,
@@ -253,10 +263,10 @@ fun AlbumScreen(
                     when {
                         isThisAlbum && isPlaying -> playerConnection.ritmeOr(RitmeLocalAction.Pause) { playerConnection.player.pause() }
                         isThisAlbum -> playerConnection.ritmeOr(RitmeLocalAction.Play) { playerConnection.player.play() }
-                        else -> play()
+                        else -> playAll()
                     }
                 },
-                onShuffleClick = { play(shuffled = true) },
+                onShuffleClick = { playAll(shuffled = true) },
                 isSaved = album.album.bookmarkedAt != null,
                 onSaveClick = { database.query { update(album.album.toggleLike()) } },
                 onCreatorClick = { creator -> creator.artistId?.let { navController.navigate("artist/$it") } },

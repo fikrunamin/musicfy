@@ -9,6 +9,7 @@ import com.example.musicfy.ritme.protocol.Command
 import com.example.musicfy.ritme.protocol.Playback
 import com.example.musicfy.ritme.protocol.RoomSettings
 import com.example.musicfy.ritme.protocol.RoomState
+import com.example.musicfy.ritme.session.NoticeKey
 import com.example.musicfy.ritme.session.RitmeSession
 import com.example.musicfy.ritme.testing.FakeConnector
 import com.example.musicfy.ritme.testing.FakeLocalPlayback
@@ -21,11 +22,13 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.random.Random
 
 class RitmeControllerTest {
 
     private val connector = FakeConnector()
-    private val session = RitmeSession(connector, FakeTimers())
+    private val timers = FakeTimers()
+    private val session = RitmeSession(connector, timers)
     private val gate = RitmeGate()
     private val toasts = FakeNotifier()
     private val local = FakeLocalPlayback()
@@ -349,5 +352,92 @@ class RitmeControllerTest {
         assertTrue(connector.connections.isEmpty())
         assertEquals(0, local.resumed)
         assertTrue(toasts.shown.isEmpty())
+    }
+
+    private val addedIds get() = commands.flatMap { (it as Command.Add).entries.map { e -> e.videoId } }
+
+    @Test
+    fun addAllPutsTheListAtTheEndInTheGivenOrderPacedInBatchesOfTwoHundred() {
+        inRoom(playing)
+        val songs = (1..450).map { song("s$it") }
+        controller.handle(RitmeLocalAction.AddAll(songs))
+        // the first batch right away, the rest paced by the session
+        assertEquals(listOf(200), commands.map { (it as Command.Add).entries.size })
+        timers.advanceBy(10 * RitmeSession.OVERFLOW_GAP_MS)
+        assertEquals(listOf(200, 200, 50), commands.map { (it as Command.Add).entries.size })
+        assertTrue(commands.all { !(it as Command.Add).playNext })
+        assertEquals(songs.map { it.id }, addedIds)
+        assertEquals(listOf<RitmeToast>(RitmeToast.Added(450)), toasts.shown)
+    }
+
+    @Test
+    fun addAllKeepsAShuffledOrder() {
+        inRoom(playing)
+        val shuffled = (1..30).map { song("s$it") }.shuffled(Random(7))
+        controller.handle(RitmeLocalAction.AddAll(shuffled))
+        assertEquals(shuffled.map { it.id }, addedIds)
+    }
+
+    @Test
+    fun addAllSkipsLocalSongs() {
+        inRoom(playing)
+        controller.handle(RitmeLocalAction.AddAll(listOf(song("a"), song("x", local = true), song("b"))))
+        assertEquals(listOf("a", "b"), addedIds)
+        assertEquals(listOf<RitmeToast>(RitmeToast.Added(2)), toasts.shown)
+        controller.handle(RitmeLocalAction.AddAll(listOf(song("x", local = true), song("y", local = true))))
+        assertEquals(2, addedIds.size)
+        assertEquals(RitmeToast.SkippedLocal(2), toasts.shown.last())
+        controller.handle(RitmeLocalAction.AddAll(emptyList()))
+        assertEquals(RitmeToast.NotAvailable, toasts.shown.last())
+    }
+
+    @Test
+    fun addAllIsCappedAtWhatTheRoomStillHolds() {
+        // 1 entry in the room: 499 of 600 fit under the server's 500-entry cap
+        inRoom(playing)
+        controller.handle(RitmeLocalAction.AddAll((1..600).map { song("s$it") }))
+        timers.advanceBy(10 * RitmeSession.OVERFLOW_GAP_MS)
+        assertEquals(listOf(200, 200, 99), commands.map { (it as Command.Add).entries.size })
+        assertEquals(listOf<RitmeToast>(RitmeToast.Added(499)), toasts.shown)
+    }
+
+    @Test
+    fun addAllToAFullRoomSaysSoAndSendsNothing() {
+        val full = playing.copy(queue = (1..RitmeEntries.MAX_QUEUE).map { entry("e$it") })
+        inRoom(full)
+        controller.handle(RitmeLocalAction.AddAll(listOf(song("a"))))
+        assertTrue(commands.isEmpty())
+        assertEquals(listOf<RitmeToast>(RitmeToast.CommandFailed(NoticeKey.QUEUE_FULL)), toasts.shown)
+    }
+
+    @Test
+    fun addAllWhileReconnectingSaysSo() {
+        inRoom(playing)
+        connector.last.emit(ConnectionEvent.Status(ConnectionStatus.RECONNECTING))
+        controller.handle(RitmeLocalAction.AddAll(listOf(song("a"))))
+        assertTrue(commands.isEmpty())
+        assertEquals(listOf<RitmeToast>(RitmeToast.Reconnecting), toasts.shown)
+    }
+
+    @Test
+    fun addAllGoesThroughTheGateOnlyInARoom() {
+        inRoom(playing)
+        assertFalse(gate.intercept(RitmeLocalAction.AddAll(listOf(song("a")))))
+        assertTrue(commands.isEmpty())
+        gate.activate()
+        assertTrue(gate.intercept(RitmeLocalAction.AddAll(listOf(song("a")))))
+        assertEquals(listOf("a"), addedIds)
+    }
+
+    @Test
+    fun startWithAWholeListUsesItAsTheInitialQueue() {
+        // "Start Ritme with this playlist/album/selected songs": the list, local files skipped
+        val list = listOf(song("a"), song("x", local = true), song("b"))
+        controller.openStartWith(list)
+        assertEquals(RitmeSheetRequest.Kind.Entry(startWith = list), controller.sheetRequest.value?.kind)
+        controller.startRoom("Budi", startWith = list)
+        val expected = listOf(song("a"), song("b")).map { RitmeEntries.toNewEntry(it)!! }
+        assertEquals(JoinIntent.Create("Budi", expected, 0, 0), connector.last.intent)
+        assertEquals(listOf<RitmeToast>(RitmeToast.SkippedLocal(1)), toasts.shown)
     }
 }

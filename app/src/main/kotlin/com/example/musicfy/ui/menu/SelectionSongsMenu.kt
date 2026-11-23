@@ -2,6 +2,8 @@
 
 package com.example.musicfy.ui.menu
 
+import androidx.compose.runtime.collectAsState
+import com.example.musicfy.ritme.entries.RitmeEntries
 import android.annotation.SuppressLint
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.PaddingValues
@@ -79,6 +81,12 @@ fun SelectionSongMenu(
     val coroutineScope = rememberCoroutineScope()
     val playerConnection = LocalPlayerConnection.current ?: return
     val syncUtils = LocalSyncUtils.current
+
+    val ritme = com.example.musicfy.ui.screens.ritme.rememberRitme()
+    val ritmeActive by playerConnection.ritmeGate.active.collectAsState()
+    // "Start Ritme with selected songs" only when one of them can go into a room (local files never go).
+    val hasShareable = remember(songSelection) { RitmeEntries.hasShareable(songSelection.map { it.toMediaMetadata() }) }
+    val canStartRitme = com.example.musicfy.ritme.RitmeConfig.ENABLED && !ritmeActive && hasShareable
 
     val allInLibrary by remember {
         mutableStateOf(
@@ -212,12 +220,15 @@ fun SelectionSongMenu(
                         text = stringResource(R.string.play),
                         onClick = {
                             onDismiss()
-                            playerConnection.playQueue(
-                                ListQueue(
-                                    title = "Selection",
-                                    items = songSelection.map { it.toMediaItem() },
-                                ),
-                            )
+                            // In a Ritme room the selection goes to the end of the room queue.
+                            if (!playerConnection.addAllToRitme { songSelection.map { it.toMediaMetadata() } }) {
+                                playerConnection.playQueue(
+                                    ListQueue(
+                                        title = "Selection",
+                                        items = songSelection.map { it.toMediaItem() },
+                                    ),
+                                )
+                            }
                             clearAction()
                         }
                     ) else null,
@@ -233,12 +244,15 @@ fun SelectionSongMenu(
                         text = stringResource(R.string.shuffle),
                         onClick = {
                             onDismiss()
-                            playerConnection.playQueue(
-                                ListQueue(
-                                    title = "Selection",
-                                    items = songSelection.shuffled().map { it.toMediaItem() },
-                                ),
-                            )
+                            val shuffled = songSelection.shuffled()
+                            if (!playerConnection.addAllToRitme { shuffled.map { it.toMediaMetadata() } }) {
+                                playerConnection.playQueue(
+                                    ListQueue(
+                                        title = "Selection",
+                                        items = shuffled.map { it.toMediaItem() },
+                                    ),
+                                )
+                            }
                             clearAction()
                         }
                     ) else null,
@@ -293,12 +307,15 @@ fun SelectionSongMenu(
                                 },
                                 onClick = {
                                     onDismiss()
-                                    playerConnection.playQueue(
-                                        ListQueue(
-                                            title = "Selection",
-                                            items = songSelection.shuffled().map { it.toMediaItem() },
-                                        ),
-                                    )
+                                    val shuffled = songSelection.shuffled()
+                                    if (!playerConnection.addAllToRitme { shuffled.map { it.toMediaMetadata() } }) {
+                                        playerConnection.playQueue(
+                                            ListQueue(
+                                                title = "Selection",
+                                                items = shuffled.map { it.toMediaItem() },
+                                            ),
+                                        )
+                                    }
                                     clearAction()
                                 }
                             )
@@ -316,6 +333,25 @@ fun SelectionSongMenu(
                                 onClick = {
                                     onDismiss()
                                     playerConnection.addToQueue(songSelection.map { it.toMediaItem() })
+                                    clearAction()
+                                }
+                            )
+                        )
+                    }
+                    // The same row as SongMenu's "Start Ritme with this", for the selected songs.
+                    if (canStartRitme) {
+                        add(
+                            Material3MenuItemData(
+                                title = { Text(text = stringResource(R.string.ritme_start_with_selection)) },
+                                icon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.group),
+                                        contentDescription = null,
+                                    )
+                                },
+                                onClick = {
+                                    onDismiss()
+                                    ritme.controller.openStartWith(songSelection.map { it.toMediaMetadata() })
                                     clearAction()
                                 }
                             )
