@@ -1075,6 +1075,17 @@ class MainActivity : ComponentActivity() {
                                             modifier = Modifier.launchRise(order = 3),
                                         )
 
+                                        // "Ritme · N" just above the mini player while the player is collapsed (spec 3.4)
+                                        com.example.musicfy.ui.screens.ritme.RitmePill(
+                                            alphaProvider = {
+                                                if (playerBottomSheetState.isDismissed) 0f
+                                                else (1f - playerBottomSheetState.progress / 0.3f).coerceIn(0f, 1f)
+                                            },
+                                            modifier = Modifier
+                                                .align(Alignment.BottomCenter)
+                                                .padding(bottom = bottomInset + navPadding + MiniPlayerHeight + 8.dp),
+                                        )
+
                                         AppNavigationBar(
                                             navigationItems = navigationItems,
                                             currentRoute = currentRoute,

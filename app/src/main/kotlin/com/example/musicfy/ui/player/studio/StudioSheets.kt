@@ -141,7 +141,10 @@ fun StudioSheets(
                 val current = menuLayout.actionAt(slot)
                 val used = (menuLayout.slots + menuLayout.side).toSet()
                 OptionSheet(if (slot == PlayerMenuLayout.SideSlot) "The button by the chevron" else "Menu button ${slot + 1}") {
-                    PlayerMenuAction.entries.forEach { action ->
+                    // RITME_ENABLED = false hides every Ritme entry point, this choice too.
+                    PlayerMenuAction.entries.filter {
+                        it != PlayerMenuAction.RITME || com.example.musicfy.ritme.RitmeConfig.ENABLED
+                    }.forEach { action ->
                         OptionRow(
                             selected = action == current,
                             onClick = { menuLayout.assign(slot, action) },

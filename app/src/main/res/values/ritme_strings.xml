@@ -68,4 +68,6 @@
     <string name="ritme_member_host">%1$s, host</string>
     <string name="ritme_entry_subtitle">%1$s · by %2$s</string>
     <string name="ritme_someone">Someone</string>
+
+    <string name="ritme_pill" translatable="false">Ritme · %1$d</string>
 </resources>

@@ -567,6 +567,7 @@ fun BottomSheetPlayer(
         // what the round buttons do: the side button by the chevron and the chevron's menu, each
         // set to one of these in the editor
         val ritmeActive by playerConnection.ritmeGate.active.collectAsState()
+        val ritme = com.example.musicfy.ui.screens.ritme.rememberRitme()
         fun menuActionActive(action: com.example.musicfy.ui.player.studio.PlayerMenuAction): Boolean = when (action) {
             com.example.musicfy.ui.player.studio.PlayerMenuAction.LIKE -> trackInfo.liked
             com.example.musicfy.ui.player.studio.PlayerMenuAction.SLEEP_TIMER -> playerConnection.service.sleepTimer.isActive
@@ -597,6 +598,7 @@ fun BottomSheetPlayer(
                 com.example.musicfy.ui.player.studio.PlayerMenuAction.SPEED ->
                     playerConnection.ritmeOr(RitmeLocalAction.Speed) { showPlaybackSpeed = true }
                 com.example.musicfy.ui.player.studio.PlayerMenuAction.OUTPUT -> showDeviceOutput = true
+                com.example.musicfy.ui.player.studio.PlayerMenuAction.RITME -> ritme.controller.openSheet()
             }
         }
 
@@ -695,6 +697,13 @@ fun BottomSheetPlayer(
                     headerTitleY = statusBarTopInset + 38.dp,
                     lyricsProgressProvider = { lyricsProgress },
                     sheetProgressProvider = progressProvider,
+                )
+                // "Ritme · N" at the top of the open player (spec 3.4)
+                com.example.musicfy.ui.screens.ritme.RitmePill(
+                    alphaProvider = { ((progressProvider() - 0.5f) * 2f).coerceIn(0f, 1f) },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = statusBarTopInset + 4.dp),
                 )
             },
             // In a Ritme room the player holds the room's item: it cannot be swiped away (leave from the Ritme sheet).
@@ -811,7 +820,17 @@ fun BottomSheetPlayer(
                 )
             }
 
-            if (queuePageMounted && sheetShowing) {
+            if (queuePageMounted && sheetShowing && ritmeActive) {
+                // In a Ritme room the queue page shows the room's queue (spec 3.4).
+                com.example.musicfy.ui.screens.ritme.RitmeQueuePage(
+                    onClose = { transition.close() },
+                    navController = navController,
+                    bottomPadding = lyricsBottomInset + QueueButtonColumnHeight,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pageTransitionLayer(PlayerPage.QUEUE, transition, morph) { queuePageProgress },
+                )
+            } else if (queuePageMounted && sheetShowing) {
                 QueueScreen(
                     onClose = { transition.close() },
                     // Fades into the seek bar like the lyrics; rows run under the chevron/shuffle/

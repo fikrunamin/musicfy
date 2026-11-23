@@ -23,7 +23,8 @@ enum class PlayerMenuAction(val label: String, @param:DrawableRes val icon: Int)
     LYRICS("Lyrics", R.drawable.lyrics),
     QUEUE("Queue", R.drawable.queue_music),
     SPEED("Playback speed", R.drawable.speed),
-    OUTPUT("Device output", R.drawable.cast);
+    OUTPUT("Device output", R.drawable.cast),
+    RITME("Ritme", R.drawable.group);
 
     companion object {
         val DefaultSlots = listOf(OTHER_MENU, SLEEP_TIMER, SEE_VIDEO, REPEAT)

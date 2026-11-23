@@ -114,6 +114,7 @@ fun PlayerMenu(
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val playerVolume = playerConnection.service.playerVolume.collectAsState()
+    val ritme = com.example.musicfy.ui.screens.ritme.rememberRitme()
 
     val castHandler = remember(playerConnection) {
         try {
@@ -585,6 +586,25 @@ fun PlayerMenu(
         item {
             Material3MenuGroup(
                 items = buildList {
+                    if (com.example.musicfy.ritme.RitmeConfig.ENABLED) {
+                        add(
+                            Material3MenuItemData(
+                                title = { Text(text = stringResource(R.string.ritme_name)) },
+                                description = { Text(text = stringResource(R.string.ritme_start_desc)) },
+                                icon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.group),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                },
+                                onClick = {
+                                    ritme.controller.openSheet()
+                                    onDismiss()
+                                }
+                            )
+                        )
+                    }
                     add(
                         Material3MenuItemData(
                             title = { Text(text = stringResource(R.string.details)) },

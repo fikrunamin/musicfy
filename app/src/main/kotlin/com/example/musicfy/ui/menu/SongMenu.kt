@@ -113,6 +113,8 @@ fun SongMenu(
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val songState = database.song(originalSong.id).collectAsState(initial = originalSong)
+    val ritme = com.example.musicfy.ui.screens.ritme.rememberRitme()
+    val ritmeActive by playerConnection.ritmeGate.active.collectAsState()
     val song = songState.value ?: originalSong
     val downloadUtil = LocalDownloadUtil.current
 
@@ -494,6 +496,21 @@ fun SongMenu(
                             onClick = {
                                 onDismiss()
                                 playerConnection.addToQueue(song.toMediaItem())
+                            }
+                        )
+                    } else null,
+                    if (com.example.musicfy.ritme.RitmeConfig.ENABLED && !ritmeActive) {
+                        Material3MenuItemData(
+                            title = { Text(text = stringResource(R.string.ritme_start_with_this)) },
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.group),
+                                    contentDescription = null,
+                                )
+                            },
+                            onClick = {
+                                onDismiss()
+                                ritme.controller.openStartWith(listOf(song.toMediaMetadata()))
                             }
                         )
                     } else null
