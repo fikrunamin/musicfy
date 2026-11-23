@@ -16,7 +16,7 @@
 - **Protocol stays backward compatible:** `PROTOCOL_VERSION` stays `1`; every new field has a default; old clients still decode (`ignoreUnknownKeys`). Refresh golden fixtures only with `./gradlew --console=plain -p ritme-server :ritme-protocol:test -PupdateGolden=true` and review `git diff modules/ritme-protocol/fixtures/`.
 - Shared rule fixtures go in `modules/ritme-protocol/fixtures/rules/` (a subdirectory, because `ritme-web/src/protocol.test.ts` requires every top-level `fixtures/*.json` to be a message sample).
 - The server **never** fetches, probes or DNS-resolves an entry URL (spec D6), and never logs a video id, URL, title or query. `/api/video` logs only `video backend failed: <ExceptionClass>`.
-- `/api/video` (spec 3.1, exact): `id` matches `^[A-Za-z0-9_-]{11}$` else 400; own `IpRateLimiter` 30/min per IP (429); upstream budget **shared with search**, 300/min global (503); one `POST https://music.youtube.com/youtubei/v1/music/get_queue` (`WEB_REMIX`, same headers as search) with body `{"videoIds":[id]}`; 200 `{videoId,title,channel,durationMs,thumbnailUrl,live}`; 404 when there is no renderer; 502 when the backend fails; LRU 1000 entries, TTL 6 h (live: 5 min), single flight per id. `thumbnailUrl` only on `i.ytimg.com`, `*.ytimg.com`, `*.googleusercontent.com`, `*.ggpht.com` (https, ≤ 512 chars), else `null`.
+- `/api/video` (spec 3.1, exact): `id` matches `^[A-Za-z0-9_-]{11}$` else 400; own `IpRateLimiter` 30/min per IP (429); upstream budget **shared with search**, 300/min global (503); one `POST https://music.youtube.com/youtubei/v1/music/get_queue` (`WEB_REMIX`, same headers as search) with body `{"videoIds":[id]}`; 200 `{videoId,title,channel,durationMs,thumbnailUrl,live}`; 404 when YouTube has no such video (YouTube itself answers HTTP 404 then; see Decision 11) or there is no renderer; 502 when the backend fails; LRU 1000 entries, TTL 6 h (live: 5 min), single flight per id. `thumbnailUrl` only on `i.ytimg.com`, `*.ytimg.com`, `*.googleusercontent.com`, `*.ggpht.com` (https, ≤ 512 chars), else `null`.
 - `MediaUrlRules` (spec 3.2, exact): http/https only; host required; ≤ 2048 chars; reject userinfo, whitespace/`\p{Cc}`/backslash, `#fragment`; reject `localhost`, `*.localhost`, `*.local`, `*.internal`, loopback, private (10/8, 172.16/12, 192.168/16, fc00::/7), link-local (169.254/16, fe80::/10), CGNAT 100.64/10, `0.0.0.0`, multicast.
 - **Web:** Node via `source ~/.nvm/nvm.sh >/dev/null;`. Full check: `source ~/.nvm/nvm.sh >/dev/null; cd ritme-web && npm test && npm run typecheck && npm run build && npm run e2e` (e2e needs the JDK export and the Gradle guard).
 - The CSP in `ritme-web/index.html` must not change (`media-src 'self' blob: https: http:; connect-src 'self' https: http:` already cover the probe). No new npm dependencies, no new third-party requests (`/api/video` is same-origin).
@@ -37,6 +37,10 @@
 7. **`guestsCanAdd = false` hides the add UI** for guests: the whole "Tambah lagu" card on the web, the "Tambah lagu" row in the Android room sheet. Android's song-tap/menu interception refuses with the existing `ritme_toast_forbidden` toast.
 8. **Minimal video rows (spec §10 2a fallback, designs not delivered):** web queue rows for `YOUTUBE_VIDEO`/`URL` entries get a 16:9 thumbnail (`.thumb-wide`, ▶ placeholder) and a "Video" badge. Nothing else of brief §12/§13 is built.
 9. One shared `HttpClient` serves search and video info.
+10. **Live detection (pre-flight review, verified on real responses 2026-11-23).** `get_queue` has no live marker: the renderers of a live stream (`jfKfPfyJRdk`) and a video (`dQw4w9WgXcQ`) have identical keys, no badges and no thumbnail overlays; a live stream's `lengthText` is the time since it started (`"33,778:11:52"`). So a length counts only when it parses as `m:ss`/`h:mm:ss` and is under 12 h; missing, unparseable, `0:00` or ≥ 12 h means live. A real VOD of 12 h or more is therefore treated as live (no auto-advance), which is accepted.
+11. **Unknown ids (pre-flight review).** YouTube answers an unknown id with HTTP 404 `{"error":{"code":404,"status":"NOT_FOUND"}}`, not an empty queue. `InnerTubeVideoBackend` maps 404 and 400 to `"{}"`, which the parser reads as "no such video": the endpoint answers 404 and the miss is cached 5 min. Every id is validated before the call, so a 400 would mean our request itself is wrong; Task 9 Step 5's 200 check for a known id catches that.
+12. **Settings race (pre-flight review).** Clients build the next `SetSettings` from the settings they last sent until a snapshot newer than the one those were built on arrives, so two quick toggles keep both changes (web Task 7, Android Task 8).
+13. **Own message for a refused Add (Task 1 review).** A `FORBIDDEN` answer to an `Add` shows "Host menutup penambahan lagu" / "The host turned off adding songs" instead of the control-lock text. Clients tell it apart by the `reqId` of the `Add` they sent.
 
 ---
 
@@ -1051,14 +1055,14 @@ git commit -m "refactor(ritme-server): SingleFlightCache and a shared UpstreamBu
 - Modify: `ritme-server/src/main/kotlin/com/example/musicfy/ritme/server/RoomLogic.kt` (`isValidThumbnail` YouTube branch)
 - Modify: `ritme-server/src/main/kotlin/com/example/musicfy/ritme/server/Application.kt` (`ServerDeps`, route)
 - Modify: `ritme-server/src/main/kotlin/com/example/musicfy/ritme/server/Limits.kt`
-- Create: `ritme-server/src/test/resources/innertube-get-queue-video.json`, `innertube-get-queue-live.json`, `innertube-get-queue-wrapped.json`, `innertube-get-queue-empty.json`, `innertube-get-queue-recorded.json` (recorded)
+- Create: `ritme-server/src/test/resources/innertube-get-queue-video.json`, `innertube-get-queue-wrapped.json`, `innertube-get-queue-empty.json` (hand-written); `innertube-get-queue-recorded.json`, `innertube-get-queue-live-recorded.json` (recorded and scrubbed in Step 2)
 - Create: `ritme-server/src/test/kotlin/com/example/musicfy/ritme/server/VideoTest.kt`
 - Modify: `ritme-server/README.md` (Endpoints, Privacy, intro)
 
 **Interfaces:**
 - Consumes: `SingleFlightCache`, `UpstreamBudget`, `UpstreamOverloadedException`, `ServerDeps.upstreamBudget` (Task 3).
 - Produces (HTTP, used by Task 5): `GET /api/video?id=<11 chars>` → 200 `{"videoId":String,"title":String,"channel":String,"durationMs":Long,"thumbnailUrl":String|null,"live":Boolean}`; 400 / 404 / 429 / 502 / 503 with empty body.
-- Produces (Kotlin): `@Serializable data class VideoInfo(videoId, title, channel, durationMs, thumbnailUrl: String? = null, live)`; `fun interface VideoBackend { suspend fun fetch(videoId: String): String }`; `class InnerTubeVideoBackend(http: HttpClient)`; `object InnerTubeVideoParser { fun parse(json: String, videoId: String): VideoInfo? }`; `class VideoInfoService(backend, clock, budget = UpstreamBudget(clock = clock), maxEntries = 1_000) { suspend fun lookup(videoId: String): VideoInfo?; companion { TTL_MS = 21_600_000; SHORT_TTL_MS = 300_000; fun isVideoId(id: String): Boolean } }`; `internal fun isYouTubeImageUrl(url: String): Boolean`; `internal fun HttpRequestBuilder.innerTubeHeaders()`; `internal fun JsonObjectBuilder.putWebRemixContext()`; `Limits.VIDEO_PER_MINUTE = 30`; `ServerDeps.video: VideoInfoService`.
+- Produces (Kotlin): `@Serializable data class VideoInfo(videoId, title, channel, durationMs, thumbnailUrl: String? = null, live)`; `fun interface VideoBackend { suspend fun fetch(videoId: String): String }`; `class InnerTubeVideoBackend(http: HttpClient, url: String = URL)` (YouTube's 404/400 → `"{}"`); `object InnerTubeVideoParser { const val LIVE_FROM_MS = 43_200_000; fun lengthMs(text: String?): Long?; fun parse(json: String, videoId: String): VideoInfo? }`; `class VideoInfoService(backend, clock, budget = UpstreamBudget(clock = clock), maxEntries = 1_000) { suspend fun lookup(videoId: String): VideoInfo?; companion { TTL_MS = 21_600_000; SHORT_TTL_MS = 300_000; fun isVideoId(id: String): Boolean } }`; `internal fun isYouTubeImageUrl(url: String): Boolean`; `internal fun HttpRequestBuilder.innerTubeHeaders()`; `internal fun JsonObjectBuilder.putWebRemixContext()`; `Limits.VIDEO_PER_MINUTE = 30`; `ServerDeps.video: VideoInfoService`.
 
 - [ ] **Step 1: Add the hand-written fixtures**
 
@@ -1098,27 +1102,6 @@ git commit -m "refactor(ritme-server): SingleFlightCache and a shared UpstreamBu
 }
 ```
 
-`ritme-server/src/test/resources/innertube-get-queue-live.json`:
-
-```json
-{
-  "queueDatas": [
-    {
-      "content": {
-        "playlistPanelVideoRenderer": {
-          "title": { "runs": [{ "text": "lofi hip hop radio" }] },
-          "longBylineText": { "runs": [{ "text": "Lofi Girl" }] },
-          "thumbnail": { "thumbnails": [{ "url": "https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault_live.jpg", "width": 480, "height": 360 }] },
-          "videoId": "jfKfPfyJRdk",
-          "selected": true,
-          "navigationEndpoint": { "watchEndpoint": { "videoId": "jfKfPfyJRdk" } }
-        }
-      }
-    }
-  ]
-}
-```
-
 `ritme-server/src/test/resources/innertube-get-queue-wrapped.json`:
 
 ```json
@@ -1151,19 +1134,61 @@ git commit -m "refactor(ritme-server): SingleFlightCache and a shared UpstreamBu
 { "responseContext": {}, "queueDatas": [] }
 ```
 
-- [ ] **Step 2: Record one real response**
+- [ ] **Step 2: Record two real responses (scrubbed) and confirm YouTube's 404**
+
+Download to a scratch directory first, never straight into the repo:
 
 ```bash
-curl -sS 'https://music.youtube.com/youtubei/v1/music/get_queue?prettyPrint=false' \
-  -H 'Content-Type: application/json' \
-  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0' \
-  -H 'X-Goog-Api-Format-Version: 1' -H 'X-YouTube-Client-Name: 67' -H 'X-YouTube-Client-Version: 1.20260707.12.00' \
+SCRATCH=$(mktemp -d -t ritme-gq)
+record() {
+  curl --fail -sS 'https://music.youtube.com/youtubei/v1/music/get_queue?prettyPrint=false' \
+    -H 'Content-Type: application/json' \
+    -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0' \
+    -H 'X-Goog-Api-Format-Version: 1' -H 'X-YouTube-Client-Name: 67' -H 'X-YouTube-Client-Version: 1.20260707.12.00' \
+    -H 'X-Origin: https://music.youtube.com' -H 'Referer: https://music.youtube.com/' \
+    --data "{\"context\":{\"client\":{\"clientName\":\"WEB_REMIX\",\"clientVersion\":\"1.20260707.12.00\",\"hl\":\"en\",\"gl\":\"US\"}},\"videoIds\":[\"$1\"]}" \
+    -o "$SCRATCH/$1.json"
+}
+record dQw4w9WgXcQ && record jfKfPfyJRdk && echo recorded
+curl -sS -o /dev/null -w '%{http_code}\n' 'https://music.youtube.com/youtubei/v1/music/get_queue?prettyPrint=false' \
+  -H 'Content-Type: application/json' -H 'X-YouTube-Client-Name: 67' -H 'X-YouTube-Client-Version: 1.20260707.12.00' \
   -H 'X-Origin: https://music.youtube.com' -H 'Referer: https://music.youtube.com/' \
-  --data '{"context":{"client":{"clientName":"WEB_REMIX","clientVersion":"1.20260707.12.00","hl":"en","gl":"US"}},"videoIds":["dQw4w9WgXcQ"]}' \
-  -o ritme-server/src/test/resources/innertube-get-queue-recorded.json
-python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); c=d["queueDatas"][0]["content"]; r=c.get("playlistPanelVideoRenderer") or c["playlistPanelVideoWrapperRenderer"]["primaryRenderer"]["playlistPanelVideoRenderer"]; print(r["videoId"], r["title"]["runs"][0]["text"], r["lengthText"]["runs"][0]["text"])' ritme-server/src/test/resources/innertube-get-queue-recorded.json
+  --data '{"context":{"client":{"clientName":"WEB_REMIX","clientVersion":"1.20260707.12.00","hl":"en","gl":"US"}},"videoIds":["AAAAAAAAAAA"]}'
 ```
-Expected: `dQw4w9WgXcQ Never Gonna Give You Up (…) 3:3x` (title may carry a suffix). If the response is not JSON or has no `queueDatas`, stop and report BLOCKED with the first 300 bytes of the file: the parser cannot be validated against reality.
+Expected: `recorded`, then `404` (Decision 11). If `curl --fail` exits non-zero for a real id, stop and report BLOCKED with the HTTP status.
+
+Scrub (drop `responseContext`, which holds visitor data, and every `*trackingParams` key at any depth), check, then copy into the test resources:
+
+```bash
+scrub() {
+  python3 -I -c '
+import json, sys
+def scrub(o):
+    if isinstance(o, dict):
+        return {k: scrub(v) for k, v in o.items() if k != "responseContext" and not k.lower().endswith("trackingparams")}
+    if isinstance(o, list):
+        return [scrub(x) for x in o]
+    return o
+with open(sys.argv[1]) as f:
+    data = scrub(json.load(f))
+with open(sys.argv[2], "w") as f:
+    json.dump(data, f, ensure_ascii=False, indent=1)
+    f.write("\n")
+' "$SCRATCH/$1.json" "$SCRATCH/$1.scrubbed.json"
+}
+scrub dQw4w9WgXcQ && scrub jfKfPfyJRdk
+grep -ci -e trackingparams -e responsecontext -e visitorData "$SCRATCH"/*.scrubbed.json
+python3 -I -c '
+import json, sys
+for path in sys.argv[1:]:
+    c = json.load(open(path))["queueDatas"][0]["content"]
+    r = c.get("playlistPanelVideoRenderer") or c["playlistPanelVideoWrapperRenderer"]["primaryRenderer"]["playlistPanelVideoRenderer"]
+    print(r["videoId"], "|", r["title"]["runs"][0]["text"], "|", r.get("lengthText", {}).get("runs", [{}])[0].get("text"))
+' "$SCRATCH/dQw4w9WgXcQ.scrubbed.json" "$SCRATCH/jfKfPfyJRdk.scrubbed.json"
+cp "$SCRATCH/dQw4w9WgXcQ.scrubbed.json" ritme-server/src/test/resources/innertube-get-queue-recorded.json
+cp "$SCRATCH/jfKfPfyJRdk.scrubbed.json" ritme-server/src/test/resources/innertube-get-queue-live-recorded.json
+```
+Expected: the `grep -ci` prints `0` for both files; then `dQw4w9WgXcQ | Never Gonna Give You Up | 3:34` and `jfKfPfyJRdk | lofi hip hop radio … | <hours>:mm:ss` where the hours have a thousands separator or are at least 12 (e.g. `33,778:11:52`). If the live stream shows a short normal length, it has ended: pick another 24/7 YouTube live stream, record it the same way, use its id for `liveId` in the test below, and say so in the task report.
 
 - [ ] **Step 3: Write the failing tests**
 
@@ -1176,7 +1201,11 @@ import com.example.musicfy.ritme.protocol.RitmeJson
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.post
+import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -1196,7 +1225,7 @@ import java.io.File
 class VideoTest {
     private fun resource(name: String) = javaClass.getResource("/$name")!!.readText()
     private val video = resource("innertube-get-queue-video.json")
-    private val live = resource("innertube-get-queue-live.json")
+    private val live = resource("innertube-get-queue-live-recorded.json")
     private val wrapped = resource("innertube-get-queue-wrapped.json")
     private val empty = resource("innertube-get-queue-empty.json")
     private val searchJson = resource("innertube-search-minimal.json")
@@ -1212,11 +1241,23 @@ class VideoTest {
     }
 
     @Test
-    fun noLengthTextMeansLive() {
-        assertEquals(
-            VideoInfo(liveId, "lofi hip hop radio", "Lofi Girl", 0, "https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault_live.jpg", live = true),
-            InnerTubeVideoParser.parse(live, liveId),
-        )
+    fun aRecordedLiveStreamIsLiveDespiteItsElapsedLengthText() {
+        val info = InnerTubeVideoParser.parse(live, liveId)!!
+        assertTrue(info.title, info.title.startsWith("lofi hip hop radio"))
+        assertEquals("Lofi Girl", info.channel)
+        assertEquals(0L, info.durationMs)
+        assertTrue(info.live)
+        assertTrue("${info.thumbnailUrl}", info.thumbnailUrl!!.startsWith("https://i.ytimg.com/vi/$liveId/"))
+    }
+
+    @Test
+    fun onlyAParsableLengthUnderTwelveHoursIsAVideo() {
+        assertEquals(214_000L, InnerTubeVideoParser.lengthMs("3:34"))
+        assertEquals(3_723_000L, InnerTubeVideoParser.lengthMs("1:02:03"))
+        assertEquals(43_199_000L, InnerTubeVideoParser.lengthMs("11:59:59"))
+        listOf(null, "", "0:00", "12:00:00", "99:59:59", "33,778:11:52", "LIVE", "3:4").forEach {
+            assertNull("$it", InnerTubeVideoParser.lengthMs(it))
+        }
     }
 
     @Test
@@ -1239,9 +1280,39 @@ class VideoTest {
         val info = InnerTubeVideoParser.parse(resource("innertube-get-queue-recorded.json"), id)!!
         assertTrue(info.title, info.title.contains("Never Gonna Give You Up"))
         assertTrue(info.channel, info.channel.contains("Rick Astley"))
-        assertTrue("${info.durationMs}", info.durationMs in 200_000..240_000)
+        assertEquals(214_000L, info.durationMs)
         assertFalse(info.live)
         assertNotNull(info.thumbnailUrl)
+    }
+
+    @Test
+    fun backendTurnsYoutubes404And400IntoAnEmptyAnswerAndOtherFailuresIntoErrors() = testApplication {
+        routing {
+            post("/missing") {
+                call.respondText("""{"error":{"code":404,"status":"NOT_FOUND"}}""", ContentType.Application.Json, HttpStatusCode.NotFound)
+            }
+            post("/bad") { call.respondText("""{"error":{"code":400}}""", ContentType.Application.Json, HttpStatusCode.BadRequest) }
+            post("/down") { call.respondText("", status = HttpStatusCode.InternalServerError) }
+            post("/ok") { call.respondText(video, ContentType.Application.Json) }
+        }
+        assertEquals("{}", InnerTubeVideoBackend(client, "/missing").fetch(id))
+        assertEquals("{}", InnerTubeVideoBackend(client, "/bad").fetch(id))
+        assertEquals(video, InnerTubeVideoBackend(client, "/ok").fetch(id))
+        assertTrue(runCatching { InnerTubeVideoBackend(client, "/down").fetch(id) }.isFailure)
+    }
+
+    @Test
+    fun anUnknownIdIsCachedAsMissingForFiveMinutes() = runBlocking {
+        val clock = FakeClock()
+        var calls = 0
+        // "{}" is what InnerTubeVideoBackend returns for YouTube's HTTP 404.
+        val service = VideoInfoService({ calls++; "{}" }, clock)
+        assertNull(service.lookup("AAAAAAAAAAA"))
+        assertNull(service.lookup("AAAAAAAAAAA"))
+        assertEquals(1, calls)
+        clock.now += VideoInfoService.SHORT_TTL_MS
+        assertNull(service.lookup("AAAAAAAAAAA"))
+        assertEquals(2, calls)
     }
 
     @Test
@@ -1322,8 +1393,11 @@ class VideoTest {
 
     @Test
     fun endpointAnswers404WhenYoutubeReturnsNoVideo() = testApplication {
-        application { ritmeModule(depsWith { empty }) }
-        assertEquals(HttpStatusCode.NotFound, client.get("/api/video?id=$id").status)
+        var calls = 0
+        application { ritmeModule(depsWith { calls++; "{}" }) }
+        assertEquals(HttpStatusCode.NotFound, client.get("/api/video?id=AAAAAAAAAAA").status)
+        assertEquals(HttpStatusCode.NotFound, client.get("/api/video?id=AAAAAAAAAAA").status)
+        assertEquals(1, calls) // the miss is cached
     }
 
     @Test
@@ -1539,6 +1613,7 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.TextContent
 import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
@@ -1554,7 +1629,7 @@ data class VideoInfo(
     val title: String,
     /** First run of the byline: the channel (or artist). */
     val channel: String,
-    /** 0 when YouTube gives no length, which means live. */
+    /** 0 for a live stream (see [InnerTubeVideoParser.lengthMs]). */
     val durationMs: Long,
     /** Only on a YouTube image host ([isYouTubeImageUrl]), else null. */
     val thumbnailUrl: String? = null,
@@ -1567,12 +1642,16 @@ fun interface VideoBackend {
 }
 
 /** One InnerTube `music/get_queue` call for one video (spec D5). Metadata only: never a stream URL. */
-class InnerTubeVideoBackend(private val http: HttpClient) : VideoBackend {
+class InnerTubeVideoBackend(private val http: HttpClient, private val url: String = URL) : VideoBackend {
     override suspend fun fetch(videoId: String): String {
-        val response = http.post(URL) {
+        val response = http.post(url) {
             innerTubeHeaders()
             setBody(TextContent(requestBody(videoId), ContentType.Application.Json))
         }
+        // YouTube answers an unknown id with HTTP 404 {"error":{"code":404,"status":"NOT_FOUND"}}
+        // (400 for some malformed ones), not an empty queue. "{}" reads as "no such video": the
+        // endpoint answers 404 and the miss is cached like one.
+        if (response.status == HttpStatusCode.NotFound || response.status == HttpStatusCode.BadRequest) return "{}"
         check(response.status.isSuccess()) { "InnerTube get_queue failed: ${response.status.value}" }
         return response.bodyAsText()
     }
@@ -1589,6 +1668,20 @@ class InnerTubeVideoBackend(private val http: HttpClient) : VideoBackend {
 
 /** Reads `queueDatas[0].content` like the app's NextPage.fromPlaylistPanelVideoRenderer. */
 object InnerTubeVideoParser {
+    /** A length this long or longer is taken for a live stream (see [lengthMs]). */
+    const val LIVE_FROM_MS = 12 * 60 * 60_000L
+
+    /**
+     * The length of a video, or null for a live stream. get_queue has no live marker: a live
+     * stream's renderer has the same keys as a video's, with the time since it started as
+     * lengthText (e.g. "33,778:11:52", checked 2026-11-23). So a length counts only when it
+     * parses as m:ss or h:mm:ss and is above 0 and under 12 h; anything else means live.
+     */
+    fun lengthMs(text: String?): Long? {
+        if (text == null || !InnerTubeSearchParser.DURATION.matches(text)) return null
+        return InnerTubeSearchParser.parseDuration(text).takeIf { it in 1 until LIVE_FROM_MS }
+    }
+
     /** The video [videoId], or null when YouTube returned none (private, removed, unavailable) or another one. */
     fun parse(json: String, videoId: String): VideoInfo? {
         val content = RitmeJson.parseToJsonElement(json).at("queueDatas", 0, "content")
@@ -1598,8 +1691,7 @@ object InnerTubeVideoParser {
         if (renderer.at("videoId").asString() != videoId) return null
         val title = renderer.at("title", "runs", 0, "text").asString()?.takeIf { it.isNotBlank() } ?: return null
         val channel = renderer.at("longBylineText", "runs", 0, "text").asString().orEmpty()
-        val length = renderer.at("lengthText", "runs", 0, "text").asString()
-        val durationMs = length?.takeIf { InnerTubeSearchParser.DURATION.matches(it) }?.let(InnerTubeSearchParser::parseDuration) ?: 0L
+        val durationMs = lengthMs(renderer.at("lengthText", "runs", 0, "text").asString()) ?: 0L
         val thumbnail = renderer.at("thumbnail", "thumbnails").asArray().lastOrNull()?.at("url").asString()
             ?.takeIf(::isYouTubeImageUrl)
         return VideoInfo(videoId, title, channel, durationMs, thumbnail, live = durationMs == 0L)
@@ -3468,10 +3560,11 @@ test('a YouTube link and a direct mp4 link from the Video tab reach the other ta
   await a.getByRole('button', { name: `Tambah: ${VIDEO.title}` }).click();
   await expect(b.locator('section.now-playing')).toContainText(VIDEO.title);
 
-  // Every non-local request is blocked here, so the probe fails: the preview says so and still allows adding.
+  // The media host answers 404, so the probe fails fast: the preview says so and still allows adding.
+  await context.route('https://media.example/**', (route) => route.fulfill({ status: 404, body: '' }));
   await a.getByLabel('Tempel link video').fill('https://media.example/clips/sample.mp4');
   await a.getByRole('button', { name: 'Pratinjau' }).click();
-  await expect(a.getByText('Video ini tidak bisa diputar di web')).toBeVisible();
+  await expect(a.getByText('Video ini tidak bisa diputar di web')).toBeVisible({ timeout: 15_000 });
   await a.getByLabel('Judul (opsional)').fill('Klip contoh');
   await a.getByRole('button', { name: 'Tambah: Klip contoh' }).click();
 
@@ -3511,19 +3604,20 @@ git commit -m "feat(ritme-web): Video tab (YouTube links via /api/video, mp4/web
 
 ---
 
-### Task 7: Web `guestsCanAdd` controls
+### Task 7: Web `guestsCanAdd` controls, settings race, own message for a refused Add
 
 **Files:**
 - Modify: `ritme-web/src/session/permissions.ts`, `ritme-web/src/session/permissions.test.ts`
-- Modify: `ritme-web/src/session/session.ts` (`SessionApi`, `Session`), `ritme-web/src/session/session.test.ts`
+- Modify: `ritme-web/src/session/reducer.ts:4` (`NoticeKey`)
+- Modify: `ritme-web/src/session/session.ts` (`SessionApi`, `Session`: fields, `add`, `setGuestsCanAdd`, `onEvent`, `send`, `sendSettings`), `ritme-web/src/session/session.test.ts`
 - Modify: `ritme-web/src/testing/fake-session.ts`
 - Modify: `ritme-web/src/ui/members.tsx`, `ritme-web/src/ui/room-panels.test.tsx`
 - Modify: `ritme-web/src/ui/room.tsx`, `ritme-web/src/ui/strings.ts`
 - Modify: `ritme-web/e2e/smoke.spec.ts` (new test)
 
 **Interfaces:**
-- Consumes: `RoomSettings.guestsCanAdd`, `Session.sendSettings` (Task 1); `SearchPanel`, `openRoom` (Task 6).
-- Produces: `canAdd(room: RoomState, memberId: string | null): boolean`; `SessionApi.setGuestsCanAdd(value: boolean): void`; `t.guestsCanAdd = 'Anggota boleh menambah'`.
+- Consumes: `RoomSettings.guestsCanAdd`, `Session.sendSettings` (Task 1, already committed: it currently merges into the latest snapshot's settings); `SearchPanel`, `openRoom` (Task 6).
+- Produces: `canAdd(room: RoomState, memberId: string | null): boolean`; `SessionApi.setGuestsCanAdd(value: boolean): void`; `NoticeKey` gains `'addForbidden'`; `t.guestsCanAdd = 'Anggota boleh menambah'`; `noticeText.addForbidden = 'Host menutup penambahan lagu'`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3539,20 +3633,44 @@ git commit -m "feat(ritme-web): Video tab (YouTube links via /api/video, mp4/web
   });
 ```
 
-`src/session/session.test.ts`, replace the test added in Task 1 (`'SetSettings sends every setting, changing only the one asked for'`) with:
+`src/session/session.test.ts`: keep the Task 1 test `'SetSettings sends every setting, changing only the one asked for'` and add inside `describe('Session', ...)`:
 
 ```ts
-  it('SetSettings sends every setting, changing only the one asked for', () => {
+  it('two quick settings changes keep both: the next builds on the last sent until a newer snapshot', () => {
+    const t = setup();
+    t.session.create('Budi');
+    t.welcome(t.conns[0]); // version 1, both settings on
+    t.session.setGuestsCanControl(false);
+    t.session.setGuestsCanAdd(false); // before any snapshot: builds on what was just sent
+    t.conns[0].emit({ type: 'state', state: room({ version: 2, settings: { guestsCanControl: false, guestsCanAdd: false } }) });
+    t.session.setGuestsCanControl(true); // a newer snapshot: builds on it
+    expect(t.conns[0].commands).toEqual([
+      { type: 'SetSettings', settings: { guestsCanControl: false, guestsCanAdd: true } },
+      { type: 'SetSettings', settings: { guestsCanControl: false, guestsCanAdd: false } },
+      { type: 'SetSettings', settings: { guestsCanControl: true, guestsCanAdd: false } },
+    ]);
+  });
+
+  it('a newer snapshot wins over the settings last sent', () => {
     const t = setup();
     t.session.create('Budi');
     t.welcome(t.conns[0]);
     t.session.setGuestsCanControl(false);
+    t.conns[0].emit({ type: 'state', state: room({ version: 2, settings: { guestsCanControl: true, guestsCanAdd: true } }) });
     t.session.setGuestsCanAdd(false);
-    expect(t.conns[0].commands).toEqual([
-      { type: 'SetSettings', settings: { guestsCanControl: false, guestsCanAdd: true } },
-      // Built from the latest snapshot, which still says guestsCanControl: true (no optimistic updates).
-      { type: 'SetSettings', settings: { guestsCanControl: true, guestsCanAdd: false } },
-    ]);
+    expect(t.conns[0].commands.at(-1)).toEqual({ type: 'SetSettings', settings: { guestsCanControl: true, guestsCanAdd: false } });
+  });
+
+  it('a FORBIDDEN answer to an Add gets its own notice; other commands keep the control-lock one', () => {
+    const t = setup();
+    t.session.create('Budi');
+    t.welcome(t.conns[0]);
+    t.session.add({ videoId: 'v', title: 'T', artist: 'A', thumbnailUrl: null, durationMs: 1, kind: 'YOUTUBE_MUSIC', url: null }, false); // r1
+    t.conns[0].emit({ type: 'error', reqId: 'r1', code: 'FORBIDDEN' });
+    expect(t.session.getState().notice?.key).toBe('addForbidden');
+    t.session.pause(); // r2
+    t.conns[0].emit({ type: 'error', reqId: 'r2', code: 'FORBIDDEN' });
+    expect(t.session.getState().notice?.key).toBe('forbidden');
   });
 ```
 
@@ -3570,7 +3688,7 @@ git commit -m "feat(ritme-web): Video tab (YouTube links via /api/video, mp4/web
 ```bash
 source ~/.nvm/nvm.sh >/dev/null; cd ritme-web && npx vitest run src/session src/ui/room-panels.test.tsx
 ```
-Expected: FAIL (`canAdd` is not exported; `setGuestsCanAdd` is not a function; no switch named "Anggota boleh menambah").
+Expected: FAIL (`canAdd` is not exported; `setGuestsCanAdd` is not a function; the second toggle sends `guestsCanControl: true`; the refused Add shows `forbidden`; no switch named "Anggota boleh menambah").
 
 - [ ] **Step 3: Implement**
 
@@ -3583,7 +3701,38 @@ export function canAdd(room: RoomState, memberId: string | null): boolean {
 }
 ```
 
-`src/session/session.ts`: in `SessionApi` after `setGuestsCanControl(value: boolean): void;` add `setGuestsCanAdd(value: boolean): void;`, and in `Session` after `setGuestsCanControl` add
+`src/session/reducer.ts` line 4:
+
+```ts
+export type NoticeKey = 'forbidden' | 'addForbidden' | 'rateLimited' | 'queueFull' | 'invalid' | 'failed' | 'linkCopied';
+```
+
+`src/ui/strings.ts`: after `guestsCanControl: 'Anggota boleh kontrol',` add `guestsCanAdd: 'Anggota boleh menambah',`, and in `noticeText` after `forbidden: 'Host mengunci kontrol',` add `addForbidden: 'Host menutup penambahan lagu',`.
+
+`src/session/session.ts`:
+- in `SessionApi` after `setGuestsCanControl(value: boolean): void;` add `setGuestsCanAdd(value: boolean): void;`
+- in `class Session`, after `private hiddenAt: { local: number; wall: number } | null = null;` add
+
+```ts
+  /** reqIds of recent Adds, so a FORBIDDEN answer to one gets its own message (spec U6). */
+  private readonly addReqIds = new Set<string>();
+  /** The settings last sent, with the room and version they were built on (see sendSettings). */
+  private sentSettings: { code: string; afterVersion: number; settings: RoomSettings } | null = null;
+```
+
+- replace `add` with
+
+```ts
+  add(entry: NewEntry, playNext: boolean): void {
+    const reqId = this.send({ type: 'Add', entries: [entry], playNext });
+    if (reqId === null) return;
+    this.addReqIds.add(reqId);
+    // Only answers to recent commands matter: keep the set small.
+    if (this.addReqIds.size > 64) this.addReqIds.delete(this.addReqIds.values().next().value!);
+  }
+```
+
+- after `setGuestsCanControl` add
 
 ```ts
   setGuestsCanAdd(value: boolean): void {
@@ -3591,7 +3740,61 @@ export function canAdd(room: RoomState, memberId: string | null): boolean {
   }
 ```
 
-`src/ui/strings.ts`: after `guestsCanControl: 'Anggota boleh kontrol',` add `guestsCanAdd: 'Anggota boleh menambah',`.
+- replace `onEvent` with
+
+```ts
+  private onEvent(event: ConnectionEvent): void {
+    if (event.type === 'welcome') {
+      // A new connection may follow a sleep: start a fresh window (the connection's ping burst
+      // follows this event) and use the Welcome's server time until the first Pong.
+      this.resetClock(event.receivedAt, 0);
+      this.clock.seed(event.welcome.serverTime, event.receivedAt);
+      // Command answers and the room version start over with a new connection.
+      this.addReqIds.clear();
+      this.sentSettings = null;
+    }
+    let fresh = false;
+    if (event.type === 'pong') {
+      const kept = this.clock.addSample(event.clientTime, event.receivedAt, event.serverTime);
+      fresh = kept && this.awaitingSample;
+      if (fresh) this.awaitingSample = false;
+    }
+    if (event.type === 'ended') this.conn = null;
+    // "The host locked the controls" would be wrong for a refused Add (spec U6).
+    if (event.type === 'error' && event.reqId !== null && this.addReqIds.delete(event.reqId) && event.code === 'FORBIDDEN') {
+      this.dispatch({ type: 'notice', key: 'addForbidden' });
+      return;
+    }
+    this.dispatch(event);
+    if (fresh) this.emitResync();
+  }
+```
+
+- replace `send` and `sendSettings` with
+
+```ts
+  /** The reqId the command went out with, or null when it was not sent (not online in a room). */
+  private send(cmd: Command): string | null {
+    if (this.state.phase !== 'in-room' || this.state.connection !== 'online') return null;
+    return this.conn?.command(cmd) ?? null;
+  }
+
+  /**
+   * SetSettings replaces every setting. The others come from the settings this client last sent
+   * until a snapshot newer than the one those were built on arrives (two quick toggles must not
+   * undo each other), and from the latest snapshot after that.
+   */
+  private sendSettings(change: Partial<RoomSettings>): void {
+    const room = this.state.room;
+    if (!room) return;
+    const sent = this.sentSettings;
+    const base = sent && sent.code === room.code && room.version <= sent.afterVersion ? sent.settings : room.settings;
+    const settings = { ...base, ...change };
+    if (this.send({ type: 'SetSettings', settings }) !== null) {
+      this.sentSettings = { code: room.code, afterVersion: room.version, settings };
+    }
+  }
+```
 
 `src/ui/members.tsx`: replace the `{host && ( <label class="switch"> ... guestsCanControl ... </label> )}` block with
 
@@ -3632,7 +3835,7 @@ export function canAdd(room: RoomState, memberId: string | null): boolean {
 ```bash
 source ~/.nvm/nvm.sh >/dev/null; cd ritme-web && npm test && npm run typecheck
 ```
-Expected: all pass; typecheck silent.
+Expected: all pass (including Task 1's single-toggle test and the toast tests: `noticeText` now covers `addForbidden`); typecheck silent.
 
 - [ ] **Step 5: Add the smoke test**
 
@@ -3664,7 +3867,7 @@ Expected: unit tests pass, typecheck silent, build OK, `3 passed`.
 
 ```bash
 git add ritme-web
-git commit -m "feat(ritme-web): host switch 'Anggota boleh menambah'; the add card is hidden for guests while it is off" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(ritme-web): host switch 'Anggota boleh menambah', add card hidden for guests while off, quick setting toggles keep each other, own notice for a refused Add" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -3672,17 +3875,19 @@ git commit -m "feat(ritme-web): host switch 'Anggota boleh menambah'; the add ca
 ### Task 8: Android `guestsCanAdd` (session, permission, controller, room sheet switch)
 
 **Files:**
-- Modify: `app/src/main/kotlin/com/example/musicfy/ritme/session/RitmeSession.kt:107`
+- Modify: `app/src/main/kotlin/com/example/musicfy/ritme/session/RitmeUiState.kt:9` (`NoticeKey`)
+- Modify: `app/src/main/kotlin/com/example/musicfy/ritme/session/RitmeSession.kt` (fields, `add`, settings, `send`, `begin`, `onEvent`, companion)
 - Modify: `app/src/main/kotlin/com/example/musicfy/ritme/session/RitmePermissions.kt:19`
-- Modify: `app/src/main/kotlin/com/example/musicfy/ritme/RitmeController.kt:145-180`
-- Modify: `app/src/main/kotlin/com/example/musicfy/ui/screens/ritme/RitmeRoomSheet.kt:258-287`
+- Modify: `app/src/main/kotlin/com/example/musicfy/ritme/RitmeController.kt` (`handle`, `add`)
+- Modify: `app/src/main/kotlin/com/example/musicfy/ritme/RitmeTexts.kt:12-18`
+- Modify: `app/src/main/kotlin/com/example/musicfy/ui/screens/ritme/RitmeRoomSheet.kt` (`item(key = "actions")`)
 - Modify: `app/src/main/kotlin/com/example/musicfy/ui/screens/ritme/RitmeRoomActions.kt` (KDoc of `canManageRoom`)
 - Modify: `app/src/main/res/values/ritme_strings.xml`, `app/src/main/res/values-in/ritme_strings.xml`
 - Test: `app/src/test/kotlin/com/example/musicfy/ritme/session/RitmePermissionsTest.kt`, `.../session/RitmeSessionTest.kt`, `.../ritme/RitmeControllerTest.kt`
 
 **Interfaces:**
-- Consumes: `RoomSettings.guestsCanAdd` (Task 1); `RitmeMenuSwitchRow(icon, title, checked, enabled, onCheckedChange)` from `ui/screens/ritme/RitmeComponents.kt` (Android plan Task 11); existing `RitmeToast.CommandFailed(NoticeKey.FORBIDDEN)` → `R.string.ritme_toast_forbidden`.
-- Produces: `RitmePermissions.canAdd(room: RoomState, memberId: String?): Boolean`; `RitmeSession.setGuestsCanAdd(value: Boolean): Boolean`; `R.string.ritme_guests_can_add`.
+- Consumes: `RoomSettings.guestsCanAdd` (Task 1); `RitmeMenuSwitchRow(icon, title, checked, enabled, onCheckedChange)` (`ui/screens/ritme/RitmeComponents.kt`); `RitmeController.roomCommand(send: RitmeSession.() -> Boolean): Boolean` (commit 78ce61c: a command dropped offline shows "Reconnecting"); `RitmeToast.CommandFailed(key)`.
+- Produces: `RitmePermissions.canAdd(room: RoomState, memberId: String?): Boolean`; `RitmeSession.setGuestsCanAdd(value: Boolean): Boolean`; `NoticeKey.ADD_FORBIDDEN` → `R.string.ritme_toast_add_locked`; `R.string.ritme_guests_can_add`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3706,15 +3911,47 @@ git commit -m "feat(ritme-web): host switch 'Anggota boleh menambah'; the add ca
     fun aSettingsChangeKeepsTheOtherSetting() {
         joinedRoom(room(settings = RoomSettings(guestsCanControl = true, guestsCanAdd = true)))
         assertTrue(session.setGuestsCanAdd(false))
-        assertTrue(session.setGuestsCanControl(false))
+        assertEquals(
+            listOf<Command>(Command.SetSettings(RoomSettings(guestsCanControl = true, guestsCanAdd = false))),
+            connector.last.commands,
+        )
+    }
+
+    @Test
+    fun quickSettingsChangesBuildOnTheLastSentOneUntilANewerSnapshot() {
+        joinedRoom(room(version = 5, settings = RoomSettings(guestsCanControl = true, guestsCanAdd = true)))
+        assertTrue(session.setGuestsCanAdd(false))
+        assertTrue(session.setGuestsCanControl(false)) // before any snapshot: builds on what was just sent
+        connector.last.emit(ConnectionEvent.State(room(version = 6, settings = RoomSettings(guestsCanControl = false, guestsCanAdd = false))))
+        assertTrue(session.setGuestsCanControl(true)) // a newer snapshot: builds on it
         assertEquals(
             listOf<Command>(
                 Command.SetSettings(RoomSettings(guestsCanControl = true, guestsCanAdd = false)),
-                // Built from the latest snapshot, which still allows adding: no optimistic updates.
-                Command.SetSettings(RoomSettings(guestsCanControl = false, guestsCanAdd = true)),
+                Command.SetSettings(RoomSettings(guestsCanControl = false, guestsCanAdd = false)),
+                Command.SetSettings(RoomSettings(guestsCanControl = true, guestsCanAdd = false)),
             ),
             connector.last.commands,
         )
+    }
+
+    @Test
+    fun aNewerSnapshotWinsOverTheSettingsLastSent() {
+        joinedRoom(room(version = 5))
+        assertTrue(session.setGuestsCanControl(false))
+        connector.last.emit(ConnectionEvent.State(room(version = 6, settings = RoomSettings(guestsCanControl = true, guestsCanAdd = true))))
+        assertTrue(session.setGuestsCanAdd(false))
+        assertEquals(Command.SetSettings(RoomSettings(guestsCanControl = true, guestsCanAdd = false)), connector.last.commands.last())
+    }
+
+    @Test
+    fun aForbiddenAddGetsItsOwnNotice() {
+        joinedRoom()
+        assertTrue(session.add(listOf(newEntry("aaaa")), playNext = false)) // r1
+        connector.last.emit(ConnectionEvent.Failure("r1", ErrorCode.FORBIDDEN))
+        assertEquals(NoticeKey.ADD_FORBIDDEN, session.state.value.notice?.key)
+        assertTrue(session.pause()) // r2
+        connector.last.emit(ConnectionEvent.Failure("r2", ErrorCode.FORBIDDEN))
+        assertEquals(NoticeKey.FORBIDDEN, session.state.value.notice?.key)
     }
 ```
 
@@ -3728,7 +3965,7 @@ git commit -m "feat(ritme-web): host switch 'Anggota boleh menambah'; the add ca
         controller.handle(RitmeLocalAction.PlayQueue(listOf(song("b"))))
         assertTrue(commands.isEmpty())
         assertEquals(
-            listOf<RitmeToast>(RitmeToast.CommandFailed(NoticeKey.FORBIDDEN), RitmeToast.CommandFailed(NoticeKey.FORBIDDEN)),
+            listOf<RitmeToast>(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN), RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN)),
             toasts.shown,
         )
     }
@@ -3739,6 +3976,15 @@ git commit -m "feat(ritme-web): host switch 'Anggota boleh menambah'; the add ca
         controller.handle(RitmeLocalAction.AddItems(listOf(song("a")), playNext = false))
         assertEquals(1, commands.size)
     }
+
+    @Test
+    fun theAddSwitchGoesThroughRoomCommand() {
+        inRoom(playing, memberId = "m1")
+        assertTrue(controller.roomCommand { setGuestsCanAdd(false) })
+        connector.last.emit(ConnectionEvent.Status(ConnectionStatus.RECONNECTING))
+        assertFalse(controller.roomCommand { setGuestsCanAdd(true) })
+        assertEquals(RitmeToast.Reconnecting, toasts.shown.last())
+    }
 ```
 
 - [ ] **Step 2: Run them to verify they fail**
@@ -3748,9 +3994,33 @@ export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home 
 pgrep -f '[j]ava.*gradle-wrapper\.jar' && echo BUSY || echo FREE
 ./gradlew --max-workers=2 -Dorg.gradle.jvmargs="-Xmx4g -XX:+UseParallelGC -Dkotlin.daemon.jvm.options=-Xmx2g" -Pkotlin.daemon.jvmargs=-Xmx2g :app:testUniversalFossDebugUnitTest --tests "com.example.musicfy.ritme.session.RitmePermissionsTest" --tests "com.example.musicfy.ritme.session.RitmeSessionTest" --tests "com.example.musicfy.ritme.RitmeControllerTest"
 ```
-Expected: FAIL, `Unresolved reference 'canAdd'` / `'setGuestsCanAdd'`.
+Expected: FAIL, `Unresolved reference 'canAdd'` / `'setGuestsCanAdd'` / `'ADD_FORBIDDEN'`.
 
 - [ ] **Step 3: Implement the logic**
+
+`RitmeUiState.kt` line 9:
+
+```kotlin
+enum class NoticeKey { FORBIDDEN, ADD_FORBIDDEN, RATE_LIMITED, QUEUE_FULL, INVALID, FAILED }
+```
+
+`RitmeTexts.kt`, in `notice(key)` after the `FORBIDDEN` line:
+
+```kotlin
+        NoticeKey.ADD_FORBIDDEN -> R.string.ritme_toast_add_locked
+```
+
+`app/src/main/res/values/ritme_strings.xml`, after `ritme_toast_forbidden`:
+
+```xml
+    <string name="ritme_toast_add_locked">The host turned off adding songs</string>
+```
+
+`app/src/main/res/values-in/ritme_strings.xml`, after `ritme_toast_forbidden`:
+
+```xml
+    <string name="ritme_toast_add_locked">Host menutup penambahan lagu</string>
+```
 
 `RitmePermissions.kt`, after `canControl`:
 
@@ -3760,7 +4030,39 @@ Expected: FAIL, `Unresolved reference 'canAdd'` / `'setGuestsCanAdd'`.
         isHost(room, memberId) || (memberId != null && room.settings.guestsCanAdd)
 ```
 
-`RitmeSession.kt`: replace
+`RitmeSession.kt`:
+- add `import com.example.musicfy.ritme.protocol.ErrorCode`;
+- after `private var overflowTimer: RitmeTimer? = null` add
+
+```kotlin
+
+    /** reqIds of recent Adds, so a FORBIDDEN answer to one gets its own message (spec U6). */
+    private val addReqIds = LinkedHashSet<String>()
+
+    /** The settings last sent, with the room and version they were built on (see [changeSettings]). */
+    private var sentSettings: SentSettings? = null
+
+    private data class SentSettings(val code: String, val afterVersion: Long, val settings: RoomSettings)
+```
+
+- replace
+
+```kotlin
+    fun add(entries: List<NewEntry>, playNext: Boolean): Boolean = send(Command.Add(entries, playNext))
+```
+
+with
+
+```kotlin
+    fun add(entries: List<NewEntry>, playNext: Boolean): Boolean {
+        val reqId = sendCommand(Command.Add(entries, playNext)) ?: return false
+        addReqIds += reqId
+        if (addReqIds.size > MAX_TRACKED_ADDS) addReqIds.remove(addReqIds.first())
+        return true
+    }
+```
+
+- replace
 
 ```kotlin
     fun setGuestsCanControl(value: Boolean): Boolean = send(Command.SetSettings(RoomSettings(guestsCanControl = value)))
@@ -3773,13 +4075,70 @@ with
     fun setGuestsCanAdd(value: Boolean): Boolean = changeSettings { it.copy(guestsCanAdd = value) }
 ```
 
-and add next to `send`:
+- in `begin`, after `clearOverflow()` add
 
 ```kotlin
-    /** SetSettings replaces all settings: change one, keep the others as the latest snapshot has them. */
-    private fun changeSettings(change: (RoomSettings) -> RoomSettings): Boolean =
-        send(Command.SetSettings(change(_state.value.room?.settings ?: RoomSettings())))
+        addReqIds.clear()
+        sentSettings = null
 ```
+
+- replace
+
+```kotlin
+    private fun send(cmd: Command): Boolean {
+        threadCheck.check()
+        return canSend() && conn?.command(cmd) != null
+    }
+```
+
+with
+
+```kotlin
+    private fun send(cmd: Command): Boolean = sendCommand(cmd) != null
+
+    /** The reqId the command went out with, or null when it was not sent (not online in a room). */
+    private fun sendCommand(cmd: Command): String? {
+        threadCheck.check()
+        return if (canSend()) conn?.command(cmd) else null
+    }
+
+    /**
+     * SetSettings replaces all settings. The others come from the settings this device last sent
+     * until a snapshot newer than the one those were built on arrives (two quick toggles must not
+     * undo each other), and from the latest snapshot after that.
+     */
+    private fun changeSettings(change: (RoomSettings) -> RoomSettings): Boolean {
+        val room = _state.value.room ?: return false
+        val pending = sentSettings?.takeIf { it.code == room.code && room.version <= it.afterVersion }
+        val next = change(pending?.settings ?: room.settings)
+        if (!send(Command.SetSettings(next))) return false
+        sentSettings = SentSettings(room.code, room.version, next)
+        return true
+    }
+```
+
+- in `onEvent`, in the `is ConnectionEvent.Welcome ->` branch after `clock.seed(event.welcome.serverTime, event.receivedAt)` add
+
+```kotlin
+                // Command answers and the room version start over with a new connection.
+                addReqIds.clear()
+                sentSettings = null
+```
+
+  and replace `_state.value = RitmeReducer.reduce(_state.value, event)` with
+
+```kotlin
+        // "The host locked the controls" would be wrong for a refused Add (spec U6).
+        val addRefused = event is ConnectionEvent.Failure && event.reqId != null &&
+            addReqIds.remove(event.reqId) && event.code == ErrorCode.FORBIDDEN
+        _state.value = if (addRefused) {
+            RitmeReducer.withNotice(_state.value, NoticeKey.ADD_FORBIDDEN)
+        } else {
+            RitmeReducer.reduce(_state.value, event)
+        }
+```
+
+- in the `companion object` add `const val MAX_TRACKED_ADDS = 64`.
 
 `RitmeController.kt`: add `import com.example.musicfy.ritme.session.NoticeKey`; in `handle` replace
 
@@ -3797,13 +4156,20 @@ with
                 if (action.songs.isEmpty()) notifier.show(RitmeToast.NotAvailable) else add(room, me, action.songs, playNext = false)
 ```
 
-and replace the first two lines of `private fun add(songs: List<MediaMetadata?>, playNext: Boolean) {` with
+and replace the first two lines of `add`
+
+```kotlin
+    private fun add(songs: List<MediaMetadata?>, playNext: Boolean) {
+        val batches = RitmeEntries.toAddBatches(songs)
+```
+
+with
 
 ```kotlin
     private fun add(room: RoomState, me: String?, songs: List<MediaMetadata?>, playNext: Boolean) {
-        // The server would answer FORBIDDEN; say it right away with the same toast (spec 8).
+        // The server would answer FORBIDDEN; say it right away, with the same message (spec 8).
         if (!RitmePermissions.canAdd(room, me)) {
-            notifier.show(RitmeToast.CommandFailed(NoticeKey.FORBIDDEN))
+            notifier.show(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN))
             return
         }
         val batches = RitmeEntries.toAddBatches(songs)
@@ -3817,7 +4183,7 @@ and replace the first two lines of `private fun add(songs: List<MediaMetadata?>,
 pgrep -f '[j]ava.*gradle-wrapper\.jar' && echo BUSY || echo FREE
 ./gradlew --max-workers=2 -Dorg.gradle.jvmargs="-Xmx4g -XX:+UseParallelGC -Dkotlin.daemon.jvm.options=-Xmx2g" -Pkotlin.daemon.jvmargs=-Xmx2g :app:testUniversalFossDebugUnitTest --tests "com.example.musicfy.ritme.*" --tests "com.example.musicfy.ui.screens.ritme.*"
 ```
-Expected: `BUILD SUCCESSFUL`, 0 failures.
+Expected: `BUILD SUCCESSFUL`, 0 failures (the existing `ConnectionEvent.Failure` tests keep their `FORBIDDEN`/`QUEUE_FULL` notices: their reqIds are not Adds).
 
 - [ ] **Step 5: The room sheet switch (UI, matching the existing rows)**
 
@@ -3833,9 +4199,12 @@ Expected: `BUILD SUCCESSFUL`, 0 failures.
     <string name="ritme_guests_can_add">Anggota boleh menambah</string>
 ```
 
-`RitmeRoomSheet.kt`, in `item(key = "actions")`, replace from `val guestsCanControl = room.settings.guestsCanControl` through the closing `}` of `if (isHost) { RitmeMenuSwitchRow(...) }` with:
+`RitmeRoomSheet.kt`, in `item(key = "actions")`, replace from the comment `// The same menu rows as the song, queue and player menus` through the closing `}` of `if (isHost) { RitmeMenuSwitchRow(...) }` with:
 
 ```kotlin
+            // The same menu rows as the song, queue and player menus (Material3MenuGroup, 8 dp
+            // apart); a row is dimmed when its onClick is null. The switch rows are that row's
+            // mirror with a real switch (RitmeMenuSwitchRow).
             val guestsCanControl = room.settings.guestsCanControl
             val guestsCanAdd = room.settings.guestsCanAdd
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3862,19 +4231,19 @@ Expected: `BUILD SUCCESSFUL`, 0 failures.
                         title = stringResource(R.string.ritme_guests_can_control),
                         checked = guestsCanControl,
                         enabled = canManage,
-                        onCheckedChange = { ritme.session.setGuestsCanControl(it) },
+                        onCheckedChange = { ritme.controller.roomCommand { setGuestsCanControl(it) } },
                     )
                     RitmeMenuSwitchRow(
                         icon = { Icon(painterResource(R.drawable.playlist_add), contentDescription = null) },
                         title = stringResource(R.string.ritme_guests_can_add),
                         checked = guestsCanAdd,
                         enabled = canManage,
-                        onCheckedChange = { ritme.session.setGuestsCanAdd(it) },
+                        onCheckedChange = { ritme.controller.roomCommand { setGuestsCanAdd(it) } },
                     )
                 }
 ```
 
-(the following `Material3MenuGroup` with Leave/End stays as it is, inside the same `Column`). Update the comment above it to: `// The same menu rows as the song, queue and player menus (Material3MenuGroup, 8 dp apart); a row is dimmed when its onClick is null. The switch rows are that row's mirror with a real switch (RitmeMenuSwitchRow).`
+(the following `Material3MenuGroup` with Leave/End stays as it is, inside the same `Column`).
 
 `RitmeRoomActions.kt`: the KDoc of `canManageRoom` becomes `/** "Members can control", "Members can add" and "End Ritme". */`.
 
@@ -3893,13 +4262,18 @@ Expected: both `BUILD SUCCESSFUL`.
 ```bash
 adb devices
 ```
-If a device is listed: `adb install -r app/build/outputs/apk/universalFoss/debug/*.apk`, start a room on the phone, open the room sheet: below "Tambah lagu" the host sees two switches of identical shape ("Anggota boleh kontrol", "Anggota boleh menambah"). Join from the web as a guest, switch "Anggota boleh menambah" off on the phone: the web's add card disappears; switch it on again: it returns. With no device, note "device check pending" in the task report.
+If a device is listed, install the APK with `adb install -r app/build/outputs/apk/universalFoss/debug/*.apk`. This needs a server that already knows `guestsCanAdd`: a local `./gradlew -p ritme-server run` (set the app's Ritme server URL to it), or production only after Task 9. Then:
+- Start a room on the phone and open the room sheet. Below "Tambah lagu", the host sees two switches of identical shape: "Anggota boleh kontrol" and "Anggota boleh menambah".
+- Join from the web as a guest. Switch "Anggota boleh menambah" off on the phone: the web's add card disappears. Switch it on again: it returns.
+- Toggle both switches quickly: both stay as set.
+
+With no device, note "device check pending" in the task report.
 
 - [ ] **Step 8: Commit**
 
 ```bash
 git add app/src
-git commit -m "feat(ritme-android): host switch 'Anggota boleh menambah' in the room sheet; guests' adds refused while it is off" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(ritme-android): host switch 'Anggota boleh menambah' in the room sheet, guests' adds refused with their own message, quick setting toggles keep each other" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -3909,7 +4283,7 @@ git commit -m "feat(ritme-android): host switch 'Anggota boleh menambah' in the 
 **Files:** none (verification only).
 
 **Interfaces:**
-- Consumes: everything above; the "Ritme server" GitHub workflow (`.github/workflows/ritme-server.yml`) that tests, builds and publishes `ghcr.io/fikrunamin/ritme-server:latest` from `main`.
+- Consumes: everything above; the "Ritme server" GitHub workflow (`.github/workflows/ritme-server.yml`), which tests, builds and publishes `ghcr.io/fikrunamin/ritme-server:{latest,<commit sha>}` from `main`; `/opt/ritme/docker-compose.yml` on the VPS (`image: ghcr.io/fikrunamin/ritme-server:${RITME_TAG:-latest}`).
 
 - [ ] **Step 1: Full local run, one Gradle build at a time**
 
@@ -3925,55 +4299,122 @@ git status --short
 ```
 Expected: every step green (`BUILD SUCCESSFUL`, Vitest all passed, `3 passed` in Playwright); `git status --short` empty (everything committed in Tasks 1–8).
 
-- [ ] **Step 2: Hand over for merge**
+- [ ] **Step 2: Hand over for merge, server first**
 
-Tell the user: branch `feature/ritme-watch` is ready; they merge it into `main` and push (this session cannot push). Deploying restarts the server, which ends every live room: pick a moment when nobody is listening.
+Tell the user:
+- Branch `feature/ritme-watch` is ready. They merge it into `main` and push (this session cannot push).
+- **Ship order: server before Android.** The Android build with the new switch should reach people only after Step 6 below passes. An older server drops the unknown `guestsCanAdd` field, so on it the switch would appear to work but would do nothing. The web client ships inside the server image, so it is always in step.
 
 - [ ] **Step 3: Wait for the image**
 
 ```bash
+git fetch origin
 gh run list --workflow ritme-server.yml --branch main --limit 1 --json status,conclusion,headSha
 git rev-parse origin/main
 ```
-Expected (after `git fetch`): `status` `completed`, `conclusion` `success`, `headSha` equal to `origin/main`. If it failed, open it with `gh run view --log-failed` and stop.
+Expected: `status` `completed`, `conclusion` `success`, `headSha` equal to `origin/main`. If it failed, open it with `gh run view --log-failed` and stop.
 
-- [ ] **Step 4: Update the VPS**
+- [ ] **Step 4: Record what runs now (for rollback), and check nobody is listening**
+
+```bash
+ssh dubeli.id 'cd /opt/ritme && docker inspect --format "{{.Image}} {{.Config.Image}}" $(docker compose ps -q ritme) && docker image inspect --format "{{index .RepoDigests 0}}" $(docker inspect --format "{{.Image}}" $(docker compose ps -q ritme))'
+gh run list --workflow ritme-server.yml --branch main --status success --limit 2 --json headSha --jq '.[1].headSha'
+ssh dubeli.id 'cd /opt/ritme && docker compose logs --since 11m ritme' | grep 'rooms=' | tail -1
+```
+Expected:
+- The first command prints the running image id, `ghcr.io/fikrunamin/ritme-server:latest` and a `ghcr.io/fikrunamin/ritme-server@sha256:…` digest. Write the digest into the task report.
+- The second command prints the commit sha of the previous successful publish: the rollback tag `<previous sha>`. Write it down too.
+- The metrics line (logged every 10 min) reads `rooms=0 … connections=0`.
+
+If `rooms` is above 0, restarting would end those rooms. Wait for the next metrics line (re-run the last command after 10 min), or ask the user whether to deploy anyway.
+
+Rollback, if Step 6 fails:
+
+```bash
+ssh dubeli.id 'cd /opt/ritme && RITME_TAG=<previous sha> docker compose pull && RITME_TAG=<previous sha> docker compose up -d && docker compose ps'
+```
+
+The shell variable overrides `RITME_TAG=latest` from `.env` for that command only. Report the rollback; do not edit `.env`.
+
+- [ ] **Step 5: Update the VPS**
 
 ```bash
 ssh dubeli.id 'cd /opt/ritme && docker compose pull && docker compose up -d && docker compose ps'
 ```
-Expected: the `ritme` service `Up` (recreated).
+Expected: the `ritme` service `Up` (recreated from the new image).
 
-- [ ] **Step 5: Verify the deployment**
+- [ ] **Step 6: Verify the deployment**
 
 ```bash
 curl -fsS https://ritme.dubeli.id/healthz; echo
 curl -sS -o /dev/null -w '%{http_code}\n' 'https://ritme.dubeli.id/api/video?id=bad'
 curl -fsS 'https://ritme.dubeli.id/api/video?id=dQw4w9WgXcQ' | python3 -m json.tool
+curl -fsS 'https://ritme.dubeli.id/api/video?id=jfKfPfyJRdk' | python3 -m json.tool
 curl -sS -o /dev/null -w '%{http_code}\n' 'https://ritme.dubeli.id/api/video?id=AAAAAAAAAAA'
 curl -fsS https://ritme.dubeli.id/ | grep -o "connect-src[^;]*"
-ssh dubeli.id 'cd /opt/ritme && docker compose logs --since 15m ritme' | grep -c -e dQw4w9WgXcQ -e AAAAAAAAAAA
+ssh dubeli.id 'cd /opt/ritme && docker compose logs --since 15m ritme' | grep -c -e dQw4w9WgXcQ -e jfKfPfyJRdk -e AAAAAAAAAAA
 ```
-Expected, in order: `ok`; `400`; JSON with `"videoId": "dQw4w9WgXcQ"`, `"live": false`, `"durationMs"` about `213000`, a `https://i.ytimg.com/...` thumbnail; `404`; `connect-src 'self' https: http:` (CSP unchanged); `0` (no id in the logs). If the third call answers 502 (YouTube refusing the VPS, risk R11), read `docker compose logs --since 15m ritme | grep 'video backend failed'` for the exception class and report it; do not retry in a loop (each call spends the shared budget).
+Expected, in order:
+1. `ok`.
+2. `400`.
+3. JSON with `"videoId": "dQw4w9WgXcQ"`, `"live": false`, `"durationMs": 214000` and a `https://i.ytimg.com/...` thumbnail.
+4. JSON with `"live": true` and `"durationMs": 0`.
+5. `404` (YouTube's own 404, mapped by the backend; Decision 11).
+6. `connect-src 'self' https: http:` (CSP unchanged).
+7. `0` (no ids in the logs).
 
-- [ ] **Step 6: Manual check in a browser**
+If call 3 answers 404 or 502:
+- A 404 for a known-good id means YouTube answered 400, i.e. the request itself is wrong (Decision 11).
+- A 502 is YouTube refusing the VPS (risk R11). Read `docker compose logs --since 15m ritme | grep 'video backend failed'` for the exception class.
 
-On `https://ritme.dubeli.id` in two browsers (or a phone + a laptop): start a room, open "Video", paste `https://www.youtube.com/watch?v=aqz-KE-bpKQ` → preview with thumbnail, channel and duration → "Tambah" → both play the large YouTube player. Paste `https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4` → preview shows `storage.googleapis.com` and a duration of about 9:56 → "Tambah" → it appears in the other browser's queue with a 16:9 placeholder and the "Video" badge. Paste `http://192.168.1.1/video.mp4` → "Link ini tidak bisa ditambahkan". As host, switch "Anggota boleh menambah" off → the guest's add card disappears. An Android phone in the same room shows the URL entry as "Belum didukung" until 2b; that is expected.
+Either way, report it and do not retry in a loop, because each call spends the shared budget. Decide with the user whether to roll back (Step 4).
+
+- [ ] **Step 7: Manual check in a browser**
+
+On `https://ritme.dubeli.id`, in two browsers (or a phone and a laptop):
+1. Start a room and open "Video".
+2. Paste `https://www.youtube.com/watch?v=aqz-KE-bpKQ`. The preview shows the thumbnail, channel and duration. "Tambah" makes both browsers play the large YouTube player.
+3. Paste `https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4`. The preview shows `storage.googleapis.com` and a duration of about 9:56. "Tambah" puts it in the other browser's queue with a 16:9 placeholder and the "Video" badge.
+4. Paste `http://192.168.1.1/video.mp4`: the preview says "Link ini tidak bisa ditambahkan".
+5. As host, switch "Anggota boleh menambah" off: the guest's add card disappears. Toggle both switches quickly: both keep their new state.
+
+An Android phone in the same room shows the URL entry as "Belum didukung" until 2b; that is expected. Once this passes, tell the user the Android build with the new switch can ship (Step 2).
 
 ---
 
 ## Self-review
 
 **Spec coverage (2a scope):**
-- §3.1 `/api/video`: validation, separate per-IP limiter, shared upstream budget, `get_queue` request, parse incl. wrapper and live, response shape, thumbnail host rule, 400/404/429/502/503, LRU 1000 + TTL 6 h/5 min, single flight, no-id logging, `SingleFlightCache` refactor with search tests unchanged → Tasks 3, 4.
-- §3.2 `MediaUrlRules` in `:modules:ritme-protocol`, used by `RoomLogic.isValid`; fixture shared with the web client (§9) → Tasks 2, 5. Item 5 (`streamType`/`referrer`) is #3, not here.
-- §3.3 / U6 `guestsCanAdd`: default `true`, `FORBIDDEN` for non-hosts, goldens regenerated, TS parser, R9 documented → Task 1; web UI → Task 7; Android room sheet switch → Task 8.
-- §6.1 web Video tab: tabs Lagu/Video, YouTube link → parser with shared fixture → `/api/video` → preview → `YOUTUBE_VIDEO`, failures add nothing; direct `.mp4/.webm/.m4v/.mov/.m3u8` → hidden `<video preload="metadata" muted>` (hls.js where needed), `Infinity` → live, 10 s timeout → "Durasi tidak diketahui" and still addable, error → "Video ini tidak bisa diputar di web" and still addable, optional title defaulting to the file name, `artist` = domain; refusals for http-on-https, `.mpd`, page links; TS `MediaUrlRules` before sending → Tasks 5, 6.
-- §8 error copy for `/api/video` 404/429/503/502 and `FORBIDDEN` hiding → Tasks 6, 7, 8.
-- §10 row 2a "minimal: badge and 16:9 rows" → Task 6.
-- Privacy notes (§8 end) → server README (Tasks 2, 4) and web README (Task 6).
-- Deploy → Task 9.
 
-**Placeholder scan:** every code step carries the code; the only data not written in the plan is the recorded `get_queue` response, which Task 4 Step 2 records with an exact command and checks.
+| Requirement | Where |
+|---|---|
+| §3.1 `/api/video`: id validation, own per-IP limiter, budget shared with search, `get_queue` request, wrapper renderer, response shape, thumbnail host rule, 400/404/429/502/503, LRU 1000 + TTL 6 h / 5 min, single flight, no id in logs | Tasks 3, 4 |
+| §3.1 refactor into `SingleFlightCache`, search tests unchanged | Task 3 |
+| D5 live detection on real data (no live marker exists; length heuristic, ≥ 12 h or unparseable = live) | Task 4 (`lengthMs`, recorded live fixture), Decision 10 |
+| YouTube's HTTP 404 for unknown ids → `"{}"` → 404, cached 5 min | Task 4 (backend, `VideoTest`), Task 9 Step 6, Decision 11 |
+| Recording hygiene (`curl --fail`, scratch dir, scrub `responseContext` and `*trackingParams`) | Task 4 Step 2 |
+| §3.2 / U8 `MediaUrlRules` in `:modules:ritme-protocol`, used by `RoomLogic`, fixture shared with the web | Tasks 2, 5 |
+| §3.3 / U6 `guestsCanAdd`: protocol default, `FORBIDDEN`, goldens, TS parser, README (R9) | Task 1 (committed) |
+| `guestsCanAdd` UI: web switch and hidden add card; Android switch through `roomCommand` and hidden row | Tasks 7, 8 |
+| Settings race: next `SetSettings` built from the last sent until a newer snapshot | Tasks 7, 8 (tests with two quick toggles), Decision 12 |
+| Own message for a refused Add ("Host menutup penambahan lagu" / "The host turned off adding songs"), told apart by `reqId` | Tasks 7, 8, Decision 13 |
+| §6.1 web Video tab: tabs, YouTube via `/api/video`, failures add nothing, direct-link probe (`Infinity` → live, 10 s timeout, error still addable), optional title, `artist` = domain, refusals (http on https, `.mpd`, page links, unsafe) | Tasks 5, 6 |
+| e2e media failure is deterministic (404 fulfilled, 15 s timeout) | Task 6 Step 8 |
+| §8 error copy for `/api/video` | Task 6 |
+| §10 2a fallback: 16:9 rows + "Video" badge | Task 6 |
+| Privacy notes | READMEs (Tasks 2, 4, 6) |
+| Deploy: digest recorded, rollback via `RITME_TAG=<previous sha>`, `rooms=0` check, server before Android | Task 9 |
 
-**Type consistency:** `RoomSettings(guestsCanControl, guestsCanAdd)` (Kotlin and TS); `MediaUrlRules.check`/`Rejection` names = TS `MediaUrlRejection` strings = fixture `reject` values; `UpstreamBudget(perMinute, clock)` and `SingleFlightCache(clock, budget, maxEntries, ttlMs)` as used by `SearchService` and `VideoInfoService`; `VideoInfo` fields identical in `Video.kt`, `video.ts` and the e2e mock; `ProbeOutcome`/`ProbeOptions` shared by `media-probe.ts`, `add-video.tsx` and its test; `DirectVideoLink` produced by `classifyVideoLink` and consumed by `toUrlEntry`; `setGuestsCanAdd` on `SessionApi`, `fakeSession` and Android `RitmeSession`; `canAdd` in TS and Kotlin with the same rule.
+**Placeholder scan:** every code step carries its code. The only data not written in the plan is the two recorded `get_queue` responses, which Task 4 Step 2 records, scrubs and checks with exact commands. `<previous sha>` in Task 9 is read from `gh run list` in the same step.
+
+**Type consistency:**
+- `RoomSettings(guestsCanControl, guestsCanAdd)` is the same in Kotlin and TS.
+- `MediaUrlRules.check`/`Rejection` names = TS `MediaUrlRejection` strings = fixture `reject` values.
+- `UpstreamBudget(perMinute, clock)` and `SingleFlightCache(clock, budget, maxEntries, ttlMs)` match how `SearchService` and `VideoInfoService` use them.
+- `InnerTubeVideoBackend(http, url = URL)` and `InnerTubeVideoParser.lengthMs`/`LIVE_FROM_MS` match their use in `VideoTest`.
+- `VideoInfo` has the same fields in `Video.kt`, `video.ts` and the e2e mock.
+- `ProbeOutcome`/`ProbeOptions` are shared by `media-probe.ts`, `add-video.tsx` and its test.
+- `DirectVideoLink` is produced by `classifyVideoLink` and consumed by `toUrlEntry`.
+- `setGuestsCanAdd` exists on `SessionApi`, `fakeSession` and Android `RitmeSession`. `canAdd` follows the same rule in TS and Kotlin.
+- `NoticeKey`: web `'addForbidden'` is covered by `noticeText`; Android `ADD_FORBIDDEN` is covered by `RitmeTexts.notice` and `ritme_toast_add_locked`.
+- Web `Session.send` now returns `string | null`; every existing caller ignores the result.
