@@ -38,6 +38,19 @@ npm run e2e        # Playwright: builds and starts the real server on :47821 ser
   checked immediately). Live entries are never seeked.
 - The web client never reports track ends and never changes the room by itself.
 
+## URL entries
+
+`src/net/media-url-rules.ts` is the TypeScript twin of `MediaUrlRules.kt`; both are tested against
+`modules/ritme-protocol/fixtures/rules/media-urls.json`, so change them together. Pasted links go
+through `src/net/video-link.ts` (YouTube links: `fixtures/rules/youtube-links.json`), and a direct
+link the rules refuse is never sent.
+
+The rules are pure string checks: like the server (spec D6), the web never resolves a host, and it
+has no guard after DNS. A public DNS name that resolves to a private or loopback address
+(`127.0.0.1.nip.io`, a router's own name such as `fritz.box`) therefore passes by design. Against
+those the playing browser's own Local Network Access protections (permission prompts or blocks for
+public pages reaching private addresses) are what applies.
+
 ## Privacy
 
 No analytics, no cookies of our own, no external fonts or CDNs. The only third-party requests are

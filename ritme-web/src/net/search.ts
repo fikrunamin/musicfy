@@ -16,9 +16,9 @@ export type SearchOutcome = { ok: true; results: SearchResult[] } | { ok: false;
 export const MAX_QUERY_LENGTH = 200;
 
 /** Server-side entry limits (ritme-server README "Entries"); exceeding them makes Add INVALID. */
-const MAX_TEXT_LENGTH = 300;
+export const MAX_TEXT_LENGTH = 300;
 const MAX_THUMBNAIL_URL_LENGTH = 512;
-const MAX_DURATION_MS = 86_400_000;
+export const MAX_DURATION_MS = 86_400_000;
 const VIDEO_ID = /^[A-Za-z0-9_-]{1,64}$/;
 /** RoomLogic.isValidThumbnail: YouTube entries only accept thumbnails from these hosts. */
 const THUMBNAIL_HOST_SUFFIXES = ['.ytimg.com', '.googleusercontent.com', '.ggpht.com'];
