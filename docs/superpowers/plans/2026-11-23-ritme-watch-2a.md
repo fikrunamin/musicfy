@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Work in `/Users/suryasoft/WebstormProjects/musicfy/.worktrees/ritme-android` (branch `feature/ritme-android`). Every command below runs from that directory unless it says `cd`.
+- Work in `/Users/suryasoft/WebstormProjects/musicfy/.worktrees/ritme-watch` (branch `feature/ritme-watch`). Every command below runs from that directory unless it says `cd`.
 - Scope is sub-project **2a only** (spec `docs/superpowers/specs/2026-11-23-ritme-watch-together-design.md` §3.1–3.3, §6.1, §10 row 2a; decisions U6 and U8 approved). No Android video playback, no `streamType`/`referrer`, no in-app browser, no `:modules:ritme-media`.
 - **Server:** Ktor 3.4.0. Tests: `./gradlew --console=plain -p ritme-server test :ritme-protocol:test`. Before every Gradle command (server, Android, and `npm run e2e`, which runs Gradle) run `pgrep -f '[j]ava.*gradle-wrapper\.jar' && echo BUSY || echo FREE`; continue only on `FREE` (one Gradle build machine-wide). JDK: `export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home PATH=/opt/homebrew/opt/openjdk@21/bin:$PATH`.
 - **Protocol stays backward compatible:** `PROTOCOL_VERSION` stays `1`; every new field has a default; old clients still decode (`ignoreUnknownKeys`). Refresh golden fixtures only with `./gradlew --console=plain -p ritme-server :ritme-protocol:test -PupdateGolden=true` and review `git diff modules/ritme-protocol/fixtures/`.
@@ -3927,7 +3927,7 @@ Expected: every step green (`BUILD SUCCESSFUL`, Vitest all passed, `3 passed` in
 
 - [ ] **Step 2: Hand over for merge**
 
-Tell the user: branch `feature/ritme-android` is ready; they merge it into `main` and push (this session cannot push). Deploying restarts the server, which ends every live room: pick a moment when nobody is listening.
+Tell the user: branch `feature/ritme-watch` is ready; they merge it into `main` and push (this session cannot push). Deploying restarts the server, which ends every live room: pick a moment when nobody is listening.
 
 - [ ] **Step 3: Wait for the image**
 
