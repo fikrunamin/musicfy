@@ -614,3 +614,16 @@ menghubungi host video tersebut secara langsung.
 | U10 | Batas kualitas dan data | **720p di Wi-Fi, 480p di seluler**, dan video berhenti saat layar mati (audio tetap). Tanpa setelan baru dulu. |
 | U11 | Browser: isolasi dan mesin pencari | **Profil WebView terpisah** + **DuckDuckGo** untuk kata kunci di kolom alamat. |
 | U12 | Entri yang butuh cookie/login atau ber-DRM | **Ditolak** (tidak bisa ditambahkan), bukan sekadar diberi peringatan. |
+
+---
+
+## Keputusan pengguna (2026-11-23)
+
+Pengguna menyetujui **semua rekomendasi U1–U12** seperti tertulis di atas. Ada satu tambahan wajib:
+
+- **Browser in-app (#3): address bar harus bisa diisi URL secara manual.** Pengguna bisa mengetik
+  atau menempel alamat lengkap (`https://…`), domain tanpa skema (`example.com/video`, otomatis
+  menjadi `https://`), atau kata kunci (diteruskan ke DuckDuckGo, sesuai U11). Address bar juga
+  menampilkan URL halaman yang sedang dibuka, bisa disalin, dan bisa disunting. Tombol muat ulang,
+  kembali, dan maju tersedia. Skema berbahaya (`javascript:`, `file:`, `content:`, `intent:`) dan
+  alamat lokal atau privat ditolak dengan pesan yang jelas, mengikuti `MediaUrlRules`.
