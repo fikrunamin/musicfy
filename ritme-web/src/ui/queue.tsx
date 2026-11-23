@@ -1,9 +1,9 @@
-import { httpsThumbnail } from '../net/search';
 import { type QueueEntry, type RoomState, isLive } from '../protocol';
 import { canControl, canRemove, moveDownTarget, moveUpTarget, splitQueue } from '../session/permissions';
 import type { SessionApi } from '../session/session';
 import { entrySource, isVideoEntry, memberName, unplayableLabel } from './badges';
 import { formatMs } from './format';
+import { Thumb } from './media';
 import { t } from './strings';
 
 interface Props {
@@ -13,22 +13,6 @@ interface Props {
   unplayable: Readonly<Record<string, true>>;
   online: boolean;
   pageIsHttps: boolean;
-}
-
-/**
- * A 48 px thumbnail (78 × 44 for videos), or the placeholder unless the URL is https (entries
- * come from any client).
- */
-export function Thumb({ url, wide = false }: { url: string | null; wide?: boolean }) {
-  const src = httpsThumbnail(url);
-  const cls = wide ? 'thumb thumb-wide' : 'thumb';
-  return src ? (
-    <img class={cls} src={src} alt="" loading="lazy" referrerpolicy="no-referrer" width={wide ? 78 : 48} height={wide ? 44 : 48} />
-  ) : (
-    <div class={`${cls} thumb-empty`} aria-hidden="true">
-      {wide ? '▶' : '♪'}
-    </div>
-  );
 }
 
 function Row({ entry, session, room, memberId, unplayable, online, pageIsHttps, upcoming }: Props & { entry: QueueEntry; upcoming: boolean }) {

@@ -4,7 +4,7 @@ import { type SearchResult, searchSongs, toNewEntry, validThumbnail } from '../n
 import type { SessionApi } from '../session/session';
 import { AddVideoPanel } from './add-video';
 import { formatMs } from './format';
-import { Thumb } from './queue';
+import { Thumb } from './media';
 import { searchFailureText, t } from './strings';
 
 interface Props {

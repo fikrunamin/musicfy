@@ -1,0 +1,423 @@
+/* Shared components (handoff frame "Komponen"). */
+
+.icon {
+  flex-shrink: 0;
+  display: block;
+}
+
+/* Buttons: pill, 52 px, optional leading icon. */
+.btn {
+  min-height: var(--btn-h);
+  min-width: var(--target);
+  padding: 0 24px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--faint);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-header);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: transparent;
+}
+
+.btn-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: transparent;
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.btn:disabled,
+.btn[aria-disabled='true'] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Icon buttons: 44 px targets; filled = the faint circle, accent = the big play button. */
+.icon-btn {
+  width: var(--target);
+  height: var(--target);
+  flex-shrink: 0;
+  border-radius: var(--r-pill);
+  border: none;
+  background: transparent;
+  color: var(--text);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.icon-btn-filled {
+  background: var(--faint);
+}
+
+.icon-btn-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.icon-btn-accent {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.icon-btn-lg {
+  width: 64px;
+  height: 64px;
+}
+
+.icon-btn:disabled,
+.icon-btn[aria-disabled='true'] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Fields: label above, r16 field 52 px high. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.field-label {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+.input-wrap {
+  position: relative;
+  display: flex;
+}
+
+.input {
+  width: 100%;
+  min-height: var(--btn-h);
+  padding: 0 18px;
+  border-radius: var(--r-input);
+  border: 1px solid var(--faint);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-header);
+}
+
+.input-wrap-icon .input {
+  padding-left: 48px;
+}
+
+.input-icon {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.field-error {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  color: var(--danger);
+  font-size: var(--fs-meta);
+}
+
+/* Badges: Video / LIVE / Host. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: var(--surface3);
+  color: var(--text);
+  font-size: var(--fs-caption);
+  letter-spacing: 0;
+  white-space: nowrap;
+  flex-shrink: 0;
+  width: fit-content;
+}
+
+.badge-host {
+  border-radius: var(--r-pill);
+  padding: 0 10px;
+  height: 26px;
+}
+
+.badge-live {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Avatars: initial in a circle. */
+.avatar {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  background: var(--surface2);
+  border: 2px solid var(--bg);
+  color: var(--text);
+  font-size: var(--fs-meta);
+}
+
+.avatar-xs {
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+  border-width: 0;
+}
+
+.avatar-sm {
+  width: 36px;
+  height: 36px;
+}
+
+.avatar-lg {
+  width: 44px;
+  height: 44px;
+  font-size: var(--fs-header);
+}
+
+.avatar-away {
+  opacity: 0.5;
+}
+
+.avatar-stack {
+  display: inline-flex;
+}
+
+.avatar-stack .avatar + .avatar {
+  margin-left: -10px;
+}
+
+/* Thumbnails: 44 × 44 (songs) or 78 × 44 (videos and mixed queues), r8. */
+.thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-thumb);
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--surface2);
+  display: block;
+}
+
+.thumb-wide {
+  width: 78px;
+}
+
+.thumb-empty {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.thumb-direct {
+  background: var(--placeholder);
+  color: var(--on-dark-muted);
+}
+
+.thumb-frame {
+  position: relative;
+  flex-shrink: 0;
+  display: block;
+}
+
+.chip-duration {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: #000000cc;
+  color: #ffffff;
+  font-size: 11px;
+  letter-spacing: 0;
+  line-height: 1.3;
+}
+
+.thumb-frame .chip-duration {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+}
+
+/* Direct-link placeholder: fills its 16:9 slot. */
+.video-placeholder {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  background: var(--placeholder);
+  color: var(--on-dark-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: var(--fs-meta);
+}
+
+.vp-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+}
+
+.vp-duration {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+}
+
+.vp-duration .chip-duration {
+  font-size: var(--fs-meta);
+  padding: 2px 8px;
+}
+
+/* Rows: 60 px, title 15, one-line meta 13. */
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row-main {
+  min-height: var(--row-h);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-warning {
+  color: var(--danger);
+  font-size: var(--fs-meta);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-trailing {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* Meta Clip: always one line, ellipsis at rest (the marquee lives in motion.css). */
+.meta-clip {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+.meta-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meta-track > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Status dot (online green, reconnecting amber). */
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sync);
+  flex-shrink: 0;
+}
+
+.sync-dot[data-state='reconnecting'] {
+  background: var(--warn);
+}
+
+/* Equalizer bars (static here; animated in motion.css). */
+.eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  width: 18px;
+  height: 16px;
+  color: currentColor;
+}
+
+.eq i {
+  flex: 1;
+  background: currentColor;
+  border-radius: 1px;
+  transform-origin: bottom;
+}
+
+.eq i:nth-child(1) {
+  height: 55%;
+}
+
+.eq i:nth-child(2) {
+  height: 100%;
+}
+
+.eq i:nth-child(3) {
+  height: 70%;
+}
+
+.eq i:nth-child(4) {
+  height: 85%;
+}

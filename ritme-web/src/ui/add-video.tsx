@@ -8,7 +8,7 @@ import { type DirectVideoLink, classifyVideoLink } from '../net/video-link';
 import type { NewEntry } from '../protocol';
 import type { SessionApi } from '../session/session';
 import { formatMs } from './format';
-import { Thumb } from './queue';
+import { Thumb } from './media';
 import { t, videoInfoFailureText, videoLinkProblemText } from './strings';
 
 interface Props {

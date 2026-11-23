@@ -73,7 +73,7 @@ describe('AddVideoPanel', () => {
     await screen.findByText('Blender · 10:35');
     const img = document.querySelector('img.thumb');
     expect(img?.classList.contains('thumb-wide')).toBe(false);
-    expect(img?.getAttribute('width')).toBe('48');
+    expect(img?.getAttribute('width')).toBe('44');
   });
 
   it.each<[number, string]>([

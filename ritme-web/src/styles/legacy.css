@@ -53,17 +53,8 @@
   font-size: 14px;
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-weight: 600;
-  font-size: 14px;
-}
-
-input[type='text'],
-input[type='search'],
-input:not([type]) {
+/* Fields not yet moved to TextField (.input). */
+:where(input[type='text'], input[type='search'], input:not([type])):not(.input) {
   font: inherit;
   padding: 12px 14px;
   border-radius: 12px;
@@ -85,60 +76,11 @@ input:not([type]) {
   font-weight: 700;
 }
 
-.btn {
-  font: inherit;
-  font-weight: 600;
-  min-height: 48px;
-  padding: 10px 18px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: transparent;
-  color: var(--fg);
-  cursor: pointer;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-primary {
-  background: var(--accent);
-  color: var(--on-accent);
-  border-color: var(--accent);
-}
-
-.btn-danger {
-  color: var(--danger);
-  border-color: currentColor;
-}
-
 .btn-small {
   min-height: 44px;
   min-width: 44px;
   padding: 4px 14px;
   font-size: 14px;
-}
-
-.btn-block {
-  width: 100%;
-}
-
-.btn:disabled,
-.icon-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.icon-btn {
-  font: inherit;
-  min-width: 44px;
-  min-height: 44px;
-  border-radius: 999px;
-  border: none;
-  background: transparent;
-  color: var(--fg);
-  cursor: pointer;
-  font-size: 18px;
 }
 
 .icon-btn-big {
@@ -312,39 +254,6 @@ input:not([type]) {
   }
 }
 
-.thumb {
-  width: 48px;
-  height: 48px;
-  border-radius: 8px;
-  object-fit: cover;
-  flex-shrink: 0;
-  background: var(--bg);
-}
-
-.thumb-empty {
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-}
-
-/* Video entries (brief §12): the same thumbnail at 16:9, 78 × 44 with the same 8 px radius. */
-.thumb-wide {
-  width: 78px;
-  height: 44px;
-}
-
-.badge {
-  display: inline-block;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 1px 8px;
-  margin-left: 6px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  color: var(--muted);
-  width: fit-content;
-}
-
 .queue-text .badge {
   margin-left: 0;
   margin-top: 2px;
@@ -424,17 +333,6 @@ input:not([type]) {
 .member-actions {
   display: flex;
   gap: 6px;
-}
-
-.avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  font-weight: 700;
 }
 
 .switch {

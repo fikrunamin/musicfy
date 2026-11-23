@@ -5,7 +5,7 @@ import type { SessionApi } from '../session/session';
 import { entrySource, isVideoEntry, memberName, unplayableLabel } from './badges';
 import { formatMs } from './format';
 import { useServerNow } from './hooks';
-import { Thumb } from './queue';
+import { Thumb } from './media';
 import { t } from './strings';
 
 interface Props {
