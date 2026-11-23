@@ -3,27 +3,55 @@ import type { KeyValueStore } from '../net/storage';
 import { NAME_KEY } from '../net/storage';
 import type { SessionState } from '../session/reducer';
 import type { SessionApi } from '../session/session';
+import { Button, FieldError, LinkButton, TextField, cx } from './components';
 import { normalizeCode, normalizeName, sanitizeCodeInput } from './format';
+import { Icon } from './icon';
 import { RELEASES_URL, endText, t } from './strings';
 
 interface Props {
   session: SessionApi;
   state: SessionState;
-  /** From /r/{code}; prefills the code and shows the "open in app" button. */
+  /** From /r/{code}: the invite page (flow B), joining that room. */
   routeCode: string | null;
   prefs: KeyValueStore;
+}
+
+type FieldErrorState = { field: 'name' | 'code'; message: string } | null;
+
+/** The vinyl and sleeve of flows A/B, drawn in CSS (monochrome: no artwork before a room). */
+function HeroArt() {
+  return (
+    <div class="home-art" aria-hidden="true">
+      <div class="sleeve" />
+      <div class="vinyl">
+        <div class="vinyl-label" />
+      </div>
+    </div>
+  );
+}
+
+function DownloadLine() {
+  return (
+    <p class="home-download meta">
+      {t.noApp}{' '}
+      <a href={RELEASES_URL} rel="noopener noreferrer">
+        {t.download}
+      </a>
+    </p>
+  );
 }
 
 export function HomeScreen({ session, state, routeCode, prefs }: Props) {
   const [name, setName] = useState(prefs.get(NAME_KEY) ?? '');
   const [code, setCode] = useState(routeCode ?? '');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FieldErrorState>(null);
   const busy = state.phase === 'connecting';
   const ended = state.phase === 'ended' && state.ended ? endText(state.ended) : null;
+  const invite = routeCode !== null;
 
   const validName = (): string | null => {
     const n = normalizeName(name);
-    if (!n) setError(t.nameInvalid);
+    if (!n) setError({ field: 'name', message: t.nameInvalid });
     else prefs.set(NAME_KEY, n);
     return n;
   };
@@ -41,95 +69,112 @@ export function HomeScreen({ session, state, routeCode, prefs }: Props) {
     setError(null);
     const n = validName();
     if (!n) return;
-    const c = normalizeCode(code);
+    const c = invite ? routeCode : normalizeCode(code);
     if (!c) {
-      setError(t.codeInvalid);
+      setError({ field: 'code', message: t.codeInvalid });
       return;
     }
     session.dismiss();
     session.join(c, n);
   };
 
+  const nameError = error?.field === 'name' ? 'name-error' : null;
+  const codeError = error?.field === 'code' ? 'code-error' : null;
+
+  const nameField = (
+    <>
+      <TextField
+        id="name-input"
+        name="name"
+        label={t.nameLabel}
+        value={name}
+        maxLength={32}
+        autoComplete="nickname"
+        placeholder={t.namePlaceholder}
+        errorId={nameError}
+        onInput={(e) => setName(e.currentTarget.value)}
+      />
+      {nameError && <FieldError id={nameError}>{error!.message}</FieldError>}
+    </>
+  );
+
   return (
-    <main class="screen home">
-      <header class="home-header">
-        <h1>{routeCode ? t.invited : t.appName}</h1>
-        <p class="muted">{t.tagline}</p>
-      </header>
+    <main class={cx('home', invite && 'home-invite')}>
+      <HeroArt />
+      <div class="home-panel">
+        {invite ? (
+          <p class="room-chip">
+            <Icon name="group" size={20} />
+            {t.roomChip(routeCode)}
+          </p>
+        ) : (
+          <p class="home-brand">
+            <Icon name="radio_button_checked" size={22} />
+            <span class="home-brand-mobile">{t.brand}</span>
+            <span class="home-brand-desktop">{t.brandRitme}</span>
+          </p>
+        )}
+        <header class="home-header">
+          <h1>{invite ? t.invited : t.appName}</h1>
+          <p class="home-tagline">{t.tagline}</p>
+        </header>
 
-      {ended && (
-        <p class="banner banner-error" role="alert">
-          {ended}
-        </p>
-      )}
+        {ended && (
+          <p class="home-alert" role="alert">
+            {ended}
+          </p>
+        )}
 
-      <div class="card stack">
-        <label class="field">
-          <span>{t.nameLabel}</span>
-          <input
-            name="name"
-            value={name}
-            maxLength={32}
-            autoComplete="nickname"
-            placeholder={t.namePlaceholder}
-            onInput={(e) => setName(e.currentTarget.value)}
-          />
-        </label>
-
-        {!routeCode && (
-          <>
-            <button type="button" class="btn btn-primary" disabled={busy} onClick={onCreate}>
+        {invite ? (
+          <form class="home-form" onSubmit={onJoin}>
+            {nameField}
+            <Button type="submit" variant="primary" block disabled={busy}>
+              {busy ? t.connecting : t.join}
+            </Button>
+            <hr class="home-rule" />
+            <LinkButton href={`musicfy://ritme/${routeCode}`} icon="open_in_new" block>
+              {t.openInApp}
+            </LinkButton>
+            <DownloadLine />
+          </form>
+        ) : (
+          <div class="home-form">
+            {nameField}
+            <Button variant="primary" block disabled={busy} onClick={onCreate}>
               {t.start}
-            </button>
+            </Button>
             <p class="divider">
               <span>{t.or}</span>
             </p>
-          </>
-        )}
-
-        <form class="stack" onSubmit={onJoin}>
-          <label class="field">
-            <span>{t.codeLabel}</span>
-            <input
-              name="code"
-              class="code-input"
-              value={code}
-              autoCapitalize="characters"
-              autoComplete="off"
-              spellcheck={false}
-              placeholder={t.codePlaceholder}
-              onInput={(e) => {
-                const sanitized = sanitizeCodeInput(e.currentTarget.value);
-                e.currentTarget.value = sanitized; // state may be unchanged (7th char), so Preact would not re-render
-                setCode(sanitized);
-              }}
-            />
-          </label>
-          <button type="submit" class={routeCode ? 'btn btn-primary' : 'btn'} disabled={busy}>
-            {busy ? t.connecting : t.join}
-          </button>
-        </form>
-
-        {error && (
-          <p class="error" role="alert">
-            {error}
-          </p>
+            <form class="code-form" onSubmit={onJoin}>
+              <div class="code-row">
+                <TextField
+                  id="code-input"
+                  name="code"
+                  class="code-field"
+                  label={t.codeLabel}
+                  value={code}
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  spellcheck={false}
+                  placeholder={t.codePlaceholder}
+                  errorId={codeError}
+                  onInput={(e) => {
+                    const sanitized = sanitizeCodeInput(e.currentTarget.value);
+                    e.currentTarget.value = sanitized; // state may be unchanged (7th char), so Preact would not re-render
+                    setCode(sanitized);
+                  }}
+                />
+                <Button type="submit" disabled={busy}>
+                  {busy ? t.connecting : t.join}
+                </Button>
+              </div>
+              {codeError && <FieldError id={codeError}>{error!.message}</FieldError>}
+            </form>
+            <DownloadLine />
+          </div>
         )}
       </div>
-
-      {routeCode && (
-        <div class="card stack center">
-          <a class="btn" href={`musicfy://ritme/${routeCode}`}>
-            {t.openInApp}
-          </a>
-          <p class="muted small">
-            {t.noApp}{' '}
-            <a href={RELEASES_URL} rel="noopener noreferrer">
-              {t.download}
-            </a>
-          </p>
-        </div>
-      )}
     </main>
   );
 }

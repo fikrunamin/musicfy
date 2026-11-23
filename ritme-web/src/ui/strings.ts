@@ -7,6 +7,9 @@ import type { NoticeKey } from '../session/reducer';
 /** All UI copy (Indonesian, matching the spec). */
 export const t = {
   appName: 'Ritme',
+  brand: 'Musicfy',
+  brandRitme: 'Musicfy · Ritme',
+  roomChip: (code: string) => `Room ${code}`,
   tagline: 'Dengar musik bareng teman, sinkron di semua perangkat.',
   nameLabel: 'Nama tampilan',
   namePlaceholder: 'Misalnya Budi',

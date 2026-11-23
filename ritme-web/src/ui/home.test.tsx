@@ -24,10 +24,15 @@ describe('HomeScreen', () => {
     render(<HomeScreen session={session} state={initialSession} routeCode={null} prefs={memoryStore()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Mulai Ritme' }));
     expect(screen.getByRole('alert').textContent).toBe('Nama harus 1–32 karakter.');
+    // The message sits under its own field, which is marked invalid and points at it.
+    expect(screen.getByLabelText('Nama tampilan').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByLabelText('Nama tampilan').getAttribute('aria-describedby')).toBe(screen.getByRole('alert').id);
     fireEvent.input(screen.getByLabelText('Nama tampilan'), { target: { value: 'Sari' } });
     fireEvent.input(screen.getByLabelText('Kode room'), { target: { value: 'abc' } });
     fireEvent.click(screen.getByRole('button', { name: 'Gabung' }));
     expect(screen.getByRole('alert').textContent).toBe('Kode room terdiri dari 6 huruf/angka.');
+    expect(screen.getByLabelText('Nama tampilan').hasAttribute('aria-invalid')).toBe(false);
+    expect(screen.getByLabelText('Kode room').getAttribute('aria-invalid')).toBe('true');
     expect(session.join).not.toHaveBeenCalled();
   });
 
@@ -38,6 +43,8 @@ describe('HomeScreen', () => {
     render(<HomeScreen session={session} state={initialSession} routeCode="K7M2QX" prefs={prefs} />);
     expect(screen.queryByRole('button', { name: 'Mulai Ritme' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Buka di aplikasi Musicfy' }).getAttribute('href')).toBe('musicfy://ritme/K7M2QX');
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Kamu diajak dengar bareng');
+    expect(screen.getByText('Room K7M2QX')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Gabung' }));
     expect(session.join).toHaveBeenCalledWith('K7M2QX', 'Sari');
   });

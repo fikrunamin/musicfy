@@ -26,7 +26,9 @@ describe('App', () => {
     history.replaceState(null, '', '/r/k7m2qx');
     render(<App session={fakeSession()} {...stores()} />);
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Kamu diajak dengar bareng');
-    expect((screen.getByLabelText('Kode room') as HTMLInputElement).value).toBe('K7M2QX');
+    // The code comes from the link: shown in the room chip, not as an editable field (flow B).
+    expect(screen.getByText('Room K7M2QX')).toBeTruthy();
+    expect(screen.queryByLabelText('Kode room')).toBeNull();
   });
 
   it('resumes automatically after a reload inside a room', () => {
