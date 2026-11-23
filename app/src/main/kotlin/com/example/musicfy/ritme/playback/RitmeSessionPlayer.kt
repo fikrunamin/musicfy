@@ -31,7 +31,13 @@ import com.google.common.util.concurrent.ListenableFuture
  * Never call release() on it: that releases the wrapped ExoPlayer. MusicService keeps one per player.
  */
 @androidx.annotation.OptIn(UnstableApi::class)
-class RitmeSessionPlayer(player: Player, private val gate: RitmeGate) : ForwardingSimpleBasePlayer(player) {
+class RitmeSessionPlayer(
+    player: Player,
+    private val gate: RitmeGate,
+    now: () -> Long = android.os.SystemClock::elapsedRealtime,
+) : ForwardingSimpleBasePlayer(player) {
+
+    private val addThenPlay = RitmeAddThenPlayFilter(now)
 
     /** The player behind it, so MusicService can reuse this wrapper for the same player. */
     val wrapped: Player get() = player
@@ -59,9 +65,13 @@ class RitmeSessionPlayer(player: Player, private val gate: RitmeGate) : Forwardi
         return state.buildUpon().setAvailableCommands(commands).build()
     }
 
-    override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> =
-        if (gate.intercept(if (playWhenReady) RitmeLocalAction.Play else RitmeLocalAction.Pause)) done()
+    override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+        // Android Auto's play-from-media-id is setMediaItems, prepare, play: in a room that is an Add,
+        // and the play() belonging to it must not start (or resume) the room as well.
+        if (gate.isActive && addThenPlay.swallow(playWhenReady)) return done()
+        return if (gate.intercept(if (playWhenReady) RitmeLocalAction.Play else RitmeLocalAction.Pause)) done()
         else super.handleSetPlayWhenReady(playWhenReady)
+    }
 
     override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {
         if (!gate.isActive) return super.handleSeek(mediaItemIndex, positionMs, seekCommand)
@@ -79,8 +89,12 @@ class RitmeSessionPlayer(player: Player, private val gate: RitmeGate) : Forwardi
         if (gate.intercept(RitmeLocalAction.Speed)) done() else super.handleSetPlaybackParameters(playbackParameters)
 
     override fun handleSetMediaItems(mediaItems: MutableList<MediaItem>, startIndex: Int, startPositionMs: Long): ListenableFuture<*> =
-        if (gate.intercept(RitmeLocalAction.PlayQueue(ritmeSongsFrom(mediaItems, startIndex)))) done()
-        else super.handleSetMediaItems(mediaItems, startIndex, startPositionMs)
+        if (gate.intercept(RitmeLocalAction.PlayQueue(ritmeSongsFrom(mediaItems, startIndex)))) {
+            addThenPlay.onAdded()
+            done()
+        } else {
+            super.handleSetMediaItems(mediaItems, startIndex, startPositionMs)
+        }
 
     override fun handleAddMediaItems(index: Int, mediaItems: MutableList<MediaItem>): ListenableFuture<*> =
         if (gate.intercept(RitmeLocalAction.AddItems(mediaItems.map { it.metadata }, playNext = false))) done()
@@ -117,4 +131,29 @@ internal fun ritmeSeekIntent(seekCommand: Int, positionMs: Long): RitmeLocalActi
 internal fun ritmeSongsFrom(mediaItems: List<MediaItem>, startIndex: Int): List<MediaMetadata?> {
     val from = if (startIndex == C.INDEX_UNSET) 0 else startIndex.coerceAtLeast(0)
     return mediaItems.drop(from).map { it.metadata }
+}
+
+/**
+ * In a room a controller's setMediaItems is only an Add. Media3 follows it with prepare() and
+ * play() (Android Auto's play-from-media-id), and that play must not start a paused room: a play
+ * request that arrives within [WINDOW_MS] of the add is swallowed, once. Any other play/pause
+ * request in between ends the window.
+ */
+internal class RitmeAddThenPlayFilter(private val now: () -> Long) {
+    private var addedAt: Long? = null
+
+    fun onAdded() {
+        addedAt = now()
+    }
+
+    /** True when this play/pause request is the play that belongs to the add just before it. */
+    fun swallow(playWhenReady: Boolean): Boolean {
+        val at = addedAt ?: return false
+        addedAt = null
+        return playWhenReady && now() - at <= WINDOW_MS
+    }
+
+    companion object {
+        const val WINDOW_MS = 1_000L
+    }
 }

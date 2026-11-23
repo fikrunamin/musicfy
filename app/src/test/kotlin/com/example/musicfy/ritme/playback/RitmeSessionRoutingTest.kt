@@ -5,6 +5,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import com.example.musicfy.ritme.RitmeLocalAction
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -48,5 +50,37 @@ class RitmeSessionRoutingTest {
         assertEquals(2, ritmeSongsFrom(items, 1).size)
         assertEquals(3, ritmeSongsFrom(items, C.INDEX_UNSET).size)
         assertEquals(0, ritmeSongsFrom(items, 5).size)
+    }
+
+    private var clock = 0L
+    private val filter = RitmeAddThenPlayFilter { clock }
+
+    @Test
+    fun thePlayThatFollowsAControllersAddIsSwallowedOnce() {
+        filter.onAdded()
+        clock += 5
+        assertTrue(filter.swallow(playWhenReady = true))
+        // a later play is a real one
+        assertFalse(filter.swallow(playWhenReady = true))
+    }
+
+    @Test
+    fun withoutAnAddPlayIsNeverSwallowed() {
+        assertFalse(filter.swallow(playWhenReady = true))
+        assertFalse(filter.swallow(playWhenReady = false))
+    }
+
+    @Test
+    fun aPlayLongAfterTheAddIsARealPlay() {
+        filter.onAdded()
+        clock += RitmeAddThenPlayFilter.WINDOW_MS + 1
+        assertFalse(filter.swallow(playWhenReady = true))
+    }
+
+    @Test
+    fun aPauseAfterTheAddIsNotSwallowedAndEndsTheWindow() {
+        filter.onAdded()
+        assertFalse(filter.swallow(playWhenReady = false))
+        assertFalse(filter.swallow(playWhenReady = true))
     }
 }

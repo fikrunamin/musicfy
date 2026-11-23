@@ -633,7 +633,7 @@ fun PlayerMenu(
                                     )
                                 },
                                 onClick = {
-                                    showPitchTempoDialog = true
+                                    playerConnection.ritmeOr(RitmeLocalAction.Speed) { showPitchTempoDialog = true }
                                 }
                             )
                         )
@@ -674,7 +674,8 @@ fun TempoPitchDialog(onDismiss: () -> Unit) {
         mutableIntStateOf(round(12 * log2(playerConnection.player.playbackParameters.pitch)).toInt())
     }
     val updatePlaybackParameters = {
-        playerConnection.ritmeOr(RitmeLocalAction.Speed) {
+        // Opening the dialog is gated (one toast); a room that starts while it is open makes the steps silent no-ops.
+        if (!playerConnection.ritmeGate.isActive) {
             playerConnection.player.playbackParameters =
                 PlaybackParameters(tempo, 2f.pow(transposeValue.toFloat() / 12))
         }

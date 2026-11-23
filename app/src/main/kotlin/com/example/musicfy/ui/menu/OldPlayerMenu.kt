@@ -535,7 +535,7 @@ fun OldPlayerMenu(
                                 )
                             },
                             onClick = {
-                                showPitchTempoDialog = true
+                                playerConnection.ritmeOr(RitmeLocalAction.Speed) { showPitchTempoDialog = true }
                             }
                         )
                     )

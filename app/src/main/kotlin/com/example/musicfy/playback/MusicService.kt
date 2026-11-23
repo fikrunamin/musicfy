@@ -3803,6 +3803,11 @@ class MusicService :
     // One wrapper per player: it listens to the player for good and must never be released.
     private var ritmeSessionPlayer: com.example.musicfy.ritme.playback.RitmeSessionPlayer? = null
 
+    /** A crossfade or Crossmix replaced the player: let go of the old one's wrapper (and so of the old player). */
+    private fun dropStaleRitmeSessionPlayer() {
+        if (ritmeSessionPlayer?.wrapped !== player) ritmeSessionPlayer = null
+    }
+
     /** While in a Ritme room, external controllers talk to a RitmeSessionPlayer instead of the player itself. */
     private fun useRitmeSessionPlayer(enabled: Boolean) {
         val target: Player = if (enabled) {
@@ -3859,6 +3864,24 @@ class MusicService :
     override fun onBind(intent: Intent?) = super.onBind(intent) ?: binder
 
     override fun onTaskRemoved(rootIntent: Intent?) {
+        if (ritmeGate.isActive) {
+            // Media3's own path (pauseAllPlayersAndStopSelf) pauses through the session's player, which
+            // in a room is RitmeSessionPlayer: that would be a room Pause for everyone. So the same
+            // decisions are made here on the ExoPlayer itself, and super is skipped. Stopping the
+            // service leaves the room (onDestroy -> RitmePlaybackBridge.detach).
+            when {
+                dataStore.get(StopPlaybackOnTaskRemovedKey, false) -> {
+                    player.stop()
+                    stopSelf()
+                }
+                // what super does: keep running only while playback is ongoing and actually playing
+                !isPlaybackOngoing || !player.isPlaying -> {
+                    player.pause()
+                    stopSelf()
+                }
+            }
+            return
+        }
         if (dataStore.get(StopPlaybackOnTaskRemovedKey, false)) {
             player.stop()
             stopSelf()
@@ -4074,6 +4097,7 @@ class MusicService :
         fadingPlayer = currentPlayer
         player = nextPlayer
         _playerFlow.value = player
+        dropStaleRitmeSessionPlayer()
         secondaryPlayer = null
 
         fadingPlayer?.removeListener(this)
@@ -4361,6 +4385,7 @@ class MusicService :
             fadingPlayer = outgoing
             player = incoming
             _playerFlow.value = incoming
+            dropStaleRitmeSessionPlayer()
 
             outgoing.removeListener(this@MusicService)
             outgoing.removeListener(sleepTimer)
