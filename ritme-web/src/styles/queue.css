@@ -1,0 +1,103 @@
+/* The queue (flow E): no card around it on mobile, 60 px rows, inline actions under an opened row. */
+.queue-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.queue-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.queue-header h2 {
+  font-size: var(--fs-title);
+}
+
+.queue-header .btn {
+  min-height: 48px;
+  padding: 0 20px;
+}
+
+.queue-section {
+  margin-top: 8px;
+  font-size: var(--fs-body);
+}
+
+.queue-none {
+  color: var(--muted);
+  padding: 8px 0;
+}
+
+.row-current .row-trailing {
+  width: var(--target);
+  justify-content: center;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 8px 56px;
+}
+
+.queue-panel:has(.thumb-wide) .row-actions {
+  padding-left: 90px;
+}
+
+.row-play {
+  min-height: var(--target);
+  padding: 0 20px;
+  font-size: var(--fs-body);
+}
+
+.played {
+  margin-top: 8px;
+}
+
+.played-toggle {
+  width: 100%;
+  min-height: var(--target);
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  cursor: pointer;
+}
+
+.played-toggle[aria-expanded='true'] .icon {
+  transform: rotate(180deg);
+}
+
+.empty-queue {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 16px;
+  text-align: center;
+}
+
+.empty-mark {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: var(--surface);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.empty-title {
+  font-size: var(--fs-section);
+}
+
+.empty-sub {
+  color: var(--muted);
+}

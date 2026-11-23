@@ -41,6 +41,8 @@ export async function share(code: string, session: SessionApi): Promise<void> {
 }
 
 const showQueue = () => document.getElementById('queue-title')?.scrollIntoView({ block: 'start' });
+/** Until the add sheet exists (next task), "Tambah lagu" takes the member to the search field. */
+const showAdd = () => document.getElementById('search-input')?.focus();
 
 export function RoomScreen({ session, state, prefs }: Props) {
   const { room, memberId, unplayable } = state;
@@ -81,7 +83,7 @@ export function RoomScreen({ session, state, prefs }: Props) {
 
         <ModeSwitch mode={mode} onModeChange={changeMode} />
         <NowPlaying {...shared} mode={mode} onShowQueue={showQueue} />
-        <QueueList {...shared} />
+        <QueueList {...shared} onAdd={canAdd(room, memberId) ? showAdd : undefined} />
         {/* Hidden, not disabled, while the host keeps guests from adding (spec 8). */}
         {canAdd(room, memberId) && <SearchPanel session={session} online={online} pageIsHttps={https} />}
         <MembersPanel session={session} room={room} memberId={memberId} online={online} />

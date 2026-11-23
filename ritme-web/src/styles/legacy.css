@@ -140,18 +140,6 @@
   margin-top: 2px;
 }
 
-.played {
-  margin-top: 12px;
-}
-
-.played summary {
-  cursor: pointer;
-  color: var(--muted);
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-}
-
 .search-form {
   display: flex;
   gap: 8px;

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { entry, room } from '../testing/builders';
 import { QueueList } from './queue';
 import { fakeSession } from '../testing/fake-session';
@@ -55,6 +55,9 @@ describe('QueueList', () => {
 
   it('shows only own remove buttons to a guest when control is locked', () => {
     renderQueue('m2', false);
+    // Only the row with an action available gets the ⋮ menu.
+    expect(screen.getAllByRole('button', { name: /^Aksi:/ }).map((b) => b.getAttribute('aria-label'))).toEqual(['Aksi: Lagu b']);
+    fireEvent.click(screen.getByRole('button', { name: 'Aksi: Lagu b' }));
     expect(screen.queryByRole('button', { name: /^Putar sekarang/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /^Naikkan/ })).toBeNull();
     expect(screen.getAllByRole('button', { name: /^Hapus/ }).map((b) => b.getAttribute('aria-label'))).toEqual(['Hapus: Lagu b']);
@@ -62,12 +65,30 @@ describe('QueueList', () => {
 
   it('gives full controls when guests can control, and sends Move targets', () => {
     const session = renderQueue('m2', true);
+    fireEvent.click(screen.getByRole('button', { name: 'Aksi: Lagu c' }));
     fireEvent.click(screen.getByRole('button', { name: 'Naikkan: Lagu c' }));
     expect(session.move).toHaveBeenCalledWith('c', null);
+    fireEvent.click(screen.getByRole('button', { name: 'Aksi: Lagu b' }));
     fireEvent.click(screen.getByRole('button', { name: 'Turunkan: Lagu b' }));
     expect(session.move).toHaveBeenCalledWith('b', 'c');
+    fireEvent.click(screen.getByRole('button', { name: 'Aksi: Lagu c' }));
     fireEvent.click(screen.getByRole('button', { name: 'Putar sekarang: Lagu c' }));
     expect(session.playEntry).toHaveBeenCalledWith('c');
+  });
+
+  it('opens one row menu at a time and reports it with aria-expanded', () => {
+    renderQueue('m1', true);
+    const c = screen.getByRole('button', { name: 'Aksi: Lagu c' });
+    expect(c.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(c);
+    expect(c.getAttribute('aria-expanded')).toBe('true');
+    expect(document.getElementById(c.getAttribute('aria-controls')!)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Aksi: Lagu b' }));
+    expect(c.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('button', { name: 'Hapus: Lagu c' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Hapus: Lagu b' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Aksi: Lagu b' }));
+    expect(screen.queryByRole('button', { name: /^Hapus/ })).toBeNull();
   });
 
   it('labels unsupported and web-unplayable entries', () => {
@@ -80,6 +101,60 @@ describe('QueueList', () => {
     renderQueue('m2', true);
     expect(screen.getByText(/oleh Kamu/)).toBeTruthy();
     expect(screen.getAllByText(/oleh Budi/).length).toBeGreaterThan(0);
+  });
+});
+
+describe('QueueList layout', () => {
+  const view = (queue: ReturnType<typeof entry>[], extra: Partial<Parameters<typeof QueueList>[0]> = {}) =>
+    render(<QueueList session={fakeSession()} room={room({ queue, currentEntryId: queue[0]?.entryId ?? null })} memberId="m1" unplayable={{}} online pageIsHttps {...extra} />);
+
+  it('keeps square 44 × 44 covers in a queue of songs only', () => {
+    view([entry('a'), entry('b'), entry('c')]);
+    expect(document.querySelectorAll('.thumb')).toHaveLength(2);
+    expect(document.querySelectorAll('.thumb-wide')).toHaveLength(0);
+  });
+
+  it('gives every row a 78 × 44 thumbnail once the queue holds a video, songs included', () => {
+    view([entry('a'), entry('b'), entry('v', { kind: 'YOUTUBE_VIDEO', durationMs: 1_458_000 })]);
+    expect(document.querySelectorAll('.thumb-wide')).toHaveLength(2);
+    expect(screen.getByText('24:18').className).toBe('chip-duration');
+  });
+
+  it('shows Sedang diputar with moving bars and no menu only in the full variant', () => {
+    const { unmount } = view([entry('a'), entry('b')]);
+    expect(screen.queryByText('Lagu a')).toBeNull();
+    unmount();
+    view([entry('a'), entry('b')], { variant: 'full' });
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Antrean');
+    expect(screen.getByRole('heading', { name: 'Sedang diputar' })).toBeTruthy();
+    expect(screen.getByText('Lagu a').closest('.row-current')?.querySelector('.eq')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Aksi: Lagu a' })).toBeNull();
+  });
+
+  it('folds the played entries behind "Sudah diputar (n)"', () => {
+    render(<QueueList session={fakeSession()} room={room({ queue: [entry('p1'), entry('p2'), entry('a')], currentEntryId: 'a' })} memberId="m1" unplayable={{}} online pageIsHttps />);
+    const toggle = screen.getByRole('button', { name: 'Sudah diputar (2)' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByText('Lagu p1')).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('Lagu p1')).toBeTruthy();
+  });
+
+  it('offers Tambah lagu only when it may add, also in the empty state', () => {
+    const onAdd = vi.fn();
+    const { unmount } = view([entry('a'), entry('b')], { onAdd });
+    fireEvent.click(screen.getByRole('button', { name: 'Tambah lagu' }));
+    expect(onAdd).toHaveBeenCalledTimes(1);
+    unmount();
+    const empty = view([], { onAdd });
+    expect(screen.getByText('Antrean kosong.')).toBeTruthy();
+    expect(screen.getByText('Belum ada lagu. Tambahkan lagu untuk mulai.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Tambah lagu' }));
+    expect(onAdd).toHaveBeenCalledTimes(2);
+    empty.unmount();
+    view([]);
+    expect(screen.queryByRole('button', { name: 'Tambah lagu' })).toBeNull();
   });
 });
 

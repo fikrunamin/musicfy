@@ -54,6 +54,7 @@ export const t = {
   moveUp: 'Naikkan',
   moveDown: 'Turunkan',
   remove: 'Hapus',
+  rowActions: (title: string) => `Aksi: ${title}`,
   controlsLocked: 'Host mengunci kontrol',
   unsupported: 'Tidak didukung di versi ini',
   unplayableWeb: 'Tidak bisa diputar di web',

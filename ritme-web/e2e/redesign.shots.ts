@@ -58,3 +58,12 @@ test('LIVE and locked controls @locked', async ({ context }, info) => {
   await expect(b.getByRole('status').filter({ hasText: 'Host mengunci kontrol' })).toBeVisible();
   await shot(b, info, 'C-live-locked');
 });
+
+test('E queue: row actions, played, empty @queue', async ({ context }, info) => {
+  const { a, b } = await openRoom(context);
+  await shot(b, info, 'E-queue-empty');
+  for (const song of SHOT_SONGS.slice(0, 5)) await addSong(a, 'x', song.title);
+  await a.getByRole('button', { name: 'Berikutnya', exact: true }).click();
+  await a.getByRole('button', { name: `Aksi: ${SHOT_SONGS[2].title}` }).click();
+  await shot(a, info, 'E-queue-actions');
+});
