@@ -59,6 +59,17 @@ jobs:
         if: matrix.flavor == 'Foss'
         run: ./gradlew --console=plain jvmTests :app:testUniversalFossDebugUnitTest
 
+      - name: Room schemas unchanged
+        if: matrix.flavor == 'Foss'
+        run: |
+          changed="$(git status --porcelain -- app/schemas core/database/schemas)"
+          if [ -n "$changed" ]; then
+            echo "::error::The exported Room schema changed. D1 must keep database version 39 byte-identical."
+            echo "$changed"
+            git diff -- app/schemas core/database/schemas
+            exit 1
+          fi
+
       - name: Build Universal ${{ matrix.flavor }} Debug APK
         run: ./gradlew --console=plain assembleUniversal${{ matrix.flavor }}Debug --warning-mode summary
         env:
@@ -77,3 +88,28 @@ jobs:
         with:
           name: app-universal-debug-pr-${{ github.event.number }}
           path: app/build/outputs/apk/universalFoss/debug/*.apk
+
+  desktop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: 21
+          distribution: "temurin"
+
+      - name: Set Up Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
+          cache-cleanup: on-success
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Desktop compile + desktop DB and UI-logic tests
+        run: ./gradlew --console=plain :desktopApp:compileKotlin :desktopApp:test :core:database:test :core:designsystem:desktopTest

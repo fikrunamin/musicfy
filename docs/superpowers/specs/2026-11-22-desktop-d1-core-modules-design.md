@@ -73,6 +73,27 @@ menang kalau bertentangan dengan bagian lain.**
    `ArtistVideoCanvasProvider` yang dipakai `ArtistViewModel`), jadi dihapus, bukan dipindah.
 8. `AndroidAppDirsTest` (Robolectric) diganti review: `AndroidAppDirs.from(context)` hanya satu
    baris pemetaan ke `filesDir`/`cacheDir`/`filesDir/download`. Logika per OS (`DesktopAppDirs`) tetap di-unit-test.
+9. **Room: `@Database` dan DAO Android tidak dibagi dengan desktop (spike D1b, 2026-11-22).**
+   Room 2.8.4 menolak fungsi DAO yang bukan `suspend` dan bukan `Flow` di setiap kompilasi
+   non-Android: "Only suspend functions are allowed in DAOs declared in source sets targeting
+   non-Android platforms." Spike membuktikannya di modul JVM murni (opsi (b), sumber yang
+   di-compile dua kali) dan di target `jvm("desktop")` modul KMP (opsi (a)). Target Android KMP
+   menerimanya. `DatabaseDao` punya 99 fungsi blocking yang dipanggil sinkron di seluruh `app/`.
+   Mengubah semuanya menjadi `suspend` adalah perubahan perilaku, jadi dipilih opsi (c):
+   - Entity, view, `Converters`, `MediaMetadata`, `PersistQueue`, dan `String.resize` pindah ke
+     modul JVM `core:model` (FQN tetap; `@Immutable` dari `androidx.compose.runtime:runtime-annotation`).
+   - `InternalDatabase`, `DatabaseDao`, `SpeedDialDao`, `MusicDatabase`, dan semua migrasi tetap
+     di `app/` (Android saja). `@RawQuery` dengan `SupportSQLiteQuery` tetap di sana.
+   - Desktop punya `DesktopMusicDatabase` sendiri di modul JVM `core:database` (KSP JVM, entity
+     yang sama, versi 39, DAO `suspend`/`Flow`, `BundledSQLiteDriver`). Test memastikan skema
+     ekspornya identik dengan `app/schemas/com.example.musicfy.db.InternalDatabase/39.json`.
+   - `MigrationTestHelper` diganti test identity hash: kode Room Android dan migrasinya tidak
+     diubah, dan hash yang sama berarti Room membuka database lama tanpa migrasi.
+   - Plugin KMP + `com.android.kotlin.multiplatform.library` + Compose Multiplatform 1.10.1
+     berjalan di build ini; KMP dipakai hanya untuk `core:designsystem`.
+   - (Info) `java.time` di `commonMain` ter-compile untuk kombinasi android + jvm, tapi tetap tidak
+     didukung resmi. (`compileCommonMainKotlinMetadata` di-SKIP oleh KGP karena semua target
+     berbasis JVM; `compileAndroidMain` dan `compileKotlinDesktop` sama-sama meng-compile-nya.)
 
 ## Non-goals D1
 

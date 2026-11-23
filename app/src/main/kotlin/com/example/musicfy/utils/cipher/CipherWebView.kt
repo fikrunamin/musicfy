@@ -7,6 +7,7 @@ import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
+import com.example.musicfy.core.resolver.CipherSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -22,13 +23,13 @@ class CipherWebView private constructor(
     private val sigInfo: FunctionNameExtractor.SigFunctionInfo?,
     private val nFuncInfo: FunctionNameExtractor.NFunctionInfo?,
     private val initContinuation: Continuation<CipherWebView>,
-) {
+) : CipherSession {
     private val webView = WebView(context)
     private var sigContinuation: Continuation<String>? = null
     private var nContinuation: Continuation<String>? = null
 
     @Volatile
-    var nFunctionAvailable: Boolean = false
+    final override var nFunctionAvailable: Boolean = false
         private set
 
     @Volatile
@@ -221,7 +222,7 @@ function discoverAndInit() {
         initContinuation.resumeWithException(CipherException("Player JS load failed: $error"))
     }
 
-    suspend fun deobfuscateSignature(obfuscatedSig: String): String {
+    override suspend fun deobfuscateSignature(obfuscatedSig: String): String {
         if (sigInfo == null) {
             throw CipherException("Signature function info not available")
         }
@@ -252,7 +253,7 @@ function discoverAndInit() {
         sigContinuation = null
     }
 
-    suspend fun transformN(nValue: String): String {
+    override suspend fun transformN(nValue: String): String {
         if (!nFunctionAvailable) {
             throw CipherException("N-transform function not discovered")
         }
@@ -292,6 +293,8 @@ function discoverAndInit() {
         Timber.tag(TAG).d("CipherWebView closed")
     }
 
+    override suspend fun dispose() = withContext(Dispatchers.Main) { close() }
+
     private fun escapeJsString(s: String): String {
         return s.replace("\\", "\\\\")
             .replace("'", "\\'")
@@ -318,5 +321,3 @@ function discoverAndInit() {
         }
     }
 }
-
-class CipherException(message: String) : Exception(message)

@@ -156,7 +156,7 @@ constructor(
                 YTPlayerUtils.playerResponseForPlayback(
                     mediaId,
                     audioQuality = downloadQuality.youTubeQuality,
-                    connectivityManager = connectivityManager,
+                    networkMetered = { connectivityManager.isActiveNetworkMetered },
                 )
             }.getOrThrow()
             val format = playbackData.format

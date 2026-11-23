@@ -131,7 +131,7 @@ class MusicDatabase(
         PlaylistSongMapPreview::class,
     ],
     version = 39,
-    exportSchema = false
+    exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class InternalDatabase : RoomDatabase() {
