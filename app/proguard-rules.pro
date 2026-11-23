@@ -121,11 +121,18 @@
 -keep class com.example.musicfy.models.PersistPlayerState { *; }
 -keep class com.example.musicfy.models.QueueData { *; }
 -keep class com.example.musicfy.models.QueueType { *; }
+# Nested subtypes and the metadata graph are serialized too; keep their names, fields and UIDs
+# so a release build restores a queue saved by an earlier release build.
+-keep class com.example.musicfy.models.QueueData$* { *; }
+-keep class com.example.musicfy.models.QueueType$* { *; }
+-keep class com.example.musicfy.models.MediaMetadata { *; }
+-keep class com.example.musicfy.models.MediaMetadata$* { *; }
 -keep class com.example.musicfy.playback.queues.** { *; }
 
 # Keep serialization methods for queue persistence
 -keepclassmembers class * implements java.io.Serializable {
     private void writeObject(java.io.ObjectOutputStream);
+    static final long serialVersionUID;
     private void readObject(java.io.ObjectInputStream);
 }
 

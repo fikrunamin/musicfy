@@ -10,8 +10,12 @@ import com.example.musicfy.core.platform.DesktopAppDirs
 import com.example.musicfy.core.platform.StdoutLogger
 import com.example.musicfy.core.resolver.ResolverRuntime
 import com.example.musicfy.db.desktop.DesktopMusicDatabase
+import kotlin.system.exitProcess
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.koin.core.context.startKoin
+import org.koin.core.context.stopKoin
 
 fun main() {
     val dirs = DesktopAppDirs.forCurrentOs()
@@ -26,7 +30,10 @@ fun main() {
     application {
         Window(
             onCloseRequest = {
+                // Stop collectors before the DB closes, then tear down Koin.
+                koin.get<CoroutineScope>().cancel()
                 koin.get<DesktopMusicDatabase>().close()
+                stopKoin()
                 exitApplication()
             },
             title = "Musicfy",
@@ -39,4 +46,6 @@ fun main() {
             }
         }
     }
+    // OkHttp's non-daemon dispatcher threads would keep the JVM alive for up to a minute.
+    exitProcess(0)
 }

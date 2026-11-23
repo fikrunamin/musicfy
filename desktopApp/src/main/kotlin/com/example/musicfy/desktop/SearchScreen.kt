@@ -53,7 +53,7 @@ fun SearchScreen(controller: SearchController) {
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             LazyColumn(Modifier.fillMaxSize()) {
-                items(state.results, key = { it.id }) { song ->
+                items(state.results.distinctBy { it.id }, key = { it.id }) { song ->
                     ListItem(
                         headlineContent = { Text(song.title) },
                         supportingContent = { Text(song.artists.joinToString { it.name }) },
