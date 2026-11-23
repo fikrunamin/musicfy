@@ -406,6 +406,8 @@ dependencies {
     implementation(project(":core:resolver"))
     implementation(project(":core:designsystem"))
     implementation(project(":modules:ritme-protocol"))
+    // Ritme room QR code (spec 3.3); pure Java, no Play Services
+    implementation(libs.zxing.core)
 
 
     implementation(libs.ktor.client.core)

@@ -31,4 +31,40 @@
     <string name="ritme_error_rate_limited">Too many attempts. Try again in a moment</string>
     <string name="ritme_error_invalid">Check the name and the code</string>
     <string name="ritme_error_generic">Something went wrong</string>
+    <string name="ritme_start">Start Ritme</string>
+    <string name="ritme_start_desc">Listen together with friends, in sync</string>
+    <string name="ritme_start_with_this">Start Ritme with this</string>
+    <string name="ritme_join">Join</string>
+    <string name="ritme_join_title">Join a Ritme</string>
+    <string name="ritme_code_label">6-character code</string>
+    <string name="ritme_display_name">Display name</string>
+    <string name="ritme_connecting">Connecting…</string>
+    <string name="ritme_retry">Try again</string>
+    <string name="ritme_room_title" translatable="false">Ritme · %1$s</string>
+    <string name="ritme_share">Share</string>
+    <string name="ritme_qr" translatable="false">QR</string>
+    <string name="ritme_share_text">Listen with me on Ritme: %1$s</string>
+    <plurals name="ritme_members">
+        <item quantity="one">%d member</item>
+        <item quantity="other">%d members</item>
+    </plurals>
+    <string name="ritme_now_playing">Now playing</string>
+    <string name="ritme_up_next">Up next</string>
+    <string name="ritme_added_by">by %1$s</string>
+    <string name="ritme_you">You</string>
+    <string name="ritme_add_songs">Add songs</string>
+    <string name="ritme_guests_can_control">Members can control</string>
+    <string name="ritme_leave">Leave Ritme</string>
+    <string name="ritme_end">End Ritme</string>
+    <string name="ritme_end_confirm_title">End this Ritme for everyone?</string>
+    <string name="ritme_cancel">Cancel</string>
+    <string name="ritme_make_host">Make host</string>
+    <string name="ritme_kick">Remove from Ritme</string>
+    <string name="ritme_unsupported">Not supported yet</string>
+    <string name="ritme_empty_queue">Nothing is playing. Add a song to start.</string>
+    <string name="ritme_host">Host</string>
+    <string name="ritme_play_now">Play now</string>
+    <string name="ritme_move_up">Move up</string>
+    <string name="ritme_move_down">Move down</string>
+    <string name="ritme_remove">Remove</string>
 </resources>

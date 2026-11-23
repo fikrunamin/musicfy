@@ -893,6 +893,7 @@ class MainActivity : ComponentActivity() {
                     com.example.musicfy.ui.screens.update.UpdateNotificationOpener(
                         requests = openUpdateRequests,
                     )
+                    com.example.musicfy.ui.screens.ritme.RitmeSheetOpener(navController = navController)
                     com.example.musicfy.ui.screens.donate.DonatePromptScheduler(
                         enabled = setupCompleted && onboardedHere && !forceShowSetup,
                     )
