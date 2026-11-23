@@ -63,6 +63,12 @@ data class SyncPlan(val ops: List<PlayerOp>, val wakeAtServerMs: Long?, val appl
 object RitmeSyncPlanner {
     const val PAUSED_ALIGN_MS = 40L
     const val RESYNC_ON_CHANGE_MS = 250L
+    /**
+     * The real stream may be shorter than the room's (second-rounded) duration, so a seek near
+     * the end is clamped short of it; within this window of the end a paused player is not
+     * realigned, or it would be re-seeked every tick.
+     */
+    const val END_TOLERANCE_MS = 1_500L
 
     /** Room position at [serverNow]; held at positionMs until a future anchor. */
     fun expectedPosition(room: RoomState, entry: QueueEntry, serverNow: Long): Long {
@@ -111,7 +117,9 @@ object RitmeSyncPlanner {
             }
             !p.isPlaying -> {
                 if (!justLoaded && local.playWhenReady) ops += PlayerOp.Pause
-                if (!justLoaded && !live && abs(drift) > PAUSED_ALIGN_MS) ops += PlayerOp.SeekTo(expected)
+                val endWindow = entry.durationMs - END_TOLERANCE_MS
+                val heldAtEnd = local.ended || (expected >= endWindow && local.positionMs >= endWindow)
+                if (!justLoaded && !live && !heldAtEnd && abs(drift) > PAUSED_ALIGN_MS) ops += PlayerOp.SeekTo(expected)
                 if (local.speed != DriftCorrector.NORMAL) ops += PlayerOp.SetSpeed(DriftCorrector.NORMAL)
             }
             justLoaded -> {

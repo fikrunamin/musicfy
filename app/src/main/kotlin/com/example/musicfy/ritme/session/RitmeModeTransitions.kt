@@ -13,8 +13,8 @@ sealed interface RitmeTransition {
 /** When the playback bridge enters and leaves "Ritme mode". Reconnecting stays in the mode. */
 object RitmeModeTransitions {
     fun next(inRitme: Boolean, state: RitmeUiState): RitmeTransition = when {
-        !inRitme && state.phase == RitmePhase.IN_ROOM -> RitmeTransition.Enter
-        inRitme && state.phase != RitmePhase.IN_ROOM -> RitmeTransition.Exit(state.ended)
+        !inRitme && state.inRoom -> RitmeTransition.Enter
+        inRitme && !state.inRoom -> RitmeTransition.Exit(state.ended)
         else -> RitmeTransition.None
     }
 }

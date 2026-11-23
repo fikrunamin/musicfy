@@ -31,4 +31,9 @@ class RitmeModeTransitionsTest {
         val state = RitmeUiState(phase = RitmePhase.ENDED, ended = EndReason.Unreachable)
         assertEquals(RitmeTransition.None, RitmeModeTransitions.next(false, state))
     }
+
+    @Test
+    fun aRoomPhaseWithoutARoomIsNotARoom() {
+        assertEquals(RitmeTransition.None, RitmeModeTransitions.next(false, RitmeUiState(phase = RitmePhase.IN_ROOM, room = null)))
+    }
 }

@@ -171,4 +171,23 @@ class RitmeSyncPlannerTest {
         val queueChanged = room.copy(version = 2, queue = room.queue + entry("e3"))
         assertEquals(emptyList<PlayerOp>(), plan(queueChanged, 20_000, local(pos = 4_000, pwr = false), lastKey = keyAt(room, 20_000)).ops)
     }
+
+    @Test
+    fun aRoomStoppedAtTheEndOfTheQueueDoesNotSeekEveryTick() {
+        // the server stops at the end as Playback(false, durationMs, now); the real stream is a
+        // little shorter than the rounded duration, so the player sits short of it
+        val stopped = room(version = 3, queue = listOf(e1), currentEntryId = "e1", playback = Playback(false, 200_000, 216_000))
+        assertEquals(emptyList<PlayerOp>(), plan(stopped, 216_000, local(pos = 199_400, ended = true)).ops)
+        assertEquals(emptyList<PlayerOp>(), plan(stopped, 217_000, local(pos = 199_400, ended = true), lastKey = keyAt(stopped, 217_000)).ops)
+        // paused just short of the end (not ended): ExoPlayer clamps a seek there, so do not ask again
+        assertEquals(emptyList<PlayerOp>(), plan(stopped, 217_000, local(pos = 199_400), lastKey = keyAt(stopped, 217_000)).ops)
+    }
+
+    @Test
+    fun aRoomPausedNearTheEndStillAlignsAPlayerThatIsFarAway() {
+        val stopped = room(queue = listOf(e1), currentEntryId = "e1", playback = Playback(false, 200_000, 216_000))
+        assertEquals(listOf(PlayerOp.SeekTo(200_000)), plan(stopped, 217_000, local(pos = 150_000), lastKey = keyAt(stopped, 217_000)).ops)
+        val nearEnd = room(queue = listOf(e1), currentEntryId = "e1", playback = Playback(false, 199_000, 216_000))
+        assertEquals(listOf(PlayerOp.SeekTo(199_000)), plan(nearEnd, 217_000, local(pos = 150_000), lastKey = keyAt(nearEnd, 217_000)).ops)
+    }
 }
