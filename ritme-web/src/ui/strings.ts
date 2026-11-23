@@ -45,6 +45,8 @@ export const t = {
   shareText: 'Yuk dengar bareng di Ritme',
   reconnecting: 'Menyambung ulang…',
   members: (n: number) => `${n} anggota`,
+  /** Desktop room header: "Tersinkron · 3 anggota" (the count stands in for the avatar stack). */
+  statusWithMembers: (status: string, n: number) => `${status} · ${n} anggota`,
   nowPlaying: 'Sedang diputar',
   nothingPlaying: 'Belum ada lagu. Tambahkan lagu untuk mulai.',
   addedBy: (name: string) => `oleh ${name}`,

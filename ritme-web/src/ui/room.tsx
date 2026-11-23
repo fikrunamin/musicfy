@@ -53,14 +53,22 @@ export function RoomScreen({ session, state, prefs }: Props) {
   const [adding, setAdding] = useState(false);
   const [showingMembers, setShowingMembers] = useState(false);
   const desktop = useMediaQuery(DESKTOP_QUERY);
+  const main = useRef<HTMLElement>(null);
+  const title = useRef<HTMLHeadingElement>(null);
+  const crossed = useRef(false);
   // Crossing the breakpoint closes any sheet: on desktop its content is inline, and a phone that
-  // was a desktop a moment ago should not find a sheet it never opened.
+  // was a desktop a moment ago should not find a sheet it never opened. Focus that was in a part
+  // that is gone now (the right column on the way to a phone) goes to the title, not to <body>.
   useEffect(() => {
     setAdding(false);
     setShowingMembers(false);
+    if (!crossed.current) {
+      crossed.current = true;
+      return;
+    }
+    const focused = document.activeElement;
+    if (!focused || focused === document.body || !focused.isConnected) title.current?.focus();
   }, [desktop]);
-  const main = useRef<HTMLElement>(null);
-  const title = useRef<HTMLHeadingElement>(null);
   /**
    * Where focus goes when the sheet closes and the "Tambah lagu" that opened it is gone: the one
    * shown now (the empty state's and the queue header's are different buttons), else the title.
@@ -81,8 +89,10 @@ export function RoomScreen({ session, state, prefs }: Props) {
     if (!document.activeElement || document.activeElement === document.body) title.current?.focus();
   }, [adding, mayAdd]);
 
-  /** Desktop "Tambah lagu": the add panel is already there; go to its field. */
-  const focusAdd = () => main.current?.querySelector<HTMLElement>('.add-panel-inline input')?.focus();
+  /** Desktop "Tambah lagu": the add panel is already there; it goes to its Lagu tab and song search. */
+  const [addFocus, setAddFocus] = useState(0);
+  const focusAdd = () => setAddFocus((n) => n + 1);
+  const onShare = () => void share(room.code, session);
 
   return (
     <>
@@ -104,7 +114,7 @@ export function RoomScreen({ session, state, prefs }: Props) {
               <p class="room-status">
                 <SyncDot state={online ? 'online' : 'reconnecting'} />
                 {/* Desktop: "Tersinkron · 3 anggota", the count standing in for the avatar stack. */}
-                <span>{[online ? t.synced : t.reconnecting, desktop && t.members(room.members.length)].filter(Boolean).join(' · ')}</span>
+                <span>{desktop ? t.statusWithMembers(online ? t.synced : t.reconnecting, room.members.length) : online ? t.synced : t.reconnecting}</span>
               </p>
             </div>
             {!desktop && (
@@ -114,11 +124,11 @@ export function RoomScreen({ session, state, prefs }: Props) {
               </button>
             )}
             {desktop ? (
-              <Button icon="ios_share" class="room-share" onClick={() => void share(room.code, session)}>
+              <Button icon="ios_share" class="room-share" onClick={onShare}>
                 {t.share}
               </Button>
             ) : (
-              <IconButton icon="ios_share" label={t.share} variant="filled" onClick={() => void share(room.code, session)} />
+              <IconButton icon="ios_share" label={t.share} variant="filled" onClick={onShare} />
             )}
           </header>
 
@@ -131,7 +141,7 @@ export function RoomScreen({ session, state, prefs }: Props) {
         </div>
         {desktop && (
           <div class="room-col room-side">
-            {mayAdd && <SearchPanel session={session} online={online} pageIsHttps={https} variant="panel" />}
+            {mayAdd && <SearchPanel session={session} online={online} pageIsHttps={https} variant="panel" focusRequest={addFocus} />}
             <MembersPanel session={session} room={room} memberId={memberId} online={online} variant="panel" />
           </div>
         )}

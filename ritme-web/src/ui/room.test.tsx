@@ -104,6 +104,28 @@ describe('RoomScreen across the desktop breakpoint', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('moves focus to the room title when the focused right column goes away on a phone', () => {
+    const { cross } = renderRoom(true);
+    // Mounting does not move focus anywhere.
+    expect(document.activeElement).toBe(document.body);
+    const leave = screen.getByRole('button', { name: 'Keluar Ritme' });
+    leave.focus();
+    expect(document.activeElement).toBe(leave);
+    cross(false);
+    expect(leave.isConnected).toBe(false);
+    expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1 }));
+  });
+
+  it('leaves focus where it is when it survives the crossing', () => {
+    const { cross } = renderRoom(true);
+    const pause = screen.getByRole('button', { name: 'Jeda' });
+    pause.focus();
+    cross(false);
+    expect(document.activeElement).toBe(pause);
+    cross(true);
+    expect(document.activeElement).toBe(pause);
+  });
+
   it('closes a kick confirmation open in the desktop members panel when the window becomes a phone', () => {
     const { cross } = renderRoom(true);
     fireEvent.click(screen.getByRole('button', { name: 'Keluarkan: Sari' }));
@@ -153,6 +175,20 @@ describe('RoomScreen on desktop', () => {
     expect(document.activeElement).toBe(screen.getByLabelText('Cari lagu'));
   });
 
+  it('"Tambah lagu" goes back to the Lagu tab before focusing the song search', () => {
+    renderRoom(true);
+    const add = screen.getByRole('region', { name: 'Tambah ke antrean' });
+    fireEvent.click(within(add).getByRole('tab', { name: 'Video' }));
+    expect(within(add).getByRole('tab', { name: 'Video' }).getAttribute('aria-selected')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Tambah lagu' }));
+    expect(within(add).getByRole('tab', { name: 'Lagu' }).getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(within(add).getByLabelText('Cari lagu'));
+    // Again, with Lagu already selected: still the song search.
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.click(screen.getByRole('button', { name: 'Tambah lagu' }));
+    expect(document.activeElement).toBe(within(add).getByLabelText('Cari lagu'));
+  });
+
   it('hides the add panel while the host keeps guests from adding', () => {
     const locked = { ...playingRoom, settings: { guestsCanControl: true, guestsCanAdd: false } };
     const media = stubMatchMedia({ [DESKTOP_QUERY]: true });
@@ -169,7 +205,10 @@ describe('RoomScreen on desktop', () => {
     const main = document.querySelector('main.room')!;
     expect(main.classList.contains('room-desktop')).toBe(true);
     const cols = [...main.children].filter((c) => c.classList.contains('room-col'));
-    expect(cols.map((c) => c.classList[1])).toEqual(['room-left', 'room-queue', 'room-side']);
+    expect(cols).toHaveLength(3);
+    expect(cols[0].classList.contains('room-left')).toBe(true);
+    expect(cols[1].classList.contains('room-queue')).toBe(true);
+    expect(cols[2].classList.contains('room-side')).toBe(true);
     expect(cols[0].querySelector('.now-playing .stage')).toBeTruthy();
     expect(cols[0].querySelector('.room-header')).toBeTruthy();
     expect(cols[1].querySelector('section[aria-labelledby="queue-title"]')).toBeTruthy();

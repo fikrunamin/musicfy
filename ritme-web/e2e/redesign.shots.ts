@@ -16,6 +16,26 @@ test.afterEach(async ({ context }) => endRooms(context));
 
 const tap = (page: Page) => page.getByRole('button', { name: 'Ketuk untuk ikut dengar' }).click();
 
+/** A fresh Lagu tab in the desktop add panel: the fixture's searches leave "x" and its results there. */
+async function clearInlineSearch(page: Page) {
+  const panel = page.getByRole('region', { name: 'Tambah ke antrean' });
+  await panel.getByRole('tab', { name: 'Video' }).click();
+  await panel.getByRole('tab', { name: 'Lagu' }).click();
+  await expect(panel.getByLabel('Cari lagu')).toHaveValue('');
+  await expect(panel.locator('.add-results')).toHaveCount(0);
+}
+
+/** The seek bar, its times and previous/play/next sit wholly inside the window, without scrolling. */
+async function expectTransportOnScreen(page: Page) {
+  const now = page.locator('section.now-playing');
+  await expect(now.getByRole('slider', { name: 'Posisi lagu' })).toBeInViewport({ ratio: 1 });
+  for (const time of await now.locator('.np-times > span').all()) await expect(time).toBeInViewport({ ratio: 1 });
+  await expect(now.getByRole('button', { name: 'Sebelumnya', exact: true })).toBeInViewport({ ratio: 1 });
+  await expect(now.getByRole('button', { name: /^(Jeda|Putar)$/ })).toBeInViewport({ ratio: 1 });
+  await expect(now.getByRole('button', { name: 'Berikutnya', exact: true })).toBeInViewport({ ratio: 1 });
+  expect(await page.locator('.room-left').evaluate((el) => el.scrollTop)).toBe(0);
+}
+
 test('A home, B invite @home', async ({ page }, info) => {
   await page.goto('/');
   await shot(page, info, 'A-home');
@@ -44,6 +64,7 @@ test('C+E desktop room: before start, listen, remote @desktop', async ({ context
   await expect(a.locator('main.room-desktop')).toHaveCount(1);
   // The columns scroll on their own; the page itself fits the window.
   expect(await a.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(900);
+  await clearInlineSearch(a);
   await shot(a, info, 'C-desktop-before-start');
   await tap(a);
   await expect(a.locator('.player [data-testid="fake-yt"]')).toHaveCount(1);
@@ -61,6 +82,22 @@ test('C+E desktop room: before start, listen, remote @desktop', async ({ context
 
   await a.getByRole('button', { name: 'Mode remote' }).click();
   await shot(a, info, 'D-desktop-remote');
+
+  // A 1366 x 768 laptop's browser window (about 650 px of page): the stage shrinks to what the
+  // window leaves, so the whole transport stays on screen in both modes.
+  await a.setViewportSize({ width: 1366, height: 650 });
+  await expect(a.locator('main.room-desktop')).toHaveCount(1);
+  await expectTransportOnScreen(a);
+  await a.getByRole('button', { name: 'Mode dengar' }).click();
+  await expectTransportOnScreen(a);
+  const stage = await a.locator('.stage').boundingBox();
+  expect(Math.min(stage!.width, stage!.height)).toBeGreaterThanOrEqual(200);
+  await shot(a, info, 'C-desktop-short');
+  // A 1440 x 900 MacBook's browser window (about 780 px of page).
+  await a.setViewportSize({ width: 1440, height: 780 });
+  await expectTransportOnScreen(a);
+  await a.getByRole('button', { name: 'Mode remote' }).click();
+  await expectTransportOnScreen(a);
 });
 
 test('toast, confirm dialog @overlays', async ({ context }, info) => {
@@ -132,7 +169,13 @@ test('G members sheet: host and guest @members', async ({ context }, info) => {
   await expect(host.getByRole('button', { name: 'Keluarkan: Sari' })).toBeVisible();
   await shot(a, info, 'G-members-host');
   const guest = await showMembers(b);
-  await expect(guest.getByText('Bagikan kode')).toBeVisible();
+  // The phone sheet has the share card; the desktop panel leaves sharing to the header's "Bagikan".
+  if (info.project.name.startsWith('desktop')) {
+    await expect(guest.getByText('Bagikan kode')).toBeHidden();
+    await expect(b.locator('.room-header').getByRole('button', { name: 'Bagikan' })).toBeVisible();
+  } else {
+    await expect(guest.getByText('Bagikan kode')).toBeVisible();
+  }
   await expect(guest.getByRole('switch')).toHaveCount(0);
   await shot(b, info, 'G-members-guest');
 });

@@ -1,4 +1,5 @@
-import { useRef, useState } from 'preact/hooks';
+import type { RefObject } from 'preact';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { probeMedia } from '../net/media-probe';
 import { type SearchResult, searchSongs, toNewEntry, validThumbnail } from '../net/search';
 import type { SessionApi } from '../session/session';
@@ -18,6 +19,8 @@ interface Props {
   onClose?: () => void;
   /** sheet: inside the phone's "Tambah lagu" sheet. panel: inline in the desktop room's right column. */
   variant?: 'sheet' | 'panel';
+  /** Each new value selects the Lagu tab and focuses the song search (desktop "Tambah lagu"). */
+  focusRequest?: number;
   /** Injected in tests. */
   fetchImpl?: typeof fetch;
   probe?: typeof probeMedia;
@@ -56,10 +59,25 @@ function tabForKey(key: string, i: number): Tab | null {
  * one tab stop (roving tabindex), arrows wrap, Home/End jump. Only the selected panel's content
  * is mounted, so leaving a tab cancels its lookups as before.
  */
-export function SearchPanel({ session, online, pageIsHttps = true, onClose, variant = 'sheet', fetchImpl, probe }: Props) {
+export function SearchPanel({ session, online, pageIsHttps = true, onClose, variant = 'sheet', focusRequest = 0, fetchImpl, probe }: Props) {
   const inline = variant === 'panel';
   const [tab, setTab] = useState<Tab>('songs');
   const tabs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
+  const search = useRef<HTMLInputElement>(null);
+
+  // A focus request selects Lagu first: the song search is mounted only while its tab is selected,
+  // so the focus waits for the render that mounts it.
+  const focusWanted = useRef(false);
+  useEffect(() => {
+    if (focusRequest === 0) return;
+    focusWanted.current = true;
+    setTab('songs');
+  }, [focusRequest]);
+  useEffect(() => {
+    if (!focusWanted.current || tab !== 'songs') return;
+    focusWanted.current = false;
+    search.current?.focus();
+  });
 
   const onKeyDown = (e: KeyboardEvent) => {
     const focused = TABS.findIndex((x) => tabs.current[x.id] === e.target);
@@ -100,7 +118,7 @@ export function SearchPanel({ session, online, pageIsHttps = true, onClose, vari
         <div key={x.id} id={panelId(x.id)} class="add-tabpanel" role="tabpanel" aria-labelledby={tabId(x.id)} hidden={tab !== x.id}>
           {tab === x.id &&
             (x.id === 'songs' ? (
-              <SongSearch session={session} online={online} inline={inline} fetchImpl={fetchImpl} />
+              <SongSearch session={session} online={online} inline={inline} inputRef={search} fetchImpl={fetchImpl} />
             ) : (
               <AddVideoPanel session={session} online={online} pageIsHttps={pageIsHttps} fetchImpl={fetchImpl} probe={probe} />
             ))}
@@ -120,7 +138,19 @@ export function SearchPanel({ session, online, pageIsHttps = true, onClose, vari
 
 /** Search submits on Enter/button only (the server allows 30 searches per minute per IP). */
 /** inline (desktop panel): the field shows only its search icon, and each result adds with a round "+". */
-function SongSearch({ session, online, inline, fetchImpl }: { session: SessionApi; online: boolean; inline: boolean; fetchImpl?: typeof fetch }) {
+function SongSearch({
+  session,
+  online,
+  inline,
+  inputRef,
+  fetchImpl,
+}: {
+  session: SessionApi;
+  online: boolean;
+  inline: boolean;
+  inputRef?: RefObject<HTMLInputElement>;
+  fetchImpl?: typeof fetch;
+}) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -153,6 +183,7 @@ function SongSearch({ session, online, inline, fetchImpl }: { session: SessionAp
           id="search-input"
           label={t.searchLabel}
           hideLabel={inline}
+          inputRef={inputRef}
           leadingIcon="search"
           type="search"
           value={query}
@@ -189,7 +220,7 @@ function SongSearch({ session, online, inline, fetchImpl }: { session: SessionAp
                   <>
                     <IconButton icon="playlist_play" class="add-next" label={`${t.playNext}: ${r.title}`} disabled={!online} onClick={() => add(r, true)} />
                     {inline ? (
-                      <IconButton icon="add" variant="accent" class="add-one-round" label={`${t.addToQueue}: ${r.title}`} disabled={!online} onClick={() => add(r, false)} />
+                      <IconButton icon="add" variant="accent" label={`${t.addToQueue}: ${r.title}`} disabled={!online} onClick={() => add(r, false)} />
                     ) : (
                       <Button class="add-one" disabled={!online} aria-label={`${t.addToQueue}: ${r.title}`} onClick={() => add(r, false)}>
                         {t.addToQueue}

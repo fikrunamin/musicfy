@@ -15,7 +15,7 @@
   height: 100vh;
   height: 100dvh;
   margin: 0;
-  padding: 24px;
+  padding: 24px 24px 16px;
   display: grid;
   grid-template-columns: minmax(320px, 440px) minmax(300px, 1fr) minmax(300px, 360px);
   grid-template-rows: auto minmax(0, 1fr);
@@ -44,15 +44,30 @@
   overscroll-behavior: contain;
 }
 
-/* Room for focus rings inside the scroll box of the unboxed left column. */
+/*
+ * Room for focus rings inside the scroll box of the unboxed left column. The column is tighter
+ * than the others (12 px), so the transport fits under the stage on short windows.
+ * --stage-base: the heights in this column other than the stage, from the rules below: the page's
+ * 24 px top and 16 px bottom, header 44, mode switch 52, label row 18 (13 px x 1.4), title and
+ * source 60 (28 x 1.15 + 4 + 17 x 1.4), seek bar 44, controls 64, and the gaps between them
+ * (12 + 12 + 12 + 12 + 8 + 8): 386, rounded up. The listen tip under the controls may scroll.
+ * Change it together with any of those heights.
+ */
 .room-desktop .room-left {
   margin: -4px;
   padding: 4px;
+  gap: 12px;
+  --stage-base: 388px;
+}
+
+/* The reconnect banner (32) and its 16 px margin replace the page's 24 px top. */
+.room-desktop > .reconnect-banner + .room-left {
+  --stage-banner: 24px;
 }
 
 /* Header: logo, "Ritme · CODE" over "Tersinkron · N anggota", and the "Bagikan" pill. */
 .room-desktop .room-header {
-  min-height: 52px;
+  min-height: var(--target);
 }
 
 .room-logo {
@@ -70,11 +85,58 @@
 }
 
 .room-desktop .now-playing {
-  gap: 14px;
+  gap: 12px;
 }
 
-/* Times beside the bar: 1:24 ──────── 3:41. */
+/*
+ * The stage takes what the window leaves (the transport under it stays on screen at 1366 x 650
+ * and 1440 x 780), never more than the column and never less than the 200 px the YouTube player
+ * needs. Square: width = height. 16:9: width = 16/9 of the height left. Centred in the column.
+ * Only the width changes: the stage and the player in it keep their place in the tree.
+ */
+.room-desktop .stage {
+  --stage-chrome: calc(var(--stage-base) + var(--stage-banner, 0px) + var(--stage-extra, 0px) + var(--stage-warning, 0px));
+  margin-inline: auto;
+}
+
+.room-desktop .stage-square {
+  width: min(100%, max(200px, calc(100vh - var(--stage-chrome))));
+  width: min(100%, max(200px, calc(100dvh - var(--stage-chrome))));
+}
+
+.room-desktop .stage-wide {
+  width: min(100%, max(calc(200px * 16 / 9), calc((100vh - var(--stage-chrome)) * 16 / 9)));
+  width: min(100%, max(calc(200px * 16 / 9), calc((100dvh - var(--stage-chrome)) * 16 / 9)));
+}
+
+/*
+ * What can appear around the stage: the remote hint under the switch (10 + one 13 px line at
+ * 440 px), or in listen mode the tap hint under the stage (12 + 15 x 1.4), and the unplayable
+ * warning under the title (4 + 13 x 1.4). Browsers without :has() keep the base budget.
+ */
+.room-desktop .np-remote {
+  --stage-extra: 30px;
+}
+
+.room-desktop .now-playing:has(> .np-hint) {
+  --stage-extra: 34px;
+}
+
+.room-desktop .now-playing:has(.np-warning) {
+  --stage-warning: 24px;
+}
+
+/* One line each: the full title is in the queue's "Sedang diputar" row beside it. */
+.room-desktop .np-title,
+.room-desktop .np-sub {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Times beside the bar: 1:24 ──────── 3:41. The 44 px input is mostly air: 8 px to its neighbours. */
 .room-desktop .np-progress {
+  margin-block: -4px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -104,6 +166,11 @@
 .room-desktop .np-controls {
   justify-content: center;
   gap: 40px;
+}
+
+.room-desktop .np-controls .icon-btn-lg {
+  width: 64px;
+  height: 64px;
 }
 
 .room-desktop .np-slot {
@@ -159,4 +226,19 @@
 
 .add-panel-inline .add-results .row-trailing {
   gap: 4px;
+}
+
+/* A compact "Cari" (still the 52 px .btn, so 44 px and more), so the field keeps its placeholder at 1024 px. */
+.add-panel-inline .add-search {
+  gap: 8px;
+}
+
+.add-panel-inline .add-search .btn {
+  padding: 0 16px;
+  font-size: var(--fs-body);
+}
+
+/* The header's "Bagikan" shares on desktop; the card would push the members below the fold. */
+.room-side .share-card {
+  display: none;
 }
