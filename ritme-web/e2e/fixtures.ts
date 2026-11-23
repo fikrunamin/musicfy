@@ -102,3 +102,29 @@ export async function openRoom(context: BrowserContext): Promise<{ a: Page; b: P
   await expectMember(a, 'Sari');
   return { a, b, code };
 }
+
+/**
+ * Ends the room from whichever page of `context` is its host ("Akhiri Ritme untuk semua"), so a
+ * long run of scenarios stays under the server's live-rooms-per-IP limit (Limits.MAX_ROOMS_PER_IP).
+ * Best effort: a page that is not in a room, or not the host, is skipped.
+ */
+export async function endRooms(context: BrowserContext) {
+  for (const page of context.pages()) {
+    try {
+      await page.keyboard.press('Escape'); // an open confirm dialog makes the rest of the page inert
+      await closeSheet(page);
+      if ((await page.getByRole('heading', { level: 1, name: /^Ritme · / }).count()) === 0) continue;
+      const members = await showMembers(page);
+      const end = members.getByRole('button', { name: 'Akhiri Ritme untuk semua' });
+      if ((await end.count()) === 0) {
+        await closeSheet(page);
+        continue;
+      }
+      await end.click({ timeout: 3000 });
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Akhiri', exact: true }).click({ timeout: 3000 });
+      await expect(page.getByRole('heading', { level: 1, name: /^Ritme · / })).toHaveCount(0, { timeout: 3000 });
+    } catch {
+      // Leave it to the server's idle cleanup.
+    }
+  }
+}

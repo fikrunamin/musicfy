@@ -1,5 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
-import { addSong, closeSheet, isolate, openRoom, showMembers } from './fixtures';
+import { addSong, closeSheet, endRooms, isolate, openRoom, showMembers } from './fixtures';
 import { SHOT_SONGS, shot, withArtwork } from './shots';
 
 /**
@@ -10,6 +10,9 @@ test.beforeEach(async ({ context }) => {
   await isolate(context, SHOT_SONGS);
   await withArtwork(context);
 });
+
+// Every scenario opens a room; end it so the run stays under the server's rooms-per-IP limit.
+test.afterEach(async ({ context }) => endRooms(context));
 
 const tap = (page: Page) => page.getByRole('button', { name: 'Ketuk untuk ikut dengar' }).click();
 
