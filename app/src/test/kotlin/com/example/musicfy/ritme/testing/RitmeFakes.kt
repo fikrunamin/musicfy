@@ -1,5 +1,9 @@
 package com.example.musicfy.ritme.testing
 
+import com.example.musicfy.ritme.LocalPlayOrder
+import com.example.musicfy.ritme.RitmeLocalPlayback
+import com.example.musicfy.ritme.RitmeNotifier
+import com.example.musicfy.ritme.RitmeToast
 import com.example.musicfy.ritme.net.ConnectionEvent
 import com.example.musicfy.ritme.net.ConnectionLike
 import com.example.musicfy.ritme.net.ConnectionStatus
@@ -155,4 +159,31 @@ class FakeConnector : RitmeConnector {
 
     override fun connect(url: String, onEvent: (ConnectionEvent) -> Unit): ConnectionLike =
         FakeConnection(url, onEvent).also { connections += it }
+}
+
+class FakeNotifier : RitmeNotifier {
+    val shown = mutableListOf<RitmeToast>()
+    override fun show(toast: RitmeToast) {
+        shown += toast
+    }
+}
+
+class FakeLocalPlayback : RitmeLocalPlayback {
+    override var isPlayingLocally = false
+    override var isCasting = false
+    var resumed = 0
+    var pausedLocally = 0
+    var order = LocalPlayOrder(emptyList(), 0, 0)
+
+    override fun resumeLocally() {
+        resumed++
+        isPlayingLocally = true
+    }
+
+    override fun pauseLocally() {
+        pausedLocally++
+        isPlayingLocally = false
+    }
+
+    override fun playOrderQueue(): LocalPlayOrder = order
 }

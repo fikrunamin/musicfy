@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ritme_reconnecting">Menyambung ulang…</string>
+
+    <string name="ritme_toast_queue_saved">Antrean kamu disimpan, dan akan kembali setelah keluar dari Ritme</string>
+    <string name="ritme_toast_unavailable">Tidak tersedia saat Ritme</string>
+    <string name="ritme_toast_locked">Host mengunci kontrol</string>
+    <string name="ritme_toast_paused_locally">Dijeda di perangkat ini saja</string>
+    <string name="ritme_toast_casting">Hentikan cast untuk memakai Ritme</string>
+    <plurals name="ritme_toast_added">
+        <item quantity="other">%d lagu ditambahkan ke Ritme</item>
+    </plurals>
+    <plurals name="ritme_toast_skipped_local">
+        <item quantity="other">%d lagu lokal dilewati</item>
+    </plurals>
+    <string name="ritme_toast_kicked">Kamu dikeluarkan dari Ritme</string>
+    <string name="ritme_toast_closed">Ritme diakhiri host</string>
+    <string name="ritme_toast_lost">Terputus dari Ritme</string>
+    <string name="ritme_toast_forbidden">Tidak diizinkan di Ritme ini</string>
+    <string name="ritme_toast_queue_full">Antrean Ritme penuh</string>
+
+    <string name="ritme_error_unreachable">Tidak bisa terhubung ke server Ritme</string>
+    <string name="ritme_error_not_found">Room tidak ditemukan</string>
+    <string name="ritme_error_full">Room penuh</string>
+    <string name="ritme_error_upgrade">Perbarui aplikasi untuk bergabung</string>
+    <string name="ritme_error_rate_limited">Terlalu banyak percobaan. Coba lagi sebentar lagi</string>
+    <string name="ritme_error_invalid">Periksa nama dan kodenya</string>
+    <string name="ritme_error_generic">Terjadi kesalahan</string>
+</resources>

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Ritme: listen together. Indonesian copy lives in values-in/ritme_strings.xml. -->
+    <string name="ritme_name" translatable="false">Ritme</string>
+    <string name="ritme_reconnecting">Reconnecting…</string>
+
+    <string name="ritme_toast_queue_saved">Your queue is saved and comes back when you leave Ritme</string>
+    <string name="ritme_toast_unavailable">Not available during Ritme</string>
+    <string name="ritme_toast_locked">The host locked the controls</string>
+    <string name="ritme_toast_paused_locally">Paused on this device only</string>
+    <string name="ritme_toast_casting">Stop casting to use Ritme</string>
+    <plurals name="ritme_toast_added">
+        <item quantity="one">Added %d song to Ritme</item>
+        <item quantity="other">Added %d songs to Ritme</item>
+    </plurals>
+    <plurals name="ritme_toast_skipped_local">
+        <item quantity="one">%d local song skipped</item>
+        <item quantity="other">%d local songs skipped</item>
+    </plurals>
+    <string name="ritme_toast_kicked">You were removed from Ritme</string>
+    <string name="ritme_toast_closed">The host ended Ritme</string>
+    <string name="ritme_toast_lost">Disconnected from Ritme</string>
+    <string name="ritme_toast_forbidden">Not allowed in this Ritme</string>
+    <string name="ritme_toast_queue_full">The Ritme queue is full</string>
+
+    <string name="ritme_error_unreachable">Can\'t reach the Ritme server</string>
+    <string name="ritme_error_not_found">Room not found</string>
+    <string name="ritme_error_full">Room is full</string>
+    <string name="ritme_error_upgrade">Update the app to join</string>
+    <string name="ritme_error_rate_limited">Too many attempts. Try again in a moment</string>
+    <string name="ritme_error_invalid">Check the name and the code</string>
+    <string name="ritme_error_generic">Something went wrong</string>
+</resources>

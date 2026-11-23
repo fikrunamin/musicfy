@@ -1,6 +1,11 @@
 package com.example.musicfy.di
 
+import android.content.Context
 import android.os.Looper
+import com.example.musicfy.ritme.DataStoreRitmeSettings
+import com.example.musicfy.ritme.RitmeNotifier
+import com.example.musicfy.ritme.RitmeSettings
+import com.example.musicfy.ritme.TopToastRitmeNotifier
 import com.example.musicfy.ritme.net.DefaultRitmeConnector
 import com.example.musicfy.ritme.net.HandlerRitmeTimers
 import com.example.musicfy.ritme.net.OkHttpRitmeSocketFactory
@@ -10,6 +15,7 @@ import com.example.musicfy.ritme.session.RitmeThreadCheck
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -39,4 +45,12 @@ object RitmeModule {
             .build()
         return DefaultRitmeConnector(OkHttpRitmeSocketFactory(client, timers), timers)
     }
+
+    @Provides
+    @Singleton
+    fun provideRitmeNotifier(@ApplicationContext context: Context): RitmeNotifier = TopToastRitmeNotifier(context)
+
+    @Provides
+    @Singleton
+    fun provideRitmeSettings(@ApplicationContext context: Context): RitmeSettings = DataStoreRitmeSettings(context)
 }
