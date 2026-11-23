@@ -130,7 +130,7 @@ object Limits {
 
     const val SEARCH_PER_MINUTE = 30
 
-    /** All upstream (uncached) searches together; beyond this /api/search answers 503. */
+    /** All uncached InnerTube calls together, search and video info (UpstreamBudget); beyond this both endpoints answer 503. */
     const val SEARCH_GLOBAL_PER_MINUTE = 300
     const val SEARCH_MAX_QUERY_LENGTH = 200
 }

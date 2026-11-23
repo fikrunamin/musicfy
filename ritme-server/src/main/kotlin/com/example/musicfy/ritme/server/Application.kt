@@ -34,7 +34,9 @@ class ServerDeps(
     val config: ServerConfig,
     val clock: Clock = SystemClock,
     val ids: IdGen = SecureIdGen(),
-    val search: SearchService = SearchService(InnerTubeSearchBackend(defaultHttpClient()), clock),
+    /** Uncached InnerTube calls of every endpoint together (300/min). */
+    val upstreamBudget: UpstreamBudget = UpstreamBudget(clock = clock),
+    val search: SearchService = SearchService(InnerTubeSearchBackend(defaultHttpClient()), clock, budget = upstreamBudget),
     val socketLimits: SocketLimits = SocketLimits(),
     val peerStats: PeerStats = PeerStats(),
     val stateBudget: StateBudget = StateBudget(),
@@ -124,7 +126,7 @@ fun Application.ritmeModule(deps: ServerDeps) {
                 deps.search.search(query)
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: SearchOverloadedException) {
+            } catch (_: UpstreamOverloadedException) {
                 call.respond(HttpStatusCode.ServiceUnavailable)
                 return@get
             } catch (e: Exception) {

@@ -20,8 +20,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 
 @Serializable
 data class SearchResult(
@@ -132,55 +130,23 @@ object InnerTubeSearchParser {
     private fun JsonElement?.asString(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
 }
 
-/** The global upstream budget is spent: the endpoint answers 503. */
-class SearchOverloadedException : RuntimeException("search upstream budget exhausted")
-
 /**
- * Cached, single-flight search. Identical uncached queries running at the same time share one
- * upstream call, and all upstream calls together stay under [globalPerMinute].
+ * Cached, single-flight search: identical uncached queries running at the same time share one
+ * upstream call, and every uncached query spends a token of the [budget] that video info shares.
  */
 class SearchService(
     private val backend: SearchBackend,
-    private val clock: Clock,
-    private val ttlMs: Long = 10 * 60_000L,
-    private val maxEntries: Int = 1_000,
+    clock: Clock,
+    ttlMs: Long = 10 * 60_000L,
+    maxEntries: Int = 1_000,
     globalPerMinute: Int = Limits.SEARCH_GLOBAL_PER_MINUTE,
+    budget: UpstreamBudget = UpstreamBudget(globalPerMinute, clock),
 ) {
-    private class Cached(val at: Long, val results: List<SearchResult>)
-
-    private val lock = Any()
-    private val cache = object : LinkedHashMap<String, Cached>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Cached>): Boolean = size > maxEntries
-    }
-    private val inFlight = HashMap<String, CompletableDeferred<List<SearchResult>>>()
-    private val upstream = RateLimiter(globalPerMinute, globalPerMinute / 60.0, clock)
+    private val cache = SingleFlightCache<String, List<SearchResult>>(clock, budget, maxEntries) { ttlMs }
 
     suspend fun search(query: String): List<SearchResult> {
-        val key = query.trim().lowercase()
-        val call = CompletableDeferred<List<SearchResult>>()
-        val shared = synchronized(lock) {
-            cache[key]?.takeIf { clock.now() - it.at < ttlMs }?.let { return it.results }
-            inFlight[key] ?: run {
-                if (!upstream.tryAcquire()) throw SearchOverloadedException()
-                inFlight[key] = call
-                null
-            }
-        }
-        if (shared != null) return shared.await()
-        try {
-            val results = InnerTubeSearchParser.parse(backend.fetch(query.trim())).take(MAX_RESULTS)
-            synchronized(lock) {
-                cache[key] = Cached(clock.now(), results)
-                inFlight.remove(key)
-            }
-            call.complete(results)
-            return results
-        } catch (e: Throwable) {
-            synchronized(lock) { inFlight.remove(key) }
-            // Waiters get a plain failure (502), never this caller's cancellation.
-            call.completeExceptionally(if (e is CancellationException) IllegalStateException("search cancelled") else e)
-            throw e
-        }
+        val trimmed = query.trim()
+        return cache.get(trimmed.lowercase()) { InnerTubeSearchParser.parse(backend.fetch(trimmed)).take(MAX_RESULTS) }
     }
 
     companion object {
