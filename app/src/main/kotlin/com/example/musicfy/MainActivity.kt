@@ -1105,12 +1105,17 @@ class MainActivity : ComponentActivity() {
                                             modifier = Modifier.launchRise(order = 3),
                                         )
 
-                                        // "Ritme · N" just above the mini player while the player is collapsed (spec 3.4)
+                                        // "Ritme · N" just above the mini player while the player is collapsed (spec 3.4).
+                                        // It floats over whatever page is open, so it sits on the menus' solid row
+                                        // surface (MenuRowSurface, as the popup sheets' rows) instead of the open
+                                        // player's translucent chip fill. Only the fill changes, so its measured height
+                                        // (ritmePillHeight, reserved in playerAwareWindowInsets) is the same.
                                         com.example.musicfy.ui.screens.ritme.RitmePill(
                                             alphaProvider = {
                                                 if (playerBottomSheetState.isDismissed) 0f
                                                 else (1f - playerBottomSheetState.progress / 0.3f).coerceIn(0f, 1f)
                                             },
+                                            containerColor = com.example.musicfy.ui.player.menu.MenuRowSurface,
                                             modifier = Modifier
                                                 .align(Alignment.BottomCenter)
                                                 .padding(bottom = bottomInset + navPadding + MiniPlayerHeight + RitmePillGap)
