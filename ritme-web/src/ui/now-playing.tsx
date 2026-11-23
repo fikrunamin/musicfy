@@ -10,6 +10,7 @@ import { formatMs } from './format';
 import { useServerNow } from './hooks';
 import { Icon } from './icon';
 import { ListenStage, type Mode } from './listen';
+import { Crossfade } from './motion';
 import { VideoPlaceholder } from './media';
 import { t } from './strings';
 
@@ -27,19 +28,32 @@ interface Props {
 
 const LOCKED_HINT_ID = 'controls-locked-hint';
 
+/** A CSS url() for an https thumbnail: the parsed href has no raw quote or newline; backslashes are encoded too. */
+const cssUrl = (src: string) => `url("${new URL(src).href.replace(/\\/g, '%5C')}")`;
+
 /** What the stage shows when there is no player to show (remote mode, before the tap, nothing playing). */
-function Cover({ entry, gated }: { entry: QueueEntry | null; gated: boolean }) {
+function CoverLayer({ entry, gated, entering }: { entry: QueueEntry | null; gated: boolean; entering: boolean }) {
+  const fade = entering && 'xfade-in';
   if (!entry) {
     // Under the tap gate the icon would only show as an arc around the button, so leave it out.
-    return <div class="stage-empty">{!gated && <Icon name="album" size={56} />}</div>;
+    return <div class={cx('stage-empty', fade)}>{!gated && <Icon name="album" size={56} />}</div>;
   }
   const src = httpsThumbnail(entry.thumbnailUrl);
-  if (src) return <img key={entry.entryId} class="stage-cover" src={src} alt="" referrerpolicy="no-referrer" />;
-  if (entry.kind === 'URL') return <VideoPlaceholder domain={displayHostOf(entry.url) ?? entry.artist} />;
+  if (src) return <img class={cx('stage-cover', fade)} src={src} alt="" referrerpolicy="no-referrer" />;
+  if (entry.kind === 'URL') return <VideoPlaceholder domain={displayHostOf(entry.url) ?? entry.artist} class={fade || undefined} />;
   return (
-    <div class="stage-empty">
+    <div class={cx('stage-empty', fade)}>
       <Icon name={isVideoEntry(entry) ? 'smart_display' : 'music_note'} size={56} />
     </div>
+  );
+}
+
+/** The cover, crossfading (600 ms) to the next one when the song changes. */
+function Cover({ entry, gated }: { entry: QueueEntry | null; gated: boolean }) {
+  return (
+    <Crossfade value={entry} keyOf={(e) => e?.entryId ?? ''}>
+      {(e, entering) => <CoverLayer entry={e} gated={gated} entering={entering} />}
+    </Crossfade>
   );
 }
 
@@ -82,6 +96,7 @@ export function NowPlaying({ session, room, memberId, unplayable, online, pageIs
   const label = entry ? unplayableLabel(entry, unplayable, pageIsHttps) : null;
   const playing = room.playback.isPlaying;
   const cover = <Cover entry={entry} gated={mode === 'listen'} />;
+  const stageArt = entry ? httpsThumbnail(entry.thumbnailUrl) : null;
 
   return (
     <section class={cx('now-playing', `np-${mode}`)} aria-labelledby="now-title">
@@ -98,7 +113,10 @@ export function NowPlaying({ session, room, memberId, unplayable, online, pageIs
         )}
       </div>
 
-      <div class={cx('stage', wide ? 'stage-wide' : 'stage-square')}>
+      {/* The artwork is also the stage's own background, under everything: when the tap gate opens,
+          the player fades in (400 ms, its own opacity) over it, so the cover crossfades to the
+          player with nothing laid on top of the player. */}
+      <div class={cx('stage', wide ? 'stage-wide' : 'stage-square')} style={stageArt ? { backgroundImage: cssUrl(stageArt) } : undefined}>
         {mode === 'listen' ? (
           <ListenStage
             session={session}

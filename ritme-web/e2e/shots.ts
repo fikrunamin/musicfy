@@ -6,11 +6,18 @@ export function shotPath(info: TestInfo, name: string): string {
   return `test-results/redesign/${process.env.SHOTS_SET ?? 'after'}/${info.project.name}/${name}.png`;
 }
 
-/** Full-page screenshot once fonts and images settled. */
+/**
+ * Full-page screenshot once fonts and images settled. The flow runs with motion; for the capture
+ * itself the page switches to reduced motion, so endless motion (marquee, equalizer, sync pulse,
+ * spinner) rests in its still state and every PNG is deterministic. Motion comes back afterwards.
+ */
 export async function shot(page: Page, info: TestInfo, name: string) {
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(700); // crossfades (600 ms) and the sheet (280 ms) finish
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
   await page.screenshot({ path: shotPath(info, name), fullPage: true });
+  await page.emulateMedia({ reducedMotion: null });
 }
 
 /** Six songs with distinct artwork, served below as SVG gradients (no network). */

@@ -17,6 +17,13 @@
   transform: scale(1.4);
 }
 
+/* No artwork: the plain page colour, so it can fade in over the previous artwork. */
+.backdrop-blank {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+}
+
 .backdrop::after {
   content: '';
   position: absolute;
@@ -179,6 +186,9 @@
   background: var(--surface2);
   /* YouTube: the player is at least 200 x 200 px. */
   min-height: 200px;
+  /* The current artwork (inline style), under everything: the player fades in over it. */
+  background-size: cover;
+  background-position: center;
 }
 
 .stage-square {
@@ -204,6 +214,8 @@
   display: grid;
   place-items: center;
   color: var(--muted);
+  /* Opaque, so it can fade in over the previous cover. */
+  background: var(--surface2);
 }
 
 .player {

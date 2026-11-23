@@ -1,5 +1,7 @@
 import type { ComponentChildren, JSX, Ref } from 'preact';
+import { useRef } from 'preact/hooks';
 import { Icon, type IconName } from './icon';
+import { useMarquee } from './motion';
 import { t } from './strings';
 
 /** Joins the truthy class names. */
@@ -160,10 +162,16 @@ export function EqBars({ playing }: { playing: boolean }) {
   );
 }
 
-/** One-line meta ("Meta Clip"): cut with an ellipsis; motion.css may scroll it (marquee). */
-export function MetaClip({ children }: { children: ComponentChildren }) {
+/**
+ * One-line meta ("Meta Clip"): cut with an ellipsis at rest. When it is cut, motion.css scrolls
+ * it to the end and back (marquee): by itself with `marquee="auto"` (the "Sedang diputar" row),
+ * on hover or focus of the row otherwise; never with reduced motion (DECISIONS 3).
+ */
+export function MetaClip({ children, marquee = 'hover' }: { children: ComponentChildren; marquee?: 'auto' | 'hover' }) {
+  const clip = useRef<HTMLSpanElement>(null);
+  const motion = useMarquee(clip, marquee === 'auto');
   return (
-    <span class="meta-clip">
+    <span ref={clip} class="meta-clip" {...motion}>
       <span class="meta-track">
         {typeof children === 'string' || typeof children === 'number' ? <span>{children}</span> : children}
       </span>

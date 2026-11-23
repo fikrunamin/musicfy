@@ -1,0 +1,196 @@
+/*
+ * Motion (handoff "Gerak", DECISIONS 3). Everything that moves sits in a
+ * prefers-reduced-motion: no-preference block, so reduced motion leaves the page still and every
+ * change immediate; base.css keeps the global kill switch on top of that.
+ *
+ * Sheets: nothing here gives .sheet or .sheet-layer a transform, filter, perspective or
+ * will-change. The kick/end ConfirmDialog is a position: fixed layer inside the members sheet,
+ * and any of those on an ancestor would pin it to the sheet instead of the viewport. The sheet
+ * rises by `top` (relative offset), which creates no containing block.
+ *
+ * The YouTube player is never covered: it fades in by its own opacity, over the artwork the stage
+ * carries as its background (now-playing.tsx).
+ */
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* From one layer height below its place: the sheet starts fully out of view (max-height < 100%). */
+@keyframes sheet-in {
+  from {
+    top: 100%;
+  }
+}
+
+@keyframes player-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes eq-bounce {
+  from {
+    transform: scaleY(0.3);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes sync-pulse {
+  from {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  to {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+@keyframes status-spin {
+  from {
+    transform: rotate(45deg);
+  }
+  to {
+    transform: rotate(405deg);
+  }
+}
+
+/*
+ * One cycle is twice --marquee-duration (one pass at ~30 px/s, at least 4 s; motion.tsx): rest at
+ * the start, scroll to the end, pause, come back.
+ */
+@keyframes marquee {
+  0%, 20% {
+    transform: translateX(0);
+  }
+  70%, 90% {
+    transform: translateX(calc(-1 * var(--marquee-distance)));
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Sheet naik 280 ms ease-out; the scrim fades in with it. */
+  .sheet {
+    animation: sheet-in 280ms ease-out;
+  }
+
+  .sheet-scrim {
+    animation: fade-in 280ms ease-out;
+  }
+
+  .dialog {
+    animation: dialog-in 200ms ease-out;
+  }
+
+  .toast {
+    animation: toast-in 200ms ease-out;
+  }
+
+  /* Cover to player: 400 ms, every time the player is shown (display: none restarts it). */
+  .player {
+    animation: player-in 400ms ease-out;
+  }
+
+  /* Crossfade: the new cover or backdrop fades in over the old one (motion.tsx keeps it 600 ms). */
+  .xfade-in {
+    animation: fade-in 600ms ease;
+  }
+
+  /* Equalizer: moves only while the room plays. */
+  .eq[data-playing='true'] i {
+    animation: eq-bounce 900ms ease-in-out infinite alternate;
+  }
+
+  .eq[data-playing='true'] i:nth-child(2) {
+    animation-duration: 700ms;
+    animation-delay: -200ms;
+  }
+
+  .eq[data-playing='true'] i:nth-child(3) {
+    animation-duration: 1100ms;
+    animation-delay: -500ms;
+  }
+
+  .eq[data-playing='true'] i:nth-child(4) {
+    animation-duration: 800ms;
+    animation-delay: -350ms;
+  }
+
+  /* The sync dot pulses every 2 s. */
+  .sync-dot {
+    position: relative;
+  }
+
+  .sync-dot::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: inherit;
+    animation: sync-pulse 2s ease-out infinite;
+  }
+
+  /* The connecting ring (status.css draws it). */
+  .status-ring {
+    animation: status-spin 1s linear infinite;
+  }
+
+  /* Marquee: no ellipsis while it runs; .meta-clip still clips. */
+  .meta-clip[data-marquee='auto'] > .meta-track,
+  .meta-clip[data-marquee='hover']:hover > .meta-track,
+  .row:hover .meta-clip[data-marquee='hover'] > .meta-track,
+  .row:focus-within .meta-clip[data-marquee='hover'] > .meta-track {
+    overflow: visible;
+    text-overflow: clip;
+    animation: marquee calc(var(--marquee-duration) * 2) linear infinite;
+  }
+
+  .meta-clip[data-marquee='auto'] > .meta-track > :last-child,
+  .meta-clip[data-marquee='hover']:hover > .meta-track > :last-child,
+  .row:hover .meta-clip[data-marquee='hover'] > .meta-track > :last-child,
+  .row:focus-within .meta-clip[data-marquee='hover'] > .meta-track > :last-child {
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  /* Small state changes. */
+  .btn,
+  .icon-btn,
+  .segmented button {
+    transition: background-color 150ms ease, color 150ms ease, opacity 150ms ease;
+  }
+
+  .played-toggle .icon {
+    transition: transform 200ms ease;
+  }
+
+  .seek::-webkit-slider-thumb {
+    transition: opacity 150ms ease;
+  }
+
+  .seek::-moz-range-thumb {
+    transition: opacity 150ms ease;
+  }
+}

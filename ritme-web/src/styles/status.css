@@ -65,18 +65,4 @@
   gap: 12px;
 }
 
-@keyframes status-spin {
-  from {
-    transform: rotate(45deg);
-  }
-  to {
-    transform: rotate(405deg);
-  }
-}
-
-/* Reduced motion: the ring stays still (base.css also switches every animation off). */
-@media (prefers-reduced-motion: no-preference) {
-  .status-ring {
-    animation: status-spin 1s linear infinite;
-  }
-}
+/* The ring turns in motion.css, only when motion is allowed. */

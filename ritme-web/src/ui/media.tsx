@@ -43,9 +43,9 @@ export function Thumb({ url, wide = false, kind, duration = null }: ThumbProps) 
  * The dark 16:9 frame for a direct link without a thumbnail (handoff "Placeholder Video"): film
  * icon and domain, with an optional badge (top left) and duration (bottom right).
  */
-export function VideoPlaceholder({ domain, badge, duration }: { domain: string; badge?: ComponentChildren; duration?: string | null }) {
+export function VideoPlaceholder({ domain, badge, duration, class: cls }: { domain: string; badge?: ComponentChildren; duration?: string | null; class?: string }) {
   return (
-    <div class="video-placeholder">
+    <div class={cx('video-placeholder', cls)}>
       {badge && <span class="vp-badge">{badge}</span>}
       <Icon name="movie" size={32} />
       <span class="vp-domain">{domain}</span>
@@ -78,7 +78,7 @@ export function MediaRow({ thumb, title, meta, warning, trailing, below, current
         {thumb}
         <div class="row-text">
           <span class="row-title">{title}</span>
-          {warning ? <span class="row-warning">{warning}</span> : <MetaClip>{meta}</MetaClip>}
+          {warning ? <span class="row-warning">{warning}</span> : <MetaClip marquee={current ? 'auto' : 'hover'}>{meta}</MetaClip>}
         </div>
         {trailing && <div class="row-trailing">{trailing}</div>}
       </div>

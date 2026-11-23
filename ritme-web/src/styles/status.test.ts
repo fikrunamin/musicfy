@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(new URL('./status.css', import.meta.url), 'utf8');
 const base = readFileSync(new URL('./base.css', import.meta.url), 'utf8');
+const motion = readFileSync(new URL('./motion.css', import.meta.url), 'utf8');
 const imports = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 
 /** The body of the first `@media <query> { … }` block (balanced braces). */
@@ -24,12 +25,13 @@ describe('status.css', () => {
   });
 
   it('turns the connecting ring only when motion is allowed', () => {
-    const allowed = mediaBlock(css, '(prefers-reduced-motion: no-preference)');
+    // The spin lives with the rest of the motion (motion.css), behind the same media query.
+    const allowed = mediaBlock(motion, '(prefers-reduced-motion: no-preference)');
     expect(allowed).not.toBeNull();
     expect(allowed).toMatch(/\.status-ring\s*\{[^}]*animation:\s*status-spin\b/);
-    // Outside that block nothing animates: reduced motion leaves a still ring.
-    const outside = css.replace(`@media (prefers-reduced-motion: no-preference) {${allowed}}`, '');
-    expect(outside).not.toMatch(/animation(-name)?\s*:/);
+    expect(motion).toMatch(/@keyframes status-spin\s*\{[^@]*rotate\(45deg\)[^@]*rotate\(405deg\)/);
+    // status.css itself never animates: reduced motion leaves a still ring.
+    expect(css).not.toMatch(/animation(-name)?\s*:|@keyframes/);
     // And the global reset still switches every animation off.
     expect(mediaBlock(base, '(prefers-reduced-motion: reduce)')).toMatch(/animation:\s*none\s*!important/);
   });

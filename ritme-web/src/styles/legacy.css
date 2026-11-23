@@ -148,9 +148,3 @@
   white-space: nowrap;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .btn,
-  .icon-btn {
-    transition: background-color 120ms ease, color 120ms ease;
-  }
-}
