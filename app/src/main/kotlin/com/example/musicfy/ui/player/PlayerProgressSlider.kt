@@ -50,6 +50,7 @@ import com.example.musicfy.LocalPlayerConnection
 import com.example.musicfy.constants.PlayerHorizontalPadding
 import com.example.musicfy.ui.component.PlayerSliderTrack
 import com.example.musicfy.utils.makeTimeString
+import com.example.musicfy.ritme.RitmeLocalAction
 
 @Composable
 fun PlayerProgressSlider(
@@ -128,7 +129,9 @@ fun PlayerProgressSlider(
             valueRange = 0f..(if (progress.duration == C.TIME_UNSET || progress.duration <= 0L) 0f else progress.duration.toFloat()),
             onValueChange = { sliderPosition = it.toLong() },
             onValueChangeFinished = {
-                sliderPosition?.let { playerConnection.player.seekTo(it) }
+                sliderPosition?.let { position ->
+                    playerConnection.ritmeOr(RitmeLocalAction.Seek(position)) { playerConnection.player.seekTo(position) }
+                }
                 sliderPosition = null
             },
             interactionSource = trackInteractionSource,

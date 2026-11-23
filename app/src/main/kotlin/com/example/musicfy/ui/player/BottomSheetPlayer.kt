@@ -108,6 +108,7 @@ import com.example.musicfy.utils.rememberPreference
 import kotlin.math.abs
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
+import com.example.musicfy.ritme.RitmeLocalAction
 
 /**
  * How far the controls are pulled up over the artwork.
@@ -565,6 +566,8 @@ fun BottomSheetPlayer(
 
         // what the round buttons do: the side button by the chevron and the chevron's menu, each
         // set to one of these in the editor
+        val ritmeActive by playerConnection.ritmeGate.active.collectAsState()
+        val ritme = com.example.musicfy.ui.screens.ritme.rememberRitme()
         fun menuActionActive(action: com.example.musicfy.ui.player.studio.PlayerMenuAction): Boolean = when (action) {
             com.example.musicfy.ui.player.studio.PlayerMenuAction.LIKE -> trackInfo.liked
             com.example.musicfy.ui.player.studio.PlayerMenuAction.SLEEP_TIMER -> playerConnection.service.sleepTimer.isActive
@@ -584,13 +587,18 @@ fun BottomSheetPlayer(
                 }
                 com.example.musicfy.ui.player.studio.PlayerMenuAction.SLEEP_TIMER -> showSleepTimer = true
                 com.example.musicfy.ui.player.studio.PlayerMenuAction.SEE_VIDEO -> seeVideo = !seeVideo
-                com.example.musicfy.ui.player.studio.PlayerMenuAction.REPEAT -> playerConnection.player.toggleRepeatMode()
+                com.example.musicfy.ui.player.studio.PlayerMenuAction.REPEAT ->
+                    playerConnection.ritmeOr(RitmeLocalAction.Repeat) { playerConnection.player.toggleRepeatMode() }
                 com.example.musicfy.ui.player.studio.PlayerMenuAction.SHUFFLE ->
-                    playerConnection.player.shuffleModeEnabled = !playerConnection.player.shuffleModeEnabled
+                    playerConnection.ritmeOr(RitmeLocalAction.Shuffle) {
+                        playerConnection.player.shuffleModeEnabled = !playerConnection.player.shuffleModeEnabled
+                    }
                 com.example.musicfy.ui.player.studio.PlayerMenuAction.LYRICS -> transition.open(PlayerPage.LYRICS)
                 com.example.musicfy.ui.player.studio.PlayerMenuAction.QUEUE -> transition.open(PlayerPage.QUEUE)
-                com.example.musicfy.ui.player.studio.PlayerMenuAction.SPEED -> showPlaybackSpeed = true
+                com.example.musicfy.ui.player.studio.PlayerMenuAction.SPEED ->
+                    playerConnection.ritmeOr(RitmeLocalAction.Speed) { showPlaybackSpeed = true }
                 com.example.musicfy.ui.player.studio.PlayerMenuAction.OUTPUT -> showDeviceOutput = true
+                com.example.musicfy.ui.player.studio.PlayerMenuAction.RITME -> ritme.controller.openSheet()
             }
         }
 
@@ -690,11 +698,22 @@ fun BottomSheetPlayer(
                     lyricsProgressProvider = { lyricsProgress },
                     sheetProgressProvider = progressProvider,
                 )
+                // "Ritme · N" at the top of the open player (spec 3.4). Gone on the lyrics/queue
+                // pages, where the cover and title morph into that spot (like LikedLabel, flagship only).
+                if (playerStyle.flagshipFamily) com.example.musicfy.ui.screens.ritme.RitmePill(
+                    alphaProvider = { ((progressProvider() - 0.5f) * 2f).coerceIn(0f, 1f) * (1f - lyricsProgress) },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = statusBarTopInset + 4.dp),
+                )
             },
-            onDismiss = {
-                playerConnection.service.clearAutomix()
-                playerConnection.player.stop()
-                playerConnection.player.clearMediaItems()
+            // In a Ritme room the player holds the room's item: it cannot be swiped away (leave from the Ritme sheet).
+            onDismiss = if (ritmeActive) null else {
+                {
+                    playerConnection.service.clearAutomix()
+                    playerConnection.player.stop()
+                    playerConnection.player.clearMediaItems()
+                }
             },
             collapsedContent = {},
         ) {
@@ -802,7 +821,22 @@ fun BottomSheetPlayer(
                 )
             }
 
-            if (queuePageMounted && sheetShowing) {
+            if (queuePageMounted && sheetShowing && ritmeActive) {
+                // In a Ritme room the queue page shows the room's queue (spec 3.4).
+                com.example.musicfy.ui.screens.ritme.RitmeQueuePage(
+                    onClose = { transition.close() },
+                    navController = navController,
+                    // QueueScreen's own insets, so the room's rows fade into the seek bar the same way.
+                    contentBottomInset = lyricsBottomInset,
+                    controlsClearance = QueueButtonColumnHeight + 12.dp - SeekBarLift,
+                    likeBurst = likeBurst,
+                    morph = morph,
+                    onImmersiveChange = { queueImmersive = it },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pageTransitionLayer(PlayerPage.QUEUE, transition, morph) { queuePageProgress },
+                )
+            } else if (queuePageMounted && sheetShowing) {
                 QueueScreen(
                     onClose = { transition.close() },
                     // Fades into the seek bar like the lyrics; rows run under the chevron/shuffle/
@@ -1018,9 +1052,12 @@ fun BottomSheetPlayer(
                                         icon = R.drawable.shuffle,
                                         tint = if (shuffleOn) Color.White else Color.White.copy(alpha = 0.85f),
                                         containerColor = if (shuffleOn) Color.White.copy(alpha = 0.32f) else Color.White.copy(alpha = 0.15f),
-                                        onClick = { playerConnection.player.shuffleModeEnabled = !shuffleOn },
+                                        onClick = {
+                                            playerConnection.ritmeOr(RitmeLocalAction.Shuffle) { playerConnection.player.shuffleModeEnabled = !shuffleOn }
+                                        },
                                         hasShadow = false,
-                                        modifier = Modifier.graphicsLayer { alpha = queuePageProgress },
+                                        // dimmed in a Ritme room (spec 3.4)
+                                        modifier = Modifier.graphicsLayer { alpha = queuePageProgress * (if (ritmeActive) 0.38f else 1f) },
                                     )
                                 }
                             }

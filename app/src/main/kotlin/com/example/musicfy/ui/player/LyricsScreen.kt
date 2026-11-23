@@ -119,6 +119,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.example.musicfy.ritme.RitmeLocalAction
 
 private const val ActiveLineViewportFraction = 0.055f
 
@@ -734,7 +735,9 @@ fun LyricsScreen(
                                     onClick = {
                                         // Untimed lines have nowhere to seek to.
                                         if (!unsynced) {
-                                            playerConnection.player.seekTo(entry.time)
+                                            playerConnection.ritmeOr(RitmeLocalAction.Seek(entry.time)) {
+                                                playerConnection.player.seekTo(entry.time)
+                                            }
                                             followPlayback = true
                                         }
                                     },

@@ -61,6 +61,7 @@ import com.example.musicfy.constants.playerStyleRotatedKey
 import com.example.musicfy.utils.rememberPreference
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import com.example.musicfy.ritme.RitmeLocalAction
 
 /**
  * Whether a style takes touches: only on the open player. Collapsed into the mini pill the style
@@ -253,11 +254,13 @@ fun TransportCircles(tones: StyleTones, size: Dp = 30.dp, vertical: Boolean = fa
             tones = tones,
             size = size,
             onClick = {
-                if (transport.playbackState == Player.STATE_ENDED) {
-                    connection.player.seekTo(0, 0)
-                    connection.player.playWhenReady = true
-                } else {
-                    connection.togglePlayPause()
+                connection.ritmeOr(RitmeLocalAction.TogglePlayPause) {
+                    if (transport.playbackState == Player.STATE_ENDED) {
+                        connection.player.seekTo(0, 0)
+                        connection.player.playWhenReady = true
+                    } else {
+                        connection.togglePlayPause()
+                    }
                 }
             },
         )

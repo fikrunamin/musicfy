@@ -95,6 +95,7 @@ import com.example.musicfy.utils.makeTimeString
 import com.example.musicfy.utils.rememberPreference
 import com.example.musicfy.viewmodels.AlbumViewModel
 import com.music.innertube.models.AlbumItem
+import com.example.musicfy.ritme.RitmeLocalAction
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -250,8 +251,8 @@ fun AlbumScreen(
                 isPlaying = isThisAlbum && isPlaying,
                 onPlayClick = {
                     when {
-                        isThisAlbum && isPlaying -> playerConnection.player.pause()
-                        isThisAlbum -> playerConnection.player.play()
+                        isThisAlbum && isPlaying -> playerConnection.ritmeOr(RitmeLocalAction.Pause) { playerConnection.player.pause() }
+                        isThisAlbum -> playerConnection.ritmeOr(RitmeLocalAction.Play) { playerConnection.player.play() }
                         else -> play()
                     }
                 },

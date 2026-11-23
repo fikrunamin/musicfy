@@ -74,7 +74,7 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 private val RowArtSize = 44.dp
 
 /** How far a finger has to scroll one way before the controls hide or come back. */
-private const val ImmersiveScrollPx = 24f
+internal const val ImmersiveScrollPx = 24f
 
 /** The artwork's top inside a 60dp row - where the card's artwork grows to. */
 private val RowArtTop = (60.dp - RowArtSize) / 2
@@ -138,7 +138,6 @@ fun QueueScreen(
     val queueItems = snapshot.items
     val currentIndex = snapshot.currentIndex
     val queueTitle = snapshot.title
-    val trackInfo by playerConnection.uiState.trackInfo.collectAsState()
     val haptic = LocalHapticFeedback.current
 
     val playerRows = remember(queueItems, currentIndex) { buildQueueRows(queueItems, currentIndex) }
@@ -252,40 +251,8 @@ fun QueueScreen(
     val density = androidx.compose.ui.platform.LocalDensity.current
 
     Column(modifier = modifier.fillMaxSize()) {
-        // Same box as the lyrics header: the cover is drawn here by the morph layer, so this only
-        // holds its hitbox. The like button moved up here from the button column, which carries
-        // shuffle and autoplay on this page.
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(start = LyricsHeaderArtX, end = PlayerHorizontalPadding)
-                .padding(top = LyricsHeaderArtTopFromStatusBar, bottom = 10.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(LyricsHeaderArtSize)
-                    .clip(RoundedCornerShape(10.dp))
-                    // With the controls hidden, the first tap brings them back; the next closes.
-                    .clickable { if (immersive) immersive = false else onClose() },
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            PressScaleActionButton(
-                icon = if (trackInfo.liked) R.drawable.ic_untitled_heart else R.drawable.ic_untitled_heart_unfill,
-                tint = if (trackInfo.liked) Color.White else Color.White.copy(alpha = 0.85f),
-                containerColor = if (trackInfo.liked) Color.White.copy(alpha = 0.30f) else Color.White.copy(alpha = 0.15f),
-                onClick = {
-                    if (likeBurst != null) {
-                        likeBurst.likeFromButton(LikeSlot.QUEUE, trackInfo.liked, playerConnection::toggleLike)
-                    } else {
-                        playerConnection.toggleLike()
-                    }
-                },
-                hasShadow = false,
-                modifier = Modifier.likeButtonTarget(likeBurst, LikeSlot.QUEUE),
-            )
-        }
+        // With the controls hidden, the first tap on the cover brings them back; the next closes.
+        QueuePageHeader(likeBurst = likeBurst, onArtClick = { if (immersive) immersive = false else onClose() })
 
         LazyColumn(
             state = listState,
@@ -297,32 +264,9 @@ fun QueueScreen(
                 // under the button column; the bottom padding above lets the last ones clear it.
                 // With the controls hidden it runs on to the bottom of the screen. Read while
                 // measuring, so the 420ms slide doesn't recompose the page every frame.
-                .layout { measurable, constraints ->
-                    val inset = (contentBottomInset * (1f - immersion)).roundToPx().coerceAtLeast(0)
-                    val placeable = measurable.measure(
-                        constraints.copy(
-                            minHeight = (constraints.minHeight - inset).coerceAtLeast(0),
-                            maxHeight = (constraints.maxHeight - inset).coerceAtLeast(0),
-                        )
-                    )
-                    layout(placeable.width, placeable.height + inset) { placeable.place(0, 0) }
-                }
+                .queueListBottomInset(contentBottomInset) { immersion }
                 .nestedScroll(scrollWatcher)
-                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                .drawWithCache {
-                    val top = (ListTopFade.toPx() / size.height).coerceIn(0f, 0.5f)
-                    val bottom = 1f - (ListBottomFade.toPx() / size.height).coerceIn(0f, 0.5f)
-                    val fade = Brush.verticalGradient(
-                        0f to Color.Transparent,
-                        top to Color.Black,
-                        bottom to Color.Black,
-                        1f to Color.Transparent,
-                    )
-                    onDrawWithContent {
-                        drawContent()
-                        drawRect(brush = fade, blendMode = BlendMode.DstIn)
-                    }
-                },
+                .queueListEdgeFade(),
         ) {
             itemsIndexed(
                 items = rows,
@@ -708,3 +652,82 @@ private fun NowPlayingIndicator() {
         modifier = Modifier.fillMaxSize(),
     )
 }
+
+/**
+ * The queue page's header: the box the morphing cover lands in (its hitbox only; the morph layer
+ * draws the cover and title) and the like button. Shared with RitmeQueuePage so the room's queue
+ * page wears the same header.
+ */
+@Composable
+internal fun QueuePageHeader(likeBurst: LikeBurstState?, onArtClick: () -> Unit) {
+    val playerConnection = LocalPlayerConnection.current ?: return
+    val trackInfo by playerConnection.uiState.trackInfo.collectAsState()
+    // Same box as the lyrics header: the cover is drawn here by the morph layer, so this only
+    // holds its hitbox. The like button moved up here from the button column, which carries
+    // shuffle and autoplay on this page.
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(start = LyricsHeaderArtX, end = PlayerHorizontalPadding)
+            .padding(top = LyricsHeaderArtTopFromStatusBar, bottom = 10.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(LyricsHeaderArtSize)
+                .clip(RoundedCornerShape(10.dp))
+                .clickable(onClick = onArtClick),
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        PressScaleActionButton(
+            icon = if (trackInfo.liked) R.drawable.ic_untitled_heart else R.drawable.ic_untitled_heart_unfill,
+            tint = if (trackInfo.liked) Color.White else Color.White.copy(alpha = 0.85f),
+            containerColor = if (trackInfo.liked) Color.White.copy(alpha = 0.30f) else Color.White.copy(alpha = 0.15f),
+            onClick = {
+                if (likeBurst != null) {
+                    likeBurst.likeFromButton(LikeSlot.QUEUE, trackInfo.liked, playerConnection::toggleLike)
+                } else {
+                    playerConnection.toggleLike()
+                }
+            },
+            hasShadow = false,
+            modifier = Modifier.likeButtonTarget(likeBurst, LikeSlot.QUEUE),
+        )
+    }
+}
+
+/**
+ * Ends the list at the top of the seek bar ([contentBottomInset] from the bottom), or runs it on to
+ * the bottom of the screen as [immersion] goes to 1. Read while measuring, so the 420ms slide
+ * doesn't recompose the page every frame.
+ */
+internal fun Modifier.queueListBottomInset(contentBottomInset: Dp, immersion: () -> Float): Modifier =
+    layout { measurable, constraints ->
+        val inset = (contentBottomInset * (1f - immersion())).roundToPx().coerceAtLeast(0)
+        val placeable = measurable.measure(
+            constraints.copy(
+                minHeight = (constraints.minHeight - inset).coerceAtLeast(0),
+                maxHeight = (constraints.maxHeight - inset).coerceAtLeast(0),
+            )
+        )
+        layout(placeable.width, placeable.height + inset) { placeable.place(0, 0) }
+    }
+
+/** The list's edges: a short fade in under the header, a long one out into the seek bar. */
+internal fun Modifier.queueListEdgeFade(): Modifier = this
+    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithCache {
+        val top = (ListTopFade.toPx() / size.height).coerceIn(0f, 0.5f)
+        val bottom = 1f - (ListBottomFade.toPx() / size.height).coerceIn(0f, 0.5f)
+        val fade = Brush.verticalGradient(
+            0f to Color.Transparent,
+            top to Color.Black,
+            bottom to Color.Black,
+            1f to Color.Transparent,
+        )
+        onDrawWithContent {
+            drawContent()
+            drawRect(brush = fade, blendMode = BlendMode.DstIn)
+        }
+    }

@@ -54,6 +54,7 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
+import com.example.musicfy.ritme.RitmeLocalAction
 
 /*
  * The arm, in fractions of the box's width (the record is laid out the same way, see
@@ -196,7 +197,9 @@ fun TurntableArm(
                         }
                     }
 
-                    player.seekTo(scrubMs.longValue.coerceIn(0L, duration))
+                    val target = scrubMs.longValue.coerceIn(0L, duration)
+                    val c = currentConnection
+                    if (c != null) c.ritmeOr(RitmeLocalAction.Seek(target)) { player.seekTo(target) } else player.seekTo(target)
                     dragging[0] = false
                     scope.launch {
                         delay(450)

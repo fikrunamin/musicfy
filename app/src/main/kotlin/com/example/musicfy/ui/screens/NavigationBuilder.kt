@@ -361,6 +361,10 @@ fun NavGraphBuilder.navigationBuilder(
         com.example.musicfy.ui.screens.settings.CrossmixSettingsScreen(navController = navController)
     }
 
+    composable("ritme_settings") {
+        com.example.musicfy.ui.screens.settings.RitmeSettingsScreen(navController = navController)
+    }
+
     composable("developer_space") {
         com.example.musicfy.ui.screens.settings.devspace.DeveloperSpaceScreen(navController = navController)
     }

@@ -68,6 +68,7 @@ import com.example.musicfy.ui.component.NewActionGrid
 import com.example.musicfy.ui.component.VolumeSlider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import com.example.musicfy.ritme.RitmeLocalAction
 
 @Composable
 fun OldPlayerMenu(
@@ -300,7 +301,9 @@ fun OldPlayerMenu(
                                     )
                                 },
                                 onClick = {
-                                    playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled
+                                    playerConnection.ritmeOr(RitmeLocalAction.Shuffle) {
+                                        playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled
+                                    }
                                     onDismiss()
                                 }
                             )
@@ -403,7 +406,7 @@ fun OldPlayerMenu(
                                     )
                                 },
                                 onClick = {
-                                    playerConnection.player.toggleRepeatMode()
+                                    playerConnection.ritmeOr(RitmeLocalAction.Repeat) { playerConnection.player.toggleRepeatMode() }
                                 }
                             )
                         )
@@ -532,7 +535,7 @@ fun OldPlayerMenu(
                                 )
                             },
                             onClick = {
-                                showPitchTempoDialog = true
+                                playerConnection.ritmeOr(RitmeLocalAction.Speed) { showPitchTempoDialog = true }
                             }
                         )
                     )

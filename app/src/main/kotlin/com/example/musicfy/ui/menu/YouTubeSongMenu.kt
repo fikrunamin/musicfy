@@ -102,6 +102,8 @@ fun YouTubeSongMenu(
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val librarySong by database.song(song.id).collectAsState(initial = null)
+    val ritme = com.example.musicfy.ui.screens.ritme.rememberRitme()
+    val ritmeActive by playerConnection.ritmeGate.active.collectAsState()
     val downloadUtil = LocalDownloadUtil.current
 
     val download by remember(downloadUtil, song.id) {
@@ -357,6 +359,21 @@ fun YouTubeSongMenu(
                             },
                             onClick = {
                                 playerConnection.addToQueue(song.toMediaItem())
+                                onDismiss()
+                            }
+                        )
+                    } else null,
+                    if (com.example.musicfy.ritme.RitmeConfig.ENABLED && !ritmeActive) {
+                        Material3MenuItemData(
+                            title = { Text(text = stringResource(R.string.ritme_start_with_this)) },
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.group),
+                                    contentDescription = null,
+                                )
+                            },
+                            onClick = {
+                                ritme.controller.openStartWith(listOf(song.toMediaMetadata()))
                                 onDismiss()
                             }
                         )

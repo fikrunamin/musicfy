@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Ritme: listen together. Indonesian copy lives in values-in/ritme_strings.xml. -->
+    <string name="ritme_name" translatable="false">Ritme</string>
+    <string name="ritme_reconnecting">Reconnecting…</string>
+
+    <string name="ritme_toast_queue_saved">Your queue is saved and comes back when you leave Ritme</string>
+    <string name="ritme_toast_unavailable">Not available during Ritme</string>
+    <string name="ritme_toast_locked">The host locked the controls</string>
+    <string name="ritme_toast_paused_locally">Paused on this device only</string>
+    <string name="ritme_toast_casting">Stop casting to use Ritme</string>
+    <string name="ritme_toast_casting_stopped">Ritme stopped because casting started</string>
+    <plurals name="ritme_toast_added">
+        <item quantity="one">Added %d song to Ritme</item>
+        <item quantity="other">Added %d songs to Ritme</item>
+    </plurals>
+    <plurals name="ritme_toast_skipped_local">
+        <item quantity="one">%d local song skipped</item>
+        <item quantity="other">%d local songs skipped</item>
+    </plurals>
+    <string name="ritme_toast_kicked">You were removed from Ritme</string>
+    <string name="ritme_toast_closed">The host ended Ritme</string>
+    <string name="ritme_toast_lost">Disconnected from Ritme</string>
+    <string name="ritme_toast_forbidden">Not allowed in this Ritme</string>
+    <string name="ritme_toast_queue_full">The Ritme queue is full</string>
+
+    <string name="ritme_error_unreachable">Can\'t reach the Ritme server</string>
+    <string name="ritme_error_not_found">Room not found</string>
+    <string name="ritme_error_full">Room is full</string>
+    <string name="ritme_error_upgrade">Update the app to join</string>
+    <string name="ritme_error_rate_limited">Too many attempts. Try again in a moment</string>
+    <string name="ritme_error_invalid">Check the name and the code</string>
+    <string name="ritme_error_generic">Something went wrong</string>
+    <string name="ritme_start">Start Ritme</string>
+    <string name="ritme_start_desc">Listen together with friends, in sync</string>
+    <string name="ritme_start_with_this">Start Ritme with this</string>
+    <string name="ritme_join">Join</string>
+    <string name="ritme_join_title">Join a Ritme</string>
+    <string name="ritme_code_label">6-character code</string>
+    <string name="ritme_display_name">Display name</string>
+    <string name="ritme_connecting">Connecting…</string>
+    <string name="ritme_retry">Try again</string>
+    <string name="ritme_room_title" translatable="false">Ritme · %1$s</string>
+    <string name="ritme_share">Share</string>
+    <string name="ritme_qr">Show QR code</string>
+    <string name="ritme_share_text">Listen with me on Ritme: %1$s</string>
+    <plurals name="ritme_members">
+        <item quantity="one">%d member</item>
+        <item quantity="other">%d members</item>
+    </plurals>
+    <string name="ritme_now_playing">Now playing</string>
+    <string name="ritme_up_next">Up next</string>
+    <string name="ritme_you">You</string>
+    <string name="ritme_add_songs">Add songs</string>
+    <string name="ritme_guests_can_control">Members can control</string>
+    <string name="ritme_leave">Leave Ritme</string>
+    <string name="ritme_end">End Ritme</string>
+    <string name="ritme_end_confirm_title">End this Ritme for everyone?</string>
+    <string name="ritme_cancel">Cancel</string>
+    <string name="ritme_make_host">Make host</string>
+    <string name="ritme_kick">Remove from Ritme</string>
+    <string name="ritme_unsupported">Not supported yet</string>
+    <string name="ritme_empty_queue">Nothing is playing. Add a song to start.</string>
+    <string name="ritme_play_now">Play now</string>
+    <string name="ritme_move_up">Move up</string>
+    <string name="ritme_move_down">Move down</string>
+    <string name="ritme_remove">Remove</string>
+    <string name="ritme_member_host">%1$s, host</string>
+    <string name="ritme_entry_subtitle">%1$s · by %2$s</string>
+    <string name="ritme_someone">Someone</string>
+
+    <string name="ritme_pill" translatable="false">Ritme · %1$d</string>
+
+    <string name="ritme_server_url">Server URL</string>
+    <string name="ritme_server_url_reset">Restore default</string>
+    <string name="ritme_save">Save</string>
+    <string name="ritme_server_url_invalid">Enter a valid server address, like https://ritme.example.com</string>
+    <string name="ritme_settings_note">Changes apply to the next Ritme you start or join.</string>
+</resources>

@@ -147,6 +147,7 @@ import com.example.musicfy.ui.component.glassRoot
 import com.example.musicfy.ui.component.press3D
 import com.example.musicfy.utils.rememberPreference
 import androidx.core.content.getSystemService
+import com.example.musicfy.ritme.RitmeLocalAction
 
 @Stable
 private class MorphEndpoints(
@@ -903,12 +904,15 @@ fun MorphingCover(
                             }
 
                             val velocity = velocityTracker.calculateVelocity().x
-                            val player = currentPlayerConnection?.player
+                            val connection = currentPlayerConnection
+                            val player = connection?.player
                             if (completed && player != null) {
-                                if ((travelled < -commitPx || velocity < -flingPx) && player.hasNextMediaItem()) {
-                                    player.seekToNext()
-                                } else if ((travelled > commitPx || velocity > flingPx) && player.hasPreviousMediaItem()) {
-                                    player.seekToPreviousMediaItem()
+                                // in a Ritme room the player holds one item; the room decides what is next
+                                val inRitme = connection.ritmeGate.isActive
+                                if ((travelled < -commitPx || velocity < -flingPx) && (inRitme || player.hasNextMediaItem())) {
+                                    connection.ritmeOr(RitmeLocalAction.Next) { player.seekToNext() }
+                                } else if ((travelled > commitPx || velocity > flingPx) && (inRitme || player.hasPreviousMediaItem())) {
+                                    connection.ritmeOr(RitmeLocalAction.Previous) { player.seekToPreviousMediaItem() }
                                 }
                             }
 
@@ -1179,7 +1183,9 @@ fun MorphingCover(
                     transformOrigin = TransformOrigin(0.5f, 0.5f)
                     alpha = (1f - (p / 0.5f)).coerceIn(0f, 1f)
                 }
-                .clickable { playerConnection?.player?.seekToNext() }
+                .clickable {
+                    playerConnection?.let { c -> c.ritmeOr(RitmeLocalAction.Next) { c.player.seekToNext() } }
+                }
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_untitled_skip_next),

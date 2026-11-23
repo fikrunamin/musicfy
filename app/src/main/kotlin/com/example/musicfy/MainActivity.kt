@@ -74,6 +74,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -233,6 +234,9 @@ private const val BackgroundZoomOnExpand = true
 
 private const val SETUP_MARKER_FILE = "setup_wizard_completed"
 
+/** The gap between the mini player and the "Ritme · N" pill above it. */
+private val RitmePillGap = 8.dp
+
 private fun hasOnboardedOnThisInstall(context: android.content.Context): Boolean {
     if (runCatching { java.io.File(context.noBackupFilesDir, SETUP_MARKER_FILE).exists() }.getOrDefault(false)) {
         return true
@@ -272,8 +276,14 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var syncUtils: SyncUtils
 
+    @Inject
+    lateinit var ritmeController: com.example.musicfy.ritme.RitmeController
+
     private lateinit var navController: NavHostController
     private var pendingIntent: Intent? = null
+
+    /** Recreated from saved state (rotation, or after process death, which redelivers the launch intent). */
+    private var restoredFromState = false
 
     private var playerConnection by mutableStateOf<PlayerConnection?>(null)
 
@@ -362,6 +372,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen().handOffToLaunchIntro { introPlays }
         super.onCreate(savedInstanceState)
+        restoredFromState = savedInstanceState != null
         introRequested = savedInstanceState == null && intent?.action == Intent.ACTION_MAIN
         if (introRequested) LaunchGate.begin() else LaunchGate.skip()
         if (savedInstanceState == null && intent?.action == com.example.musicfy.ui.screens.update.ActionOpenUpdate) {
@@ -701,17 +712,30 @@ class MainActivity : ComponentActivity() {
                         .hide(WindowInsetsCompat.Type.navigationBars())
                 }
 
+                // In a Ritme room the "Ritme · N" pill stands above the mini player (bottom bar
+                // layout only): lists keep clear of it as they do of the mini player. Its height is
+                // measured, so it follows the font scale.
+                val ritmeUi = com.example.musicfy.ui.screens.ritme.rememberRitme()
+                val ritmeInRoom by remember(ritmeUi) {
+                    ritmeUi.session.state.map { it.inRoom }.distinctUntilChanged()
+                }.collectAsState(initial = ritmeUi.session.state.value.inRoom)
+                var ritmePillHeight by remember { mutableStateOf(0.dp) }
+                val ritmePillSpace = if (ritmeInRoom && !showRail && ritmePillHeight > 0.dp) {
+                    ritmePillHeight + RitmePillGap
+                } else 0.dp
+
                 val playerAwareWindowInsets = remember(
                     bottomInset,
                     shouldShowNavigationBar,
                     playerBottomSheetState.isDismissed,
                     showRail,
+                    ritmePillSpace,
                 ) {
                     var bottom = bottomInset
                     if (shouldShowNavigationBar && !showRail) {
                         bottom += NavigationBarHeight
                     }
-                    if (!playerBottomSheetState.isDismissed) bottom += MiniPlayerHeight
+                    if (!playerBottomSheetState.isDismissed) bottom += MiniPlayerHeight + ritmePillSpace
                     windowsInsets
                         .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)
                         .add(WindowInsets(top = AppBarHeight, bottom = bottom))
@@ -823,7 +847,9 @@ class MainActivity : ComponentActivity() {
                         handleDeepLinkIntent(pendingIntent!!, navController)
                         pendingIntent = null
                     } else {
-                        handleDeepLinkIntent(intent, navController)
+                        // A restored activity's launch intent was handled before: a Ritme link in
+                        // it must not open the join sheet again.
+                        handleDeepLinkIntent(intent, navController, ritmeLinks = !restoredFromState)
                     }
                 }
 
@@ -893,6 +919,11 @@ class MainActivity : ComponentActivity() {
                     com.example.musicfy.ui.screens.update.UpdateNotificationOpener(
                         requests = openUpdateRequests,
                     )
+                    // Not over the first-run setup: a deep link's request waits in the controller's
+                    // StateFlow and opens once setup is done.
+                    if (setupCompleted && onboardedHere && !forceShowSetup) {
+                        com.example.musicfy.ui.screens.ritme.RitmeSheetOpener(navController = navController)
+                    }
                     com.example.musicfy.ui.screens.donate.DonatePromptScheduler(
                         enabled = setupCompleted && onboardedHere && !forceShowSetup,
                     )
@@ -1072,6 +1103,18 @@ class MainActivity : ComponentActivity() {
                                             navController = navController,
                                             pureBlack = pureBlack,
                                             modifier = Modifier.launchRise(order = 3),
+                                        )
+
+                                        // "Ritme · N" just above the mini player while the player is collapsed (spec 3.4)
+                                        com.example.musicfy.ui.screens.ritme.RitmePill(
+                                            alphaProvider = {
+                                                if (playerBottomSheetState.isDismissed) 0f
+                                                else (1f - playerBottomSheetState.progress / 0.3f).coerceIn(0f, 1f)
+                                            },
+                                            modifier = Modifier
+                                                .align(Alignment.BottomCenter)
+                                                .padding(bottom = bottomInset + navPadding + MiniPlayerHeight + RitmePillGap)
+                                                .onSizeChanged { ritmePillHeight = with(density) { it.height.toDp() } },
                                         )
 
                                         AppNavigationBar(
@@ -1338,8 +1381,18 @@ class MainActivity : ComponentActivity() {
         return true
     }
 
-    private fun handleDeepLinkIntent(intent: Intent, navController: NavHostController) {
+    private fun handleDeepLinkIntent(intent: Intent, navController: NavHostController, ritmeLinks: Boolean = true) {
         if (importSharedAudio(intent)) return
+        if (ritmeLinks && com.example.musicfy.ritme.RitmeConfig.ENABLED) {
+            // musicfy://ritme/{code}, https://<server>/r/{code}, or shared text holding either: the
+            // join form opens with the code filled in; joining still takes a tap.
+            val text = intent.data?.toString() ?: intent.getStringExtra(Intent.EXTRA_TEXT)
+            if (text != null && ritmeController.openJoinLink(text)) {
+                intent.data = null
+                intent.removeExtra(Intent.EXTRA_TEXT)
+                return
+            }
+        }
         val uri = intent.data ?: intent.extras?.getString(Intent.EXTRA_TEXT)?.toUri() ?: return
         intent.data = null
         intent.removeExtra(Intent.EXTRA_TEXT)
@@ -1456,6 +1509,7 @@ val SubSettingsRoutes = setOf(
     "audio_fx",
     "audio_quality",
     "crossmix_settings",
+    "ritme_settings",
     "modules",
     "module/{id}",
 )

@@ -98,6 +98,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.log2
 import kotlin.math.pow
 import kotlin.math.round
+import com.example.musicfy.ritme.RitmeLocalAction
 
 @Composable
 fun PlayerMenu(
@@ -113,6 +114,7 @@ fun PlayerMenu(
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val playerVolume = playerConnection.service.playerVolume.collectAsState()
+    val ritme = com.example.musicfy.ui.screens.ritme.rememberRitme()
 
     val castHandler = remember(playerConnection) {
         try {
@@ -584,6 +586,25 @@ fun PlayerMenu(
         item {
             Material3MenuGroup(
                 items = buildList {
+                    if (com.example.musicfy.ritme.RitmeConfig.ENABLED) {
+                        add(
+                            Material3MenuItemData(
+                                title = { Text(text = stringResource(R.string.ritme_name)) },
+                                description = { Text(text = stringResource(R.string.ritme_start_desc)) },
+                                icon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.group),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                },
+                                onClick = {
+                                    ritme.controller.openSheet()
+                                    onDismiss()
+                                }
+                            )
+                        )
+                    }
                     add(
                         Material3MenuItemData(
                             title = { Text(text = stringResource(R.string.details)) },
@@ -632,7 +653,7 @@ fun PlayerMenu(
                                     )
                                 },
                                 onClick = {
-                                    showPitchTempoDialog = true
+                                    playerConnection.ritmeOr(RitmeLocalAction.Speed) { showPitchTempoDialog = true }
                                 }
                             )
                         )
@@ -673,8 +694,11 @@ fun TempoPitchDialog(onDismiss: () -> Unit) {
         mutableIntStateOf(round(12 * log2(playerConnection.player.playbackParameters.pitch)).toInt())
     }
     val updatePlaybackParameters = {
-        playerConnection.player.playbackParameters =
-            PlaybackParameters(tempo, 2f.pow(transposeValue.toFloat() / 12))
+        // Opening the dialog is gated (one toast); a room that starts while it is open makes the steps silent no-ops.
+        if (!playerConnection.ritmeGate.isActive) {
+            playerConnection.player.playbackParameters =
+                PlaybackParameters(tempo, 2f.pow(transposeValue.toFloat() / 12))
+        }
     }
 
     AlertDialog(

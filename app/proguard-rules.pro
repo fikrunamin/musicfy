@@ -179,3 +179,5 @@
 -keepclasseswithmembers class com.music.shazamkit.models.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
+# Ritme wire protocol (kotlinx.serialization sealed hierarchies, decoded by "type")
+-keep class com.example.musicfy.ritme.protocol.** { *; }

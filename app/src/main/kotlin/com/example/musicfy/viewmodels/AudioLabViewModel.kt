@@ -49,6 +49,8 @@ class AudioLabViewModel @Inject constructor(
     val fx: com.example.musicfy.eq.AudioFxService,
     /** the providers and their order, for the hub's quality tile */
     val sources: com.example.musicfy.modules.SourceModules,
+    /** Ritme: in a listen-together room the speed belongs to the room's drift correction */
+    private val ritmeGate: com.example.musicfy.ritme.RitmeGate,
 ) : ViewModel() {
 
     val eq = store.eq
@@ -226,8 +228,16 @@ class AudioLabViewModel @Inject constructor(
     fun updateSpatial(transform: (com.example.musicfy.eq.SpatialSettings) -> com.example.musicfy.eq.SpatialSettings) =
         store.updateSpatial(transform)
 
-    fun updatePlayback(transform: (com.example.musicfy.eq.PlaybackSettings) -> com.example.musicfy.eq.PlaybackSettings) =
+    /** True while in a Ritme room: the speed card is dimmed and its controls only say "Not available during Ritme". */
+    val ritmeActive: StateFlow<Boolean> = ritmeGate.active
+
+    /** In a Ritme room: shows "Not available during Ritme" and returns true; the caller then changes nothing. */
+    fun interceptSpeedForRitme(): Boolean = ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.Speed)
+
+    fun updatePlayback(transform: (com.example.musicfy.eq.PlaybackSettings) -> com.example.musicfy.eq.PlaybackSettings) {
+        if (interceptSpeedForRitme()) return
         store.updatePlayback(transform)
+    }
 
     fun updateVolume(transform: (com.example.musicfy.eq.VolumeSettings) -> com.example.musicfy.eq.VolumeSettings) =
         store.updateVolume(transform)

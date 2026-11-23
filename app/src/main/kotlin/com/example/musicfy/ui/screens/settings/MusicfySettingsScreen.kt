@@ -70,7 +70,7 @@ private data class SettingsEntry(
     val highlightKey: String get() = title
 }
 
-private val SettingsIndex = listOf(
+private val SettingsIndex = listOfNotNull(
     // Appearance
     SettingsEntry("Customize player", "Appearance", "appearance_settings", "player customise cover style"),
     SettingsEntry("Customize lyrics tab", "Appearance", "appearance_settings", "lyrics letter typography font"),
@@ -99,6 +99,8 @@ private val SettingsIndex = listOf(
     SettingsEntry("Apple Music", "Modules", "module/applemusic", "apple music itunes subscription stream aac"),
     SettingsEntry("Monochrome", "Modules", "module/monochrome", "monochrome lossless flac hi-res tidal"),
     SettingsEntry("Provider order", "Audio Lab", "audio_quality", "source order apple music monochrome youtube priority"),
+    SettingsEntry("Ritme", "Ritme", "ritme_settings", "listen together jam room server self-host display name dengar bareng")
+        .takeIf { com.example.musicfy.ritme.RitmeConfig.ENABLED },
 
     // Audio
     SettingsEntry("Skip Silence", "Audio", "audio_settings", "silence trim gap interval"),
@@ -425,6 +427,14 @@ fun MusicfySettingsScreen(navController: NavController) {
                             iconRes = R.drawable.library_add,
                             onClick = { navController.navigate("modules") }
                         )
+
+                        if (com.example.musicfy.ritme.RitmeConfig.ENABLED) {
+                            CategoryBubble(
+                                title = "Ritme",
+                                iconRes = R.drawable.group,
+                                onClick = { navController.navigate("ritme_settings") }
+                            )
+                        }
                     }
                 }
             }

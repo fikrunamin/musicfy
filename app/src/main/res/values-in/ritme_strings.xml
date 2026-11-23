@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ritme_reconnecting">Menyambung ulang…</string>
+
+    <string name="ritme_toast_queue_saved">Antrean kamu disimpan, dan akan kembali setelah keluar dari Ritme</string>
+    <string name="ritme_toast_unavailable">Tidak tersedia saat Ritme</string>
+    <string name="ritme_toast_locked">Host mengunci kontrol</string>
+    <string name="ritme_toast_paused_locally">Dijeda di perangkat ini saja</string>
+    <string name="ritme_toast_casting">Hentikan cast untuk memakai Ritme</string>
+    <string name="ritme_toast_casting_stopped">Ritme berhenti karena casting</string>
+    <plurals name="ritme_toast_added">
+        <item quantity="other">%d lagu ditambahkan ke Ritme</item>
+    </plurals>
+    <plurals name="ritme_toast_skipped_local">
+        <item quantity="other">%d lagu lokal dilewati</item>
+    </plurals>
+    <string name="ritme_toast_kicked">Kamu dikeluarkan dari Ritme</string>
+    <string name="ritme_toast_closed">Ritme diakhiri host</string>
+    <string name="ritme_toast_lost">Terputus dari Ritme</string>
+    <string name="ritme_toast_forbidden">Tidak diizinkan di Ritme ini</string>
+    <string name="ritme_toast_queue_full">Antrean Ritme penuh</string>
+
+    <string name="ritme_error_unreachable">Tidak bisa terhubung ke server Ritme</string>
+    <string name="ritme_error_not_found">Room tidak ditemukan</string>
+    <string name="ritme_error_full">Room penuh</string>
+    <string name="ritme_error_upgrade">Perbarui aplikasi untuk bergabung</string>
+    <string name="ritme_error_rate_limited">Terlalu banyak percobaan. Coba lagi sebentar lagi</string>
+    <string name="ritme_error_invalid">Periksa nama dan kodenya</string>
+    <string name="ritme_error_generic">Terjadi kesalahan</string>
+    <string name="ritme_start">Mulai Ritme</string>
+    <string name="ritme_start_desc">Dengar bareng teman, sinkron</string>
+    <string name="ritme_start_with_this">Mulai Ritme dengan ini</string>
+    <string name="ritme_join">Gabung</string>
+    <string name="ritme_join_title">Gabung Ritme</string>
+    <string name="ritme_code_label">Kode 6 karakter</string>
+    <string name="ritme_display_name">Nama tampilan</string>
+    <string name="ritme_connecting">Menghubungkan…</string>
+    <string name="ritme_retry">Coba lagi</string>
+    <string name="ritme_share">Bagikan</string>
+    <string name="ritme_qr">Tampilkan kode QR</string>
+    <string name="ritme_share_text">Dengar bareng aku di Ritme: %1$s</string>
+    <plurals name="ritme_members">
+        <item quantity="other">%d anggota</item>
+    </plurals>
+    <string name="ritme_now_playing">Sedang diputar</string>
+    <string name="ritme_up_next">Berikutnya</string>
+    <string name="ritme_you">Kamu</string>
+    <string name="ritme_add_songs">Tambah lagu</string>
+    <string name="ritme_guests_can_control">Anggota boleh kontrol</string>
+    <string name="ritme_leave">Keluar Ritme</string>
+    <string name="ritme_end">Akhiri Ritme</string>
+    <string name="ritme_end_confirm_title">Akhiri Ritme ini untuk semua?</string>
+    <string name="ritme_cancel">Batal</string>
+    <string name="ritme_make_host">Jadikan host</string>
+    <string name="ritme_kick">Keluarkan</string>
+    <string name="ritme_unsupported">Belum didukung</string>
+    <string name="ritme_empty_queue">Belum ada yang diputar. Tambah lagu untuk mulai.</string>
+    <string name="ritme_play_now">Putar sekarang</string>
+    <string name="ritme_move_up">Naikkan</string>
+    <string name="ritme_move_down">Turunkan</string>
+    <string name="ritme_remove">Hapus</string>
+    <string name="ritme_member_host">%1$s, host</string>
+    <string name="ritme_entry_subtitle">%1$s · oleh %2$s</string>
+    <string name="ritme_someone">Seseorang</string>
+
+    <string name="ritme_server_url">URL server</string>
+    <string name="ritme_server_url_reset">Kembalikan default</string>
+    <string name="ritme_save">Simpan</string>
+    <string name="ritme_server_url_invalid">Masukkan alamat server yang valid, misalnya https://ritme.example.com</string>
+    <string name="ritme_settings_note">Perubahan berlaku untuk Ritme berikutnya yang kamu mulai atau ikuti.</string>
+</resources>

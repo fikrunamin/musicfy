@@ -102,6 +102,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.net.URLEncoder
 import com.example.musicfy.ui.component.navigateToTab
+import com.example.musicfy.ritme.RitmeLocalAction
 
 private val SearchCategories = listOf(
     "All" to null,
@@ -187,7 +188,7 @@ fun OnlineSearchResult(
         when (item) {
             is SongItem -> {
                 if (item.id == mediaMetadata?.id) {
-                    playerConnection.player.togglePlayPause()
+                    playerConnection.ritmeOr(RitmeLocalAction.TogglePlayPause) { playerConnection.player.togglePlayPause() }
                 } else {
                     playerConnection.playQueue(YouTubeQueue.radio(item.toMediaMetadata()))
                 }

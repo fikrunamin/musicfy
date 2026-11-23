@@ -260,6 +260,14 @@ class PlayerConnection(
     var onSkipPrevious: (() -> Unit)? = null
     var onSkipNext: (() -> Unit)? = null
 
+    /** Ritme: while a room is active, local controls become room commands (RitmeController). */
+    val ritmeGate: com.example.musicfy.ritme.RitmeGate get() = service.ritmeGate
+
+    /** Runs [local] unless a Ritme room takes [action] instead. */
+    inline fun ritmeOr(action: com.example.musicfy.ritme.RitmeLocalAction, local: () -> Unit) {
+        if (!ritmeGate.intercept(action)) local()
+    }
+
     private var attachedPlayer: Player? = null
 
     init {
@@ -271,6 +279,11 @@ class PlayerConnection(
                         updateAttachedPlayer(newPlayer)
                     }
                 }
+            }
+
+            scope.launch {
+                // Next/previous are always offered in a room, although the player holds one item.
+                ritmeGate.active.collect { runCatching { updateCanSkipPreviousAndNext() } }
             }
 
             if (attachedPlayer == null && service.isPlayerReady.value) {
@@ -334,6 +347,9 @@ class PlayerConnection(
     fun playNext(item: MediaItem) = playNext(listOf(item))
 
     fun playNext(items: List<MediaItem>) {
+        if (ritmeGate.isActive &&
+            ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.AddItems(items.map { it.metadata }, playNext = true))
+        ) return
 
         try {
             service.playNext(items)
@@ -346,6 +362,9 @@ class PlayerConnection(
     fun addToQueue(item: MediaItem) = addToQueue(listOf(item))
 
     fun addToQueue(items: List<MediaItem>) {
+        if (ritmeGate.isActive &&
+            ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.AddItems(items.map { it.metadata }, playNext = false))
+        ) return
 
         try {
             service.addToQueue(items)
@@ -389,6 +408,7 @@ class PlayerConnection(
     }
 
     fun playQueueItem(uid: Int) {
+        if (ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.QueueEdit)) return
         val index = mediaIndexOf(uid)
         if (index == C.INDEX_UNSET) return
         try {
@@ -404,6 +424,7 @@ class PlayerConnection(
 
     /** Moves a song to play straight after [afterUid]. */
     fun moveQueueItem(uid: Int, afterUid: Int) {
+        if (ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.QueueEdit)) return
         val from = mediaIndexOf(uid)
         val after = mediaIndexOf(afterUid)
         if (from == C.INDEX_UNSET || after == C.INDEX_UNSET || from == after) return
@@ -426,6 +447,7 @@ class PlayerConnection(
 
     /** Takes a song out of wherever it is in the queue and puts it next, as one the user queued. */
     fun playQueueItemNext(uid: Int) {
+        if (ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.QueueEdit)) return
         val index = mediaIndexOf(uid)
         if (index == C.INDEX_UNSET || index == player.currentMediaItemIndex) return
         try {
@@ -439,6 +461,7 @@ class PlayerConnection(
 
     /** Removes songs from the queue. The one playing is never removed. */
     fun removeQueueItems(uids: Collection<Int>) {
+        if (ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.QueueEdit)) return
         if (uids.isEmpty()) return
         val wanted = uids.toHashSet()
         val timeline = player.currentTimeline
@@ -502,6 +525,7 @@ class PlayerConnection(
     }
 
     fun togglePlayPause() {
+        if (ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.TogglePlayPause)) return
         try {
             val castHandler = service.castConnectionHandler
             if (castHandler?.isCasting?.value == true) {
@@ -519,6 +543,7 @@ class PlayerConnection(
     }
 
     fun play() {
+        if (ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.Play)) return
         try {
             val castHandler = service.castConnectionHandler
             if (castHandler?.isCasting?.value == true) {
@@ -535,6 +560,7 @@ class PlayerConnection(
     }
 
     fun pause() {
+        if (ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.Pause)) return
         try {
             val castHandler = service.castConnectionHandler
             if (castHandler?.isCasting?.value == true) {
@@ -548,6 +574,7 @@ class PlayerConnection(
     }
 
     fun seekTo(position: Long) {
+        if (ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.Seek(position))) return
         try {
             val castHandler = service.castConnectionHandler
             if (castHandler?.isCasting?.value == true) {
@@ -561,6 +588,7 @@ class PlayerConnection(
     }
 
     fun seekToNext() {
+        if (ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.Next)) return
         try {
 
             val castHandler = service.castConnectionHandler
@@ -582,6 +610,7 @@ class PlayerConnection(
     var onRestartSong: (() -> Unit)? = null
 
     fun seekToPrevious() {
+        if (ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.Previous)) return
         try {
 
             val castHandler = service.castConnectionHandler
@@ -733,13 +762,16 @@ class PlayerConnection(
                 player.currentTimeline.getWindow(player.currentMediaItemIndex, Timeline.Window())
             canSkipPrevious.value = player.isCommandAvailable(COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM) ||
                     !window.isLive ||
-                    player.isCommandAvailable(COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                    player.isCommandAvailable(COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM) ||
+                    ritmeGate.isActive
             canSkipNext.value = window.isLive &&
                     window.isDynamic ||
-                    player.isCommandAvailable(COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                    player.isCommandAvailable(COMMAND_SEEK_TO_NEXT_MEDIA_ITEM) ||
+                    ritmeGate.isActive
         } else {
-            canSkipPrevious.value = false
-            canSkipNext.value = false
+            // in a room the room may have a next/previous entry while its item is still loading
+            canSkipPrevious.value = ritmeGate.isActive
+            canSkipNext.value = ritmeGate.isActive
         }
     }
 

@@ -190,6 +190,7 @@ import com.example.musicfy.playback.queues.Queue
 import com.example.musicfy.playback.queues.YouTubeQueue
 import com.example.musicfy.playback.queues.filterExplicit
 import com.example.musicfy.playback.queues.filterVideoSongs
+import com.example.musicfy.ritme.ritmeSongs
 import com.example.musicfy.utils.CoilBitmapLoader
 import com.example.musicfy.utils.DiscordRPC
 import com.example.musicfy.utils.NetworkConnectivityObserver
@@ -277,6 +278,16 @@ class MusicService :
 
     @Inject
     lateinit var widgetManager: MusicfyWidgetManager
+
+    /** Ritme: closed unless a listen-together room is active; see ritme/RitmeGate.kt */
+    @Inject
+    lateinit var ritmeGate: com.example.musicfy.ritme.RitmeGate
+
+    @Inject
+    lateinit var ritmeBridge: com.example.musicfy.ritme.playback.RitmePlaybackBridge
+
+    /** onCreate's queue and player-state restores; RitmePlaybackBridge.onServiceReady waits for them. */
+    private val ritmeRestoreJobs = mutableListOf<Job>()
 
     private lateinit var audioManager: AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -491,6 +502,9 @@ class MusicService :
     private val MAX_RETRY_PER_SONG = 3
     private val RETRY_DELAY_MS = 1000L
     private val STREAM_RETRY_INTERVAL_MS = 5000L
+    /** How often the Ritme readiness check looks whether the restored queue has finished loading. */
+    private val RITME_READY_POLL_MS = 50L
+    private val RITME_READY_MAX_WAIT_MS = 10_000L
 
     private val recentlyFailedSongs = mutableSetOf<String>()
     private var failedSongsClearJob: Job? = null
@@ -636,6 +650,7 @@ class MusicService :
                     ),
                 ).setBitmapLoader(CoilBitmapLoader(this, scope))
                 .build()
+        ritmeBridge.attach(ritmeHost)
         player.repeatMode = dataStore.get(RepeatModeKey, REPEAT_MODE_OFF)
 
         if (dataStore.get(RememberShuffleAndRepeatKey, true)) {
@@ -667,6 +682,8 @@ class MusicService :
         // nothing here: the store hands them to the processors live, with no seek or reload.
         scope.launch {
             audioLab.playback.collect { settings ->
+                // In a Ritme room the speed belongs to drift correction; exitRitmeMode re-applies Audio FX.
+                if (ritmeGate.isActive) return@collect
                 val params = PlaybackParameters(settings.speed, settings.pitch)
                 if (player.playbackParameters != params) player.playbackParameters = params
             }
@@ -810,8 +827,11 @@ class MusicService :
             .map { (it[SkipSilenceKey] ?: false) to (it[SkipSilenceInstantKey] ?: false) }
             .distinctUntilChanged()
             .collectLatest(scope) { (skipSilence, instantSkip) ->
-                player.skipSilenceEnabled = skipSilence
-                secondaryPlayer?.skipSilenceEnabled = skipSilence
+                // In a Ritme room skip silence stays off (it would shift this device); exitRitmeMode applies the setting.
+                if (!ritmeGate.isActive) {
+                    player.skipSilenceEnabled = skipSilence
+                    secondaryPlayer?.skipSilenceEnabled = skipSilence
+                }
 
                 val enableInstant = skipSilence && instantSkip
                 instantSilenceSkipEnabled.value = enableInstant
@@ -977,7 +997,7 @@ class MusicService :
 
                         val restoredQueue = queue.toQueue()
 
-                        scope.launch {
+                        ritmeRestoreJobs += scope.launch {
                             playerInitialized.first { it }
                             if (isActive) {
                                 playQueue(
@@ -1027,7 +1047,7 @@ class MusicService :
                     }
                 }.onSuccess { playerState ->
 
-                    scope.launch {
+                    ritmeRestoreJobs += scope.launch {
                         delay(1000)
 
                         playerVolume.value = playerState.volume
@@ -1059,6 +1079,19 @@ class MusicService :
                     saveQueueToDisk()
                 }
             }
+        }
+
+        // Ritme: a room (already active, or joined while this runs) takes the player only once the
+        // saved queue, repeat/shuffle and position above are restored. Nothing else waits on this.
+        scope.launch {
+            ritmeRestoreJobs.forEach { it.join() }
+            // capped, so a load that never settles cannot keep Ritme out for good
+            var waitedMs = 0L
+            while (initialQueueLoading && waitedMs < RITME_READY_MAX_WAIT_MS) {
+                delay(RITME_READY_POLL_MS)
+                waitedMs += RITME_READY_POLL_MS
+            }
+            ritmeBridge.onServiceReady(ritmeHost)
         }
     }
 
@@ -1346,14 +1379,16 @@ class MusicService :
         player.pause()
         announceStreamFailure()
         clearStreamFailure()
-        if (dataStore.get(DontSkipOnFailureKey, false)) {
+        // In a Ritme room a failed stream never skips: the device keeps retrying and follows the room (spec 4.1).
+        if (dataStore.get(DontSkipOnFailureKey, false) || ritmeGate.isActive) {
             // staying on it means trying it again every few seconds until it plays: loading it
             // again ends this job, and a failure starts the next wait
             failureJob = scope.launch {
                 delay(STREAM_RETRY_INTERVAL_MS)
                 Timber.tag(TAG).d("Retrying the failed stream")
                 player.prepare()
-                player.play()
+                // In a Ritme room the planner decides play or pause (the room may be paused or not started yet).
+                if (ritmeGate.isActive) ritmeBridge.resync() else player.play()
             }
             return
         }
@@ -1515,6 +1550,12 @@ class MusicService :
         playWhenReady: Boolean = true,
     ) {
         if (!scope.isActive) scope = CoroutineScope(Dispatchers.Main) + Job()
+
+        if (ritmeGate.isActive) {
+            // In a Ritme room the room owns the queue: the songs are offered to it instead.
+            ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.PlayQueue(queue.ritmeSongs()))
+            return
+        }
 
         if (!playerInitialized.value) {
             Timber.tag(TAG).w("playQueue called before player initialization, queuing request")
@@ -1725,6 +1766,8 @@ class MusicService :
      */
     private fun ensureQueueRunway() {
         if (!playerInitialized.value) return
+        // In a Ritme room the room owns the queue: no runway, infinite queue or Autoplay.
+        if (ritmeGate.isActive) return
         if (initialQueueLoading || runwayJob?.isActive == true) return
         if (player.mediaItemCount == 0) return
         if (dataStore.get(DisableLoadMoreWhenRepeatAllKey, false) && player.repeatMode == REPEAT_MODE_ALL) return
@@ -1891,6 +1934,10 @@ class MusicService :
     }
 
     fun startRadioSeamlessly() {
+        if (ritmeGate.isActive) {
+            ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.QueueEdit)
+            return
+        }
 
         if (!playerInitialized.value) {
             Timber.tag(TAG).w("startRadioSeamlessly called before player initialization")
@@ -2096,6 +2143,9 @@ class MusicService :
     }
 
     fun playNext(items: List<MediaItem>) {
+        if (ritmeGate.isActive &&
+            ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.AddItems(items.map { it.metadata }, playNext = true))
+        ) return
 
         if (player.mediaItemCount == 0 || player.playbackState == STATE_IDLE) {
             player.setMediaItems(items)
@@ -2183,6 +2233,9 @@ class MusicService :
     }
 
     fun addToQueue(items: List<MediaItem>) {
+        if (ritmeGate.isActive &&
+            ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.AddItems(items.map { it.metadata }, playNext = false))
+        ) return
 
         if (dataStore.get(PreventDuplicateTracksInQueueKey, false)) {
             val itemIds = items.map { it.mediaId }.toSet()
@@ -2476,7 +2529,8 @@ class MusicService :
         // IDLE is where a failed stream sits; anything else means it's loading or playing again
         if (playbackState != Player.STATE_IDLE) clearStreamFailure()
 
-        if (playbackState == Player.STATE_ENDED) {
+        // In a Ritme room the end of a song is reported to the room (RitmePlaybackBridge), not repeated or extended here.
+        if (playbackState == Player.STATE_ENDED && !ritmeGate.isActive) {
             val repeatMode = runBlocking { dataStore.get(RepeatModeKey, REPEAT_MODE_OFF) }
             if (repeatMode == REPEAT_MODE_ALL && player.mediaItemCount > 0) {
                 player.seekTo(0, 0)
@@ -2602,7 +2656,7 @@ class MusicService :
             applyShuffleOrder(currentIndex, totalCount, shufflePlaylistFirst, keepHistory = true)
         }
 
-        if (dataStore.get(RememberShuffleAndRepeatKey, true)) {
+        if (dataStore.get(RememberShuffleAndRepeatKey, true) && !ritmeGate.isActive) {
             scope.launch {
                 dataStore.edit { settings ->
                     settings[ShuffleModeKey] = shuffleModeEnabled
@@ -2617,9 +2671,11 @@ class MusicService :
 
     override fun onRepeatModeChanged(repeatMode: Int) {
         updateNotification()
-        scope.launch {
-            dataStore.edit { settings ->
-                settings[RepeatModeKey] = repeatMode
+        if (!ritmeGate.isActive) {
+            scope.launch {
+                dataStore.edit { settings ->
+                    settings[RepeatModeKey] = repeatMode
+                }
             }
         }
 
@@ -3134,6 +3190,7 @@ class MusicService :
 
     private fun handleLongSilenceDetected() {
         if (!instantSilenceSkipEnabled.value) return
+        if (ritmeGate.isActive) return
         if (silenceSkipJob?.isActive == true) return
 
         silenceSkipJob = scope.launch {
@@ -3567,6 +3624,8 @@ class MusicService :
     }
 
     private fun saveQueueToDisk() {
+        // The room's single item is never persisted: the saved local queue stays what comes back.
+        if (ritmeGate.isActive) return
         if (player.mediaItemCount == 0) {
             Timber.tag(TAG).d("Skipping queue save - no media items")
             return
@@ -3642,6 +3701,129 @@ class MusicService :
         }
     }
 
+    // Ritme: the narrow surface RitmePlaybackBridge drives while a room is active.
+    private val ritmeHost = object : com.example.musicfy.ritme.playback.RitmePlayerHost {
+        override val player: ExoPlayer get() = this@MusicService.player
+
+        override val isCasting: Boolean get() = castConnectionHandler?.isCasting?.value == true
+
+        override fun playOrderQueue(): com.example.musicfy.ritme.LocalPlayOrder {
+            val p = this@MusicService.player
+            val timeline = p.currentTimeline
+            if (timeline.isEmpty) return com.example.musicfy.ritme.LocalPlayOrder(emptyList(), 0, 0)
+            val shuffle = p.shuffleModeEnabled
+            val order = ArrayList<Int>(timeline.windowCount)
+            var index = timeline.getFirstWindowIndex(shuffle)
+            while (index != C.INDEX_UNSET && order.size < timeline.windowCount) {
+                order += index
+                index = timeline.getNextWindowIndex(index, REPEAT_MODE_OFF, shuffle)
+            }
+            return com.example.musicfy.ritme.LocalPlayOrder(
+                songs = order.map { p.getMediaItemAt(it).metadata },
+                currentIndex = order.indexOf(p.currentMediaItemIndex).coerceAtLeast(0),
+                positionMs = p.currentPosition.coerceAtLeast(0),
+            )
+        }
+
+        override fun saveLocalQueue() {
+            if (dataStore.get(PersistentQueueKey, true)) saveQueueToDisk()
+        }
+
+        override fun enterRitmeMode(): com.example.musicfy.ritme.playback.LocalQueueSnapshot {
+            val p = this@MusicService.player
+            val snapshot = com.example.musicfy.ritme.playback.LocalQueueSnapshot(
+                title = queueTitle,
+                items = p.mediaItems,
+                index = p.currentMediaItemIndex.coerceAtLeast(0),
+                positionMs = p.currentPosition.coerceAtLeast(0),
+                shuffle = p.shuffleModeEnabled,
+                repeatMode = p.repeatMode,
+                skipSilence = p.skipSilenceEnabled,
+            )
+            clearStreamFailure()
+            resetQueueRunway()
+            currentQueue = EmptyQueue
+            clearAutomix()
+            crossfadeTriggerJob?.cancel()
+            crossfadeTriggerJob = null
+            // a running plain crossfade: stop its volume ramp and put the volume back to normal
+            crossfadeJob?.cancel()
+            crossfadeJob = null
+            p.volume = if (isMuted.value) 0f else playerVolume.value
+            if (isCrossfading) cleanupCrossfade()
+            // stops a running Crossmix hand-over and drops a planned one
+            crossmixDirector.onItemChanged()
+            p.pause()
+            p.shuffleModeEnabled = false
+            p.repeatMode = REPEAT_MODE_OFF
+            p.skipSilenceEnabled = false
+            p.playbackParameters = PlaybackParameters.DEFAULT
+            queueTitle = getString(R.string.ritme_name)
+            useRitmeSessionPlayer(true)
+            return snapshot
+        }
+
+        override fun loadRitmeItem(item: MediaItem, startPositionMs: Long) {
+            val p = this@MusicService.player
+            clearStreamFailure()
+            // Whatever set them since Enter: REPEAT_ONE would loop the room's item and never report its end.
+            if (p.repeatMode != REPEAT_MODE_OFF) p.repeatMode = REPEAT_MODE_OFF
+            if (p.shuffleModeEnabled) p.shuffleModeEnabled = false
+            p.setMediaItem(item, startPositionMs)
+            p.prepare()
+            p.playWhenReady = false
+        }
+
+        override fun exitRitmeMode(snapshot: com.example.musicfy.ritme.playback.LocalQueueSnapshot) {
+            val p = this@MusicService.player
+            // Drop the room's item first (cleared before stopped, so the state changes find nothing to
+            // persist): it must not play on while the local queue loads, nor be saved as the local queue.
+            clearStreamFailure()
+            p.clearMediaItems()
+            p.stop()
+            // The user's Audio FX speed AND pitch: the collector skipped them while in the room.
+            useRitmeSessionPlayer(false)
+            val fx = audioLab.playback.value
+            p.playbackParameters = PlaybackParameters(fx.speed, fx.pitch)
+            // The setting as it is now (it may have changed in the room), not the snapshot's.
+            p.skipSilenceEnabled = dataStore.get(SkipSilenceKey, false)
+            p.repeatMode = snapshot.repeatMode
+            if (snapshot.items.isEmpty()) {
+                queueTitle = null
+            } else {
+                playQueue(
+                    com.example.musicfy.playback.queues.ListQueue(snapshot.title, snapshot.items, snapshot.index, snapshot.positionMs),
+                    playWhenReady = false,
+                )
+            }
+            p.shuffleModeEnabled = snapshot.shuffle
+        }
+    }
+
+    // One wrapper per player: it listens to the player for good and must never be released.
+    private var ritmeSessionPlayer: com.example.musicfy.ritme.playback.RitmeSessionPlayer? = null
+
+    /** A crossfade or Crossmix replaced the player: let go of the old one's wrapper (and so of the old player). */
+    private fun dropStaleRitmeSessionPlayer() {
+        if (ritmeSessionPlayer?.wrapped !== player) ritmeSessionPlayer = null
+    }
+
+    /** While in a Ritme room, external controllers talk to a RitmeSessionPlayer instead of the player itself. */
+    private fun useRitmeSessionPlayer(enabled: Boolean) {
+        val target: Player = if (enabled) {
+            (ritmeSessionPlayer?.takeIf { it.wrapped === player }
+                ?: com.example.musicfy.ritme.playback.RitmeSessionPlayer(player, ritmeGate).also { ritmeSessionPlayer = it })
+                .also { it.refresh() }
+        } else {
+            player
+        }
+        try {
+            (mediaSession as MediaSession).player = target
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Ritme: could not swap the session player")
+        }
+    }
+
     override fun onDestroy() {
         isRunning = false
 
@@ -3655,6 +3837,13 @@ class MusicService :
         if (dataStore.get(PersistentQueueKey, true)) {
             saveQueueToDisk()
         }
+        // Leave the room first: clearing a READY player reports STATE_ENDED synchronously, which the
+        // bridge must not hear as the end of the entry (a TrackEnded would skip it for everyone).
+        val wasInRitme = ritmeGate.isActive
+        ritmeBridge.detach()
+        // The service scope's save loops outlive the gate: leave no room item behind for them to
+        // persist. With no items, saveQueueToDisk and ensureQueueRunway return without doing anything.
+        if (wasInRitme) player.clearMediaItems()
         if (discordRpc?.isRpcRunning() == true) {
             discordRpc?.closeRPC()
         }
@@ -3679,6 +3868,24 @@ class MusicService :
     override fun onBind(intent: Intent?) = super.onBind(intent) ?: binder
 
     override fun onTaskRemoved(rootIntent: Intent?) {
+        if (ritmeGate.isActive) {
+            // Media3's own path (pauseAllPlayersAndStopSelf) pauses through the session's player, which
+            // in a room is RitmeSessionPlayer: that would be a room Pause for everyone. So the same
+            // decisions are made here on the ExoPlayer itself, and super is skipped. Stopping the
+            // service leaves the room (onDestroy -> RitmePlaybackBridge.detach).
+            when {
+                dataStore.get(StopPlaybackOnTaskRemovedKey, false) -> {
+                    player.stop()
+                    stopSelf()
+                }
+                // what super does: keep running only while playback is ongoing and actually playing
+                !isPlaybackOngoing || !player.isPlaying -> {
+                    player.pause()
+                    stopSelf()
+                }
+            }
+            return
+        }
         if (dataStore.get(StopPlaybackOnTaskRemovedKey, false)) {
             player.stop()
             stopSelf()
@@ -3691,18 +3898,20 @@ class MusicService :
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             MusicWidgetReceiver.ACTION_PLAY_PAUSE -> {
-                if (player.isPlaying) player.pause() else player.play()
+                if (!ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.TogglePlayPause)) {
+                    if (player.isPlaying) player.pause() else player.play()
+                }
                 updateWidgetUI(player.isPlaying)
             }
             MusicWidgetReceiver.ACTION_LIKE -> {
                 toggleLike()
             }
             MusicWidgetReceiver.ACTION_NEXT -> {
-                player.seekToNext()
+                if (!ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.Next)) player.seekToNext()
                 updateWidgetUI(player.isPlaying)
             }
             MusicWidgetReceiver.ACTION_PREVIOUS -> {
-                player.seekToPrevious()
+                if (!ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.Previous)) player.seekToPrevious()
                 updateWidgetUI(player.isPlaying)
             }
             MusicWidgetReceiver.ACTION_UPDATE_WIDGET -> {
@@ -3811,7 +4020,13 @@ class MusicService :
 
     private fun scheduleCrossfade() {
         // Crossmix plans its own hand-overs; it cancels itself when it's off or can't run
+        // (in a Ritme room crossmixBlocker() says so)
         crossmixDirector.schedule()
+        if (ritmeGate.isActive) {
+            crossfadeTriggerJob?.cancel()
+            crossfadeTriggerJob = null
+            return
+        }
         crossfadeTriggerJob?.cancel()
         crossfadeTriggerJob = null
         if (crossmixMode == CrossmixMode.CROSSMIX) return
@@ -3886,6 +4101,7 @@ class MusicService :
         fadingPlayer = currentPlayer
         player = nextPlayer
         _playerFlow.value = player
+        dropStaleRitmeSessionPlayer()
         secondaryPlayer = null
 
         fadingPlayer?.removeListener(this)
@@ -4173,6 +4389,7 @@ class MusicService :
             fadingPlayer = outgoing
             player = incoming
             _playerFlow.value = incoming
+            dropStaleRitmeSessionPlayer()
 
             outgoing.removeListener(this@MusicService)
             outgoing.removeListener(sleepTimer)
@@ -4250,6 +4467,7 @@ class MusicService :
         }
 
         override fun crossmixBlocker(): String? = when {
+            ritmeGate.isActive -> "Ritme: the room keeps everyone in sync"
             !crossfadeEnabled -> "Crossfade is off"
             crossmixMode != CrossmixMode.CROSSMIX -> "Crossfade is set to ${crossmixMode.name.lowercase()}, not Crossmix"
             isCrossfading -> "A plain crossfade is running"

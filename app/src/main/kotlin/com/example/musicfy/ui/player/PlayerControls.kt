@@ -53,6 +53,7 @@ import com.example.musicfy.R
 import com.example.musicfy.constants.PlayerHorizontalPadding
 import com.example.musicfy.extensions.togglePlayPause
 import com.example.musicfy.ui.component.tapOrHold
+import com.example.musicfy.ritme.RitmeLocalAction
 
 @Composable
 fun PlayerControls(
@@ -87,10 +88,15 @@ internal const val HoldSlowFactor = 0.5f
  * Temporary speed while a skip button is held. Relative to the speed the user set (and keeping
  * their pitch), and always put back exactly as it was on release.
  */
-internal class HoldSpeed(private val player: androidx.media3.exoplayer.ExoPlayer) {
+internal class HoldSpeed(
+    private val player: androidx.media3.exoplayer.ExoPlayer,
+    /** True in a Ritme room: the speed belongs to drift correction there, so a hold does nothing. */
+    private val blocked: () -> Boolean = { false },
+) {
     private var saved: androidx.media3.common.PlaybackParameters? = null
 
     fun start(factor: Float) {
+        if (blocked()) return
         val base = saved ?: player.playbackParameters.also { saved = it }
         player.playbackParameters = androidx.media3.common.PlaybackParameters(
             (base.speed * factor).coerceIn(0.25f, 4f),
@@ -101,7 +107,7 @@ internal class HoldSpeed(private val player: androidx.media3.exoplayer.ExoPlayer
     fun end() {
         val base = saved ?: return
         saved = null
-        player.playbackParameters = base
+        if (!blocked()) player.playbackParameters = base
     }
 }
 
@@ -110,7 +116,7 @@ fun PlayerTransportRow(modifier: Modifier = Modifier) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val transportState by playerConnection.uiState.transportState.collectAsState()
 
-    val holdSpeed = remember(playerConnection) { HoldSpeed(playerConnection.player) }
+    val holdSpeed = remember(playerConnection) { HoldSpeed(playerConnection.player) { playerConnection.ritmeGate.isActive } }
     // A hold that outlives the row (the player closed under the finger) still lets go.
     androidx.compose.runtime.DisposableEffect(holdSpeed) { onDispose { holdSpeed.end() } }
     val hold = remember(holdSpeed) {
@@ -138,11 +144,13 @@ fun PlayerTransportRow(modifier: Modifier = Modifier) {
             canSkipNext = transportState.canSkipNext,
             onPrevious = playerConnection::seekToPrevious,
             onPlayPause = {
-                if (transportState.playbackState == Player.STATE_ENDED) {
-                    playerConnection.player.seekTo(0, 0)
-                    playerConnection.player.playWhenReady = true
-                } else {
-                    playerConnection.player.playWhenReady = !playerConnection.player.playWhenReady
+                playerConnection.ritmeOr(RitmeLocalAction.TogglePlayPause) {
+                    if (transportState.playbackState == Player.STATE_ENDED) {
+                        playerConnection.player.seekTo(0, 0)
+                        playerConnection.player.playWhenReady = true
+                    } else {
+                        playerConnection.player.playWhenReady = !playerConnection.player.playWhenReady
+                    }
                 }
             },
             onNext = playerConnection::seekToNext,
@@ -193,11 +201,13 @@ fun PlayerTransportRow(modifier: Modifier = Modifier) {
                 isPlaying = transportState.isPlaying,
                 playbackState = transportState.playbackState,
                 onClick = {
-                    if (transportState.playbackState == Player.STATE_ENDED) {
-                        playerConnection.player.seekTo(0, 0)
-                        playerConnection.player.playWhenReady = true
-                    } else {
-                        playerConnection.togglePlayPause()
+                    playerConnection.ritmeOr(RitmeLocalAction.TogglePlayPause) {
+                        if (transportState.playbackState == Player.STATE_ENDED) {
+                            playerConnection.player.seekTo(0, 0)
+                            playerConnection.player.playWhenReady = true
+                        } else {
+                            playerConnection.togglePlayPause()
+                        }
                     }
                 },
                 tint = Color.White,
