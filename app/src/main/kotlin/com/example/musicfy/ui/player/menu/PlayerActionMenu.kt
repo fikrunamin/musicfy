@@ -69,6 +69,7 @@ import com.example.musicfy.playback.ExoDownloadService
 import com.example.musicfy.ui.menu.AddToPlaylistDialog
 import com.example.musicfy.ui.utils.resize
 import kotlinx.coroutines.flow.flowOf
+import com.example.musicfy.ritme.RitmeLocalAction
 
 /**
  * @param fromLyrics true when the menu was opened from the lyrics page. The lyrics tools are only
@@ -232,7 +233,7 @@ fun PlayerActionMenu(
                 MenuRow(
                     icon = R.drawable.speed,
                     title = "Playback speed and tempo",
-                    onClick = { showPlaybackSpeed = true },
+                    onClick = { playerConnection.ritmeOr(RitmeLocalAction.Speed) { showPlaybackSpeed = true } },
                 )
 
                 MenuDivider()

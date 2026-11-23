@@ -190,6 +190,7 @@ import com.example.musicfy.playback.queues.Queue
 import com.example.musicfy.playback.queues.YouTubeQueue
 import com.example.musicfy.playback.queues.filterExplicit
 import com.example.musicfy.playback.queues.filterVideoSongs
+import com.example.musicfy.ritme.ritmeSongs
 import com.example.musicfy.utils.CoilBitmapLoader
 import com.example.musicfy.utils.DiscordRPC
 import com.example.musicfy.utils.NetworkConnectivityObserver
@@ -1550,6 +1551,12 @@ class MusicService :
     ) {
         if (!scope.isActive) scope = CoroutineScope(Dispatchers.Main) + Job()
 
+        if (ritmeGate.isActive) {
+            // In a Ritme room the room owns the queue: the songs are offered to it instead.
+            ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.PlayQueue(queue.ritmeSongs()))
+            return
+        }
+
         if (!playerInitialized.value) {
             Timber.tag(TAG).w("playQueue called before player initialization, queuing request")
             scope.launch {
@@ -1927,6 +1934,10 @@ class MusicService :
     }
 
     fun startRadioSeamlessly() {
+        if (ritmeGate.isActive) {
+            ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.QueueEdit)
+            return
+        }
 
         if (!playerInitialized.value) {
             Timber.tag(TAG).w("startRadioSeamlessly called before player initialization")
@@ -2132,6 +2143,9 @@ class MusicService :
     }
 
     fun playNext(items: List<MediaItem>) {
+        if (ritmeGate.isActive &&
+            ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.AddItems(items.map { it.metadata }, playNext = true))
+        ) return
 
         if (player.mediaItemCount == 0 || player.playbackState == STATE_IDLE) {
             player.setMediaItems(items)
@@ -2219,6 +2233,9 @@ class MusicService :
     }
 
     fun addToQueue(items: List<MediaItem>) {
+        if (ritmeGate.isActive &&
+            ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.AddItems(items.map { it.metadata }, playNext = false))
+        ) return
 
         if (dataStore.get(PreventDuplicateTracksInQueueKey, false)) {
             val itemIds = items.map { it.mediaId }.toSet()
@@ -3742,6 +3759,7 @@ class MusicService :
             p.skipSilenceEnabled = false
             p.playbackParameters = PlaybackParameters.DEFAULT
             queueTitle = getString(R.string.ritme_name)
+            useRitmeSessionPlayer(true)
             return snapshot
         }
 
@@ -3764,6 +3782,7 @@ class MusicService :
             p.clearMediaItems()
             p.stop()
             // The user's Audio FX speed AND pitch: the collector skipped them while in the room.
+            useRitmeSessionPlayer(false)
             val fx = audioLab.playback.value
             p.playbackParameters = PlaybackParameters(fx.speed, fx.pitch)
             // The setting as it is now (it may have changed in the room), not the snapshot's.
@@ -3778,6 +3797,25 @@ class MusicService :
                 )
             }
             p.shuffleModeEnabled = snapshot.shuffle
+        }
+    }
+
+    // One wrapper per player: it listens to the player for good and must never be released.
+    private var ritmeSessionPlayer: com.example.musicfy.ritme.playback.RitmeSessionPlayer? = null
+
+    /** While in a Ritme room, external controllers talk to a RitmeSessionPlayer instead of the player itself. */
+    private fun useRitmeSessionPlayer(enabled: Boolean) {
+        val target: Player = if (enabled) {
+            (ritmeSessionPlayer?.takeIf { it.wrapped === player }
+                ?: com.example.musicfy.ritme.playback.RitmeSessionPlayer(player, ritmeGate).also { ritmeSessionPlayer = it })
+                .also { it.refresh() }
+        } else {
+            player
+        }
+        try {
+            (mediaSession as MediaSession).player = target
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Ritme: could not swap the session player")
         }
     }
 
@@ -3833,18 +3871,20 @@ class MusicService :
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             MusicWidgetReceiver.ACTION_PLAY_PAUSE -> {
-                if (player.isPlaying) player.pause() else player.play()
+                if (!ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.TogglePlayPause)) {
+                    if (player.isPlaying) player.pause() else player.play()
+                }
                 updateWidgetUI(player.isPlaying)
             }
             MusicWidgetReceiver.ACTION_LIKE -> {
                 toggleLike()
             }
             MusicWidgetReceiver.ACTION_NEXT -> {
-                player.seekToNext()
+                if (!ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.Next)) player.seekToNext()
                 updateWidgetUI(player.isPlaying)
             }
             MusicWidgetReceiver.ACTION_PREVIOUS -> {
-                player.seekToPrevious()
+                if (!ritmeGate.intercept(com.example.musicfy.ritme.RitmeLocalAction.Previous)) player.seekToPrevious()
                 updateWidgetUI(player.isPlaying)
             }
             MusicWidgetReceiver.ACTION_UPDATE_WIDGET -> {

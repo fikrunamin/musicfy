@@ -63,6 +63,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
+import com.example.musicfy.ritme.RitmeLocalAction
 
 @SuppressLint("MutableCollectionMutableState")
 @Composable
@@ -647,13 +648,15 @@ fun SelectionMediaMetadataMenu(
                                 },
                                 onClick = {
                                     onDismiss()
-                                    var i = 0
-                                    currentItems.forEach { cur ->
-                                        if (playerConnection.player.availableCommands.contains(
-                                                Player.COMMAND_CHANGE_MEDIA_ITEMS
-                                            )
-                                        ) {
-                                            playerConnection.player.removeMediaItem(cur.firstPeriodIndex - i++)
+                                    playerConnection.ritmeOr(RitmeLocalAction.QueueEdit) {
+                                        var i = 0
+                                        currentItems.forEach { cur ->
+                                            if (playerConnection.player.availableCommands.contains(
+                                                    Player.COMMAND_CHANGE_MEDIA_ITEMS
+                                                )
+                                            ) {
+                                                playerConnection.player.removeMediaItem(cur.firstPeriodIndex - i++)
+                                            }
                                         }
                                     }
                                     clearAction()

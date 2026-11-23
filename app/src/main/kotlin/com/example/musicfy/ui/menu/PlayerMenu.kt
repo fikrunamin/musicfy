@@ -98,6 +98,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.log2
 import kotlin.math.pow
 import kotlin.math.round
+import com.example.musicfy.ritme.RitmeLocalAction
 
 @Composable
 fun PlayerMenu(
@@ -673,8 +674,10 @@ fun TempoPitchDialog(onDismiss: () -> Unit) {
         mutableIntStateOf(round(12 * log2(playerConnection.player.playbackParameters.pitch)).toInt())
     }
     val updatePlaybackParameters = {
-        playerConnection.player.playbackParameters =
-            PlaybackParameters(tempo, 2f.pow(transposeValue.toFloat() / 12))
+        playerConnection.ritmeOr(RitmeLocalAction.Speed) {
+            playerConnection.player.playbackParameters =
+                PlaybackParameters(tempo, 2f.pow(transposeValue.toFloat() / 12))
+        }
     }
 
     AlertDialog(

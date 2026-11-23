@@ -55,6 +55,7 @@ import com.example.musicfy.constants.ShowFormatSampleRateKey
 import com.example.musicfy.extensions.togglePlayPause
 import com.example.musicfy.ui.theme.InterFontFamily
 import com.example.musicfy.utils.rememberPreference
+import com.example.musicfy.ritme.RitmeLocalAction
 
 // The Turntable frame's controls, at its sizes: four pills stacked on the right (like, back,
 // play/pause, forward) above the title row - the chevron on the left, the title and its format
@@ -84,7 +85,7 @@ fun TurntableControls(
     val track by connection.uiState.trackInfo.collectAsState()
     val transport by connection.uiState.transportState.collectAsState()
 
-    val holdSpeed = remember(connection) { HoldSpeed(connection.player) }
+    val holdSpeed = remember(connection) { HoldSpeed(connection.player) { connection.ritmeGate.isActive } }
     DisposableEffect(holdSpeed) { onDispose { holdSpeed.end() } }
 
     Column(
@@ -124,11 +125,13 @@ fun TurntableControls(
                 isPlaying = transport.isPlaying,
                 playbackState = transport.playbackState,
                 onClick = {
-                    if (transport.playbackState == Player.STATE_ENDED) {
-                        connection.player.seekTo(0, 0)
-                        connection.player.playWhenReady = true
-                    } else {
-                        connection.togglePlayPause()
+                    connection.ritmeOr(RitmeLocalAction.TogglePlayPause) {
+                        if (transport.playbackState == Player.STATE_ENDED) {
+                            connection.player.seekTo(0, 0)
+                            connection.player.playWhenReady = true
+                        } else {
+                            connection.togglePlayPause()
+                        }
                     }
                 },
                 tint = Color.White,

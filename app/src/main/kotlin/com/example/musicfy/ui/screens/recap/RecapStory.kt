@@ -375,7 +375,12 @@ internal fun RecapStoryHost(
             val player = playerConnection?.player
             val wasPlaying = player?.isPlaying == true
             player?.pause()
-            onDispose { if (wasPlaying) player?.play() }
+            onDispose {
+                if (wasPlaying) {
+                    // In a Ritme room the pause above was this device only; it rejoins the room in sync.
+                    if (playerConnection?.ritmeGate?.isActive == true) playerConnection.service.ritmeBridge.resync() else player?.play()
+                }
+            }
         }
 
         RecapStory(data, anchors, payload, caption, exitRequests, onCovered, onReturned, onClosed)

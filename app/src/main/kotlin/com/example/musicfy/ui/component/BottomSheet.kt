@@ -74,6 +74,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlin.math.pow
+import com.example.musicfy.ritme.RitmeLocalAction
 
 private val PlayerSheetAnimationSpec = spring<Dp>(
     dampingRatio = 0.96f,
@@ -108,6 +109,9 @@ fun BottomSheet(
 ) {
     val density = LocalDensity.current
     val currentSwipe by androidx.compose.runtime.rememberUpdatedState(expandedSwipe)
+    // The drag handlers below outlive a recomposition (keyed on the state only), so they read the
+    // latest onDismiss: a caller may switch dismissing off (the player while in a Ritme room).
+    val currentOnDismiss by androidx.compose.runtime.rememberUpdatedState(onDismiss)
 
     if (!isPillTransition) {
         Box(
@@ -148,9 +152,9 @@ fun BottomSheet(
                                 } else if (dragAmount > 3f && state.isExpanded) {
                                     state.collapseSoft()
                                     change.consume()
-                                } else if (dragAmount > 3f && state.isCollapsed && onDismiss != null) {
+                                } else if (dragAmount > 3f && state.isCollapsed && currentOnDismiss != null) {
                                     state.dismiss()
-                                    onDismiss.invoke()
+                                    currentOnDismiss?.invoke()
                                     change.consume()
                                 }
                             },
@@ -369,9 +373,9 @@ fun BottomSheet(
                                             acted = true
                                             state.collapseSoft()
                                             change.consume()
-                                        } else if (dragAmount.y > 2f && state.isCollapsed && onDismiss != null) {
+                                        } else if (dragAmount.y > 2f && state.isCollapsed && currentOnDismiss != null) {
                                             state.dismiss()
-                                            onDismiss.invoke()
+                                            currentOnDismiss?.invoke()
                                             change.consume()
                                         }
                                     }
@@ -402,8 +406,11 @@ fun BottomSheet(
                                                 (kotlin.math.abs(currentOffset) > size.width / 3f)
 
                                         if (shouldChangeSong && playerConnection != null) {
-                                            if (currentOffset > 0) playerConnection.player.seekToPreviousMediaItem()
-                                            else playerConnection.player.seekToNext()
+                                            if (currentOffset > 0) {
+                                                playerConnection.ritmeOr(RitmeLocalAction.Previous) { playerConnection.player.seekToPreviousMediaItem() }
+                                            } else {
+                                                playerConnection.ritmeOr(RitmeLocalAction.Next) { playerConnection.player.seekToNext() }
+                                            }
                                         }
                                     }
 
