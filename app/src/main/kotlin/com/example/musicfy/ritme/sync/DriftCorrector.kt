@@ -11,7 +11,9 @@ sealed interface DriftAction {
 /**
  * Android drift policy (spec 2.5), evaluated about once a second while playing:
  * - under 40 ms: nothing; a running correction continues until the drift is under 20 ms, then
- *   the speed goes back to 1.0 (hysteresis, so it does not toggle around 40 ms);
+ *   the speed goes back to 1.0 (hysteresis, so it does not toggle around 40 ms); an overshoot to
+ *   the other side under 40 ms also goes back to 1.0, and a speed that is not [SLOWER]/[FASTER]
+ *   is never treated as a correction;
  * - 40..1000 ms: 0.97x when ahead of the room, 1.03x when behind (pitch stays 1.0);
  * - over 1000 ms: seek to the expected position, at most once per [MIN_SEEK_INTERVAL_MS] unless
  *   [force] (the room's playback just changed), so a slow network cannot loop seek -> rebuffer -> seek.
@@ -39,9 +41,17 @@ object DriftCorrector {
             val canSeek = force || lastSeekAtMs == null || nowMs - lastSeekAtMs >= MIN_SEEK_INTERVAL_MS
             return if (canSeek) DriftAction.Seek(expectedMs) else DriftAction.Ignore
         }
-        val correcting = currentSpeed != NORMAL
-        if (correcting && size < SETTLED_MS) return DriftAction.SetSpeed(NORMAL)
-        if (!correcting && size < START_CORRECTING_MS) return DriftAction.Ignore
+        if (size < START_CORRECTING_MS) {
+            if (currentSpeed == NORMAL) return DriftAction.Ignore
+            // Only our own 0.97/1.03 counts as a running correction; any other speed (the user's
+            // own playback speed) goes back to 1.0.
+            val correcting = currentSpeed == SLOWER || currentSpeed == FASTER
+            if (!correcting || size < SETTLED_MS) return DriftAction.SetSpeed(NORMAL)
+            // An overshoot under 40 ms stops the correction instead of starting the opposite one
+            // below the start threshold (which could ping-pong around zero).
+            val opposes = (currentSpeed == SLOWER) != (drift > 0)
+            return if (opposes) DriftAction.SetSpeed(NORMAL) else DriftAction.Ignore
+        }
         val wanted = if (drift > 0) SLOWER else FASTER
         return if (currentSpeed == wanted) DriftAction.Ignore else DriftAction.SetSpeed(wanted)
     }
