@@ -40,7 +40,7 @@ class ServerDeps(
     /** Uncached InnerTube calls of every endpoint together (300/min). */
     val upstreamBudget: UpstreamBudget = UpstreamBudget(clock = clock),
     val search: SearchService = SearchService(InnerTubeSearchBackend(http), clock, budget = upstreamBudget),
-    val video: VideoInfoService = VideoInfoService(InnerTubeVideoBackend(http), clock, upstreamBudget),
+    val video: VideoInfoService = VideoInfoService(InnerTubeVideoBackend(http), clock, upstreamBudget, player = InnerTubePlayerBackend(http)),
     val socketLimits: SocketLimits = SocketLimits(),
     val peerStats: PeerStats = PeerStats(),
     val stateBudget: StateBudget = StateBudget(),

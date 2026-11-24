@@ -12,7 +12,9 @@ import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 import java.net.URI
 
 /** GET /api/video's answer: what the web needs to preview and add a YOUTUBE_VIDEO entry. */
@@ -66,6 +68,75 @@ class InnerTubeVideoBackend(private val http: HttpClient, private val url: Strin
     }
 }
 
+/** Returns the raw InnerTube `player` JSON for one video; only its `videoDetails` is ever read. */
+fun interface VideoDetailsBackend {
+    suspend fun fetch(videoId: String): String
+}
+
+/**
+ * One InnerTube `player` call (WEB client) for one video: the fallback for non-music (UGC) videos,
+ * which YouTube Music's get_queue answers (HTTP 200) with an unplayable stub: a renderer with
+ * `unplayableText` and no title, byline or length (checked 2026-11-24). Without a PO token YouTube
+ * answers playabilityStatus UNPLAYABLE and no streamingData, but `videoDetails` still has the
+ * metadata. Metadata only: streamingData is never read and no stream URL is ever returned.
+ */
+class InnerTubePlayerBackend(private val http: HttpClient, private val url: String = URL) : VideoDetailsBackend {
+    override suspend fun fetch(videoId: String): String {
+        val response = http.post(url) {
+            webClientHeaders()
+            setBody(TextContent(requestBody(videoId), ContentType.Application.Json))
+        }
+        // Like get_queue: 404 (and 400 for some malformed ids) mean "no such video", "{}".
+        if (response.status == HttpStatusCode.BadRequest) {
+            // Also what an outdated WEB client version looks like. Never log the id.
+            log.warn("video player backend answered 400")
+            return "{}"
+        }
+        if (response.status == HttpStatusCode.NotFound) return "{}"
+        check(response.status.isSuccess()) { "InnerTube player failed: ${response.status.value}" }
+        return response.bodyAsText()
+    }
+
+    companion object {
+        private val log = org.slf4j.LoggerFactory.getLogger(InnerTubePlayerBackend::class.java)
+        const val URL = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false"
+
+        fun requestBody(videoId: String): String = buildJsonObject {
+            putJsonObject("context") {
+                putJsonObject("client") {
+                    put("clientName", InnerTubeSearchBackend.WEB_CLIENT_NAME)
+                    put("clientVersion", InnerTubeSearchBackend.WEB_CLIENT_VERSION)
+                    put("hl", "en")
+                    put("gl", "US")
+                }
+            }
+            put("videoId", videoId)
+        }.toString()
+    }
+}
+
+/** Reads the `player` answer's `videoDetails` only (never `streamingData`). */
+object InnerTubePlayerParser {
+    /** The video [videoId], or null when videoDetails is missing, is another video's or has no title. */
+    fun parse(json: String, videoId: String): VideoInfo? {
+        val details = RitmeJson.parseToJsonElement(json).at("videoDetails") ?: return null
+        if (details.at("videoId").asString() != videoId) return null
+        val title = details.at("title").asString()?.takeIf { it.isNotBlank() } ?: return null
+        val channel = details.at("author").asString().orEmpty()
+        // lengthSeconds is a string ("627"); a live stream has "0" or none.
+        val seconds = details.at("lengthSeconds").asString()?.toLongOrNull()
+        val live = details.at("isLive").asBoolean() == true ||
+            (details.at("isLiveContent").asBoolean() == true && (seconds == null || seconds == 0L))
+        // The same guard as InnerTubeVideoParser.lengthMs: above 0 and under 12 h, else live.
+        val durationMs = if (live) 0L else {
+            seconds?.takeIf { it in 1 until InnerTubeVideoParser.LIVE_FROM_MS / 1_000 }?.times(1_000) ?: 0L
+        }
+        val thumbnail = details.at("thumbnail", "thumbnails").asArray().lastOrNull()?.at("url").asString()
+            ?.takeIf(::isYouTubeImageUrl)
+        return VideoInfo(videoId, title, channel, durationMs, thumbnail, live = durationMs == 0L)
+    }
+}
+
 /** Reads `queueDatas[0].content` like the app's NextPage.fromPlaylistPanelVideoRenderer. */
 object InnerTubeVideoParser {
     /** A length this long or longer is taken for a live stream (see [lengthMs]). */
@@ -101,19 +172,29 @@ object InnerTubeVideoParser {
 /**
  * Cached, single-flight video info on the [budget] search uses too. Videos stay 6 h; live ones
  * (their status can change) and missing ones (so a bogus id cannot drain the budget) 5 min.
+ * get_queue first; when it has no usable video (a UGC stub, a 404), the [player] fallback: so a
+ * miss costs at most two upstream calls, both charged to [budget], per cache window.
  */
 class VideoInfoService(
     private val backend: VideoBackend,
     clock: Clock,
-    budget: UpstreamBudget = UpstreamBudget(clock = clock),
+    private val budget: UpstreamBudget = UpstreamBudget(clock = clock),
     maxEntries: Int = 1_000,
+    /** The `player` fallback; null: get_queue alone (tests of get_queue). */
+    private val player: VideoDetailsBackend? = null,
 ) {
     private val cache = SingleFlightCache<String, VideoInfo?>(clock, budget, maxEntries) { info ->
         if (info == null || info.live) SHORT_TTL_MS else TTL_MS
     }
 
-    suspend fun lookup(videoId: String): VideoInfo? =
-        cache.get(videoId) { InnerTubeVideoParser.parse(backend.fetch(videoId), videoId) }
+    suspend fun lookup(videoId: String): VideoInfo? = cache.get(videoId) {
+        InnerTubeVideoParser.parse(backend.fetch(videoId), videoId) ?: player?.let { fallback ->
+            // A second upstream call: the cache paid for get_queue, this spends its own token.
+            // None left: 503 and nothing cached, like any other spent budget.
+            if (!budget.tryAcquire()) throw UpstreamOverloadedException()
+            InnerTubePlayerParser.parse(fallback.fetch(videoId), videoId)
+        }
+    }
 
     companion object {
         const val TTL_MS = 6 * 60 * 60_000L
