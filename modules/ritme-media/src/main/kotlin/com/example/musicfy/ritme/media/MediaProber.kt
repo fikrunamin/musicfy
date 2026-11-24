@@ -160,7 +160,7 @@ class MediaProber(private val http: ProbeHttp, private val webOrigin: String) {
     private fun fetch(url: String, headers: Map<String, String>, maxBytes: Int): ProbeResponse? = try {
         http.get(url, headers, maxBytes).let {
             // whatever the client does, never trust it to have cut the body
-            if (it.body.size > maxBytes) ProbeResponse(it.status, it.contentType, it.body.copyOf(minOf(it.body.size, maxBytes)), it.finalUrl, it.allowOrigin) else it
+            if (it.body.size > maxBytes) ProbeResponse(it.status, it.contentType, it.body.copyOf(maxBytes), it.finalUrl, it.allowOrigin) else it
         }
     } catch (_: IOException) {
         null

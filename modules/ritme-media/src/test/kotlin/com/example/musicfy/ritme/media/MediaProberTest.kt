@@ -172,10 +172,16 @@ class MediaProberTest {
 
     @Test
     fun anOversizedBodyIsClampedWhateverTheClientDoes() {
-        val big = ByteArray(MediaProber.HEAD_BYTES * 3)
-        val http = ProbeHttp { url, _, _ -> ProbeResponse(200, "text/html", big, url, null) }
-        // would be handed to the sniffer whole without the clamp; the verdict must still be a clean refusal
-        assertEquals(Refusal.NOT_MEDIA, MediaProber(http, web).probe(mp4, null).refusal)
+        fun box(type: String, size: Int) = ByteArray(size).also {
+            it[2] = (size shr 8).toByte(); it[3] = size.toByte()
+            type.forEachIndexed { i, c -> it[4 + i] = c.code.toByte() }
+        }
+        // ftyp, then a free box running past HEAD_BYTES, then a pssh box: only an unclamped body reveals the DRM
+        val big = box("ftyp", 16) + box("free", MediaProber.HEAD_BYTES + 100) + box("pssh", 32)
+        val http = ProbeHttp { url, _, _ -> ProbeResponse(200, "video/mp4", big, url, null) }
+        val verdict = MediaProber(http, web).probe(mp4, null)
+        assertNull(verdict.refusal)
+        assertEquals(MediaFormat.MP4, verdict.format)
     }
 
     @Test

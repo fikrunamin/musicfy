@@ -59,14 +59,28 @@ object BrowserAddress {
     fun navigation(url: String, hasGesture: Boolean): Navigation {
         val scheme = SCHEME.find(url)?.groupValues?.get(1)?.lowercase() ?: return Navigation.BLOCK
         return when (scheme) {
-            "http", "https" -> when (MediaUrlRules.check(url.substringBefore('#'))) {
-                MediaUrlRules.Rejection.LOCAL_HOST, MediaUrlRules.Rejection.NON_CANONICAL_IP -> Navigation.REFUSE_LOCAL
-                else -> Navigation.ALLOW
-            }
+            "http", "https" -> hostNavigation(url)
             "about" -> if (url.equals("about:blank", ignoreCase = true)) Navigation.ALLOW else Navigation.BLOCK
             "javascript", "file", "content", "data", "blob", "chrome", "view-source" -> Navigation.BLOCK
             // intent:, market:, another app's scheme: only when the user tapped, and only after asking
             else -> if (hasGesture) Navigation.ASK_EXTERNAL else Navigation.BLOCK
+        }
+    }
+
+    /**
+     * Decides on the host alone (browsing is not sharing: length, fragment and userinfo do not matter),
+     * failing closed: a local host is REFUSE_LOCAL even behind `user@`; a host or port that cannot be
+     * read cleanly (backslash, ideographic dots, port > 65535, no host, no `//`) is BLOCK.
+     */
+    private fun hostNavigation(url: String): Navigation {
+        val rest = url.substring(url.indexOf(':') + 1)
+        if (!rest.startsWith("//")) return Navigation.BLOCK
+        val authority = rest.substring(2).takeWhile { it != '/' && it != '?' && it != '#' }
+        if (MediaUrlRules.check("https://$authority/") == MediaUrlRules.Rejection.FORBIDDEN_CHARACTER) return Navigation.BLOCK
+        return when (MediaUrlRules.check("https://${authority.substringAfterLast('@')}/")) {
+            null -> Navigation.ALLOW
+            MediaUrlRules.Rejection.LOCAL_HOST, MediaUrlRules.Rejection.NON_CANONICAL_IP -> Navigation.REFUSE_LOCAL
+            else -> Navigation.BLOCK
         }
     }
 

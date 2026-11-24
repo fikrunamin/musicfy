@@ -66,4 +66,33 @@ class BrowserAddressTest {
             assertEquals(it, Navigation.BLOCK, BrowserAddress.navigation(it, hasGesture = true))
         }
     }
+
+    @Test
+    fun navigationJudgesTheHostAndFailsClosed() {
+        fun nav(u: String) = BrowserAddress.navigation(u, hasGesture = true)
+        // userinfo does not hide a local host
+        assertEquals(Navigation.REFUSE_LOCAL, nav("http://a@192.168.1.1/"))
+        assertEquals(Navigation.REFUSE_LOCAL, nav("http://x@localhost:8080/"))
+        // a host that cannot be read cleanly is blocked, never allowed (backslash, ideographic dots, bad port, no host)
+        listOf("http://127.0.0.1\\x", "http://127\u3002" + "0\u3002" + "0\u3002" + "1/", "https://example.com:99999/", "http:///x", "http:/host")
+            .forEach { assertEquals(it, Navigation.BLOCK, nav(it)) }
+        // browsing is not sharing: length, fragment and userinfo on a public host are fine
+        assertEquals(Navigation.ALLOW, nav("https://example.com/" + "a".repeat(3000)))
+        assertEquals(Navigation.ALLOW, nav("https://example.com/#x"))
+        assertEquals(Navigation.ALLOW, nav("https://u:p@example.com/"))
+    }
+
+    @Test
+    fun namedRisksNeverBecomeANavigableNonHttpOrLocalUrl() {
+        listOf(
+            "\u0000javascript:alert(1)", "\uFEFFjavascript:alert(1)", "//host", "http:/host", "localhost.", "127.1", "0x7f.1",
+            "a@192.168.1.1", "\u0000http://127.0.0.1/", "\uFEFFhttp://localhost/",
+        ).forEach {
+            val r = BrowserAddress.resolve(it)
+            if (r is AddressInput.Open) {
+                val u = r.url
+                assertEquals(it, true, u.startsWith("https://duckduckgo.com/?q=") || (u.startsWith("https://") && BrowserAddress.navigation(u, false) == Navigation.ALLOW))
+            }
+        }
+    }
 }
