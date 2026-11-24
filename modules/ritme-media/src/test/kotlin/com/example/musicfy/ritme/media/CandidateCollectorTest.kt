@@ -59,6 +59,7 @@ class CandidateCollectorTest {
     fun atMostFiftyPerPage() {
         val c = collector()
         repeat(60) { c.onRequest("https://cdn.example.com/v/$it.mp4", "GET", emptyMap(), it.toLong()) }
+        c.onReport(report(videos = (0 until 60).map { video("https://cdn.example.com/p/$it.mp4") }), 100)
         assertEquals(CandidateCollector.MAX_CANDIDATES, c.findings().candidates.size)
     }
 
@@ -175,6 +176,119 @@ class CandidateCollectorTest {
             val urls = (0 until 10).map { "https://cdn.example.com/f$frame/$it.mp4" }
             c.onReport(report(videos = listOf(PageVideo(urls.take(5), false, null, false, 1, 1, 1, false), PageVideo(urls.drop(5), false, null, false, 1, 1, 1, false)), mainFrame = frame == 0, frameUrl = "https://example.com/f$frame"), frame.toLong())
         }
+        assertEquals(20, c.findings().candidates.size)
+        repeat(60) { c.onRequest("https://cdn.example.com/v/$it.mp4", "GET", emptyMap(), it.toLong()) }
         assertEquals(CandidateCollector.MAX_CANDIDATES, c.findings().candidates.size)
+    }
+
+    private fun junkReport(n: Int, mainFrame: Boolean = true, frameUrl: String? = page) =
+        report(videos = (0 until n).map { video("https://cdn.example.com/n.mp4?i=$it") }, mainFrame = mainFrame, frameUrl = frameUrl)
+
+    @Test
+    fun aFloodOfPageUrlsCannotEvictANetworkRequest() {
+        val c = collector()
+        c.onReport(report(videos = (0 until 50).map { video("https://cdn.example.com/n.mp4?i=$it") }), 1)
+        assertTrue(c.onRequest(hls, "GET", emptyMap(), 2))
+        val urls = c.findings().candidates.map { it.url }
+        assertTrue(hls in urls)
+        assertTrue(urls.size <= CandidateCollector.MAX_CANDIDATES)
+    }
+
+    @Test
+    fun aFloodOfRequestsCannotEvictThePlayingPageVideo() {
+        val c = collector()
+        repeat(40) { c.onRequest("https://cdn.example.com/v/$it.mp4", "GET", emptyMap(), it.toLong()) }
+        c.onReport(report(listOf(video(mp4, area = 500_000, playing = true))), 100)
+        val findings = c.findings()
+        assertEquals(mp4, findings.candidates.first().url)
+        assertTrue(findings.candidates.size <= CandidateCollector.MAX_CANDIDATES)
+    }
+
+    @Test
+    fun aVideoThatLeftThePageFreesItsCandidate() {
+        val c = collector()
+        c.onReport(report(listOf(video(mp4, playing = true)), og = listOf("https://cdn.example.com/og.mp4")), 1)
+        assertEquals(2, c.findings().candidates.size)
+        c.onReport(report(listOf(video("https://cdn.example.com/other.mp4"))), 2)
+        assertEquals(listOf("https://cdn.example.com/other.mp4"), c.findings().candidates.map { it.url })
+    }
+
+    @Test
+    fun aFullNetworkPoolEvictsTheStalestUnknownEntryForANewcomer() {
+        val c = collector()
+        repeat(30) { c.onRequest("https://cdn.example.com/v/$it.mp4", "GET", emptyMap(), it.toLong()) }
+        c.onReport(report(listOf(video("https://cdn.example.com/v/0.mp4", playing = true, area = 5))), 50)
+        assertTrue(c.onRequest(hls, "GET", emptyMap(), 60))
+        val urls = c.findings().candidates.map { it.url }
+        assertTrue(hls in urls)
+        assertTrue("https://cdn.example.com/v/0.mp4" in urls)
+        assertFalse("https://cdn.example.com/v/1.mp4" in urls)
+    }
+
+    @Test
+    fun aSpaNavigationDropsTheOldDocumentsMainFrameAndRequests() {
+        val c = collector()
+        c.onRequest(hls, "GET", emptyMap(), 1)
+        c.onReport(report(eme = true).copy(title = "A", frameUrl = "https://example.com/a"), 2)
+        assertEquals("A", c.findings().title)
+        assertTrue(c.findings().eme)
+        assertTrue(c.urlChanged("https://example.com/b"))
+        assertNull(c.findings().title)
+        assertTrue(c.findings().candidates.isEmpty())
+        c.onReport(report().copy(title = "B", frameUrl = "https://example.com/b"), 3)
+        assertEquals("B", c.findings().title)
+        assertFalse(c.findings().eme)
+    }
+
+    @Test
+    fun theMainFrameReportReplacesTheOneBeforeWhateverItsFrameUrl() {
+        val c = collector()
+        c.onReport(report().copy(title = "A", frameUrl = "https://example.com/a"), 1)
+        c.onReport(report().copy(title = "B", frameUrl = "https://example.com/b"), 2)
+        assertEquals("B", c.findings().title)
+    }
+
+    @Test
+    fun theMainFrameIsNeverLockedOutByTheFrameCap() {
+        val c = collector()
+        repeat(CandidateCollector.MAX_FRAMES) { c.onReport(report(mainFrame = false, frameUrl = "https://sub.example.net/$it"), it.toLong()) }
+        assertTrue(c.onReport(report(listOf(video(mp4, playing = true))), 99))
+        val findings = c.findings()
+        assertEquals("Film | Example", findings.title)
+        assertEquals(listOf(mp4), findings.candidates.map { it.url })
+    }
+
+    @Test
+    fun subframesBeyondTheFrameCapAreIgnored() {
+        val c = collector()
+        repeat(CandidateCollector.MAX_FRAMES) { c.onReport(report(mainFrame = false, frameUrl = "https://sub.example.net/$it"), it.toLong()) }
+        assertFalse(c.onReport(report(listOf(video(mp4)), mainFrame = false, frameUrl = "https://sub.example.net/extra"), 50))
+        assertTrue(c.findings().candidates.isEmpty())
+        // a frame already known still updates
+        assertTrue(c.onReport(report(listOf(video(mp4)), mainFrame = false, frameUrl = "https://sub.example.net/3"), 51))
+        assertEquals(1, c.findings().candidates.size)
+    }
+
+    @Test
+    fun youTubeHostsAreNeverCandidates() {
+        val c = collector()
+        c.onReport(report(listOf(video("https://www.youtube.com/watch.mp4"), video("https://rr1.googlevideo.com/x.mp4")), og = listOf("https://m.youtube.com/o.mp4")), 1)
+        c.onRequest("https://www.youtube.com/v.m3u8", "GET", emptyMap(), 2)
+        assertTrue(c.findings().candidates.none { "youtube.com" in it.url })
+    }
+
+    @Test
+    fun requestsAndReportsFromTwoThreadsStayConsistent() {
+        val c = collector()
+        val net = Thread { repeat(2000) { c.onRequest("https://cdn.example.com/v/${it % 80}.mp4", "GET", emptyMap(), it.toLong()) } }
+        val pageThread = Thread {
+            repeat(2000) { i -> c.onReport(junkReport(1 + i % 30).copy(title = "T$i"), i.toLong()) }
+        }
+        val reader = Thread { repeat(500) { assertTrue(c.findings().candidates.size <= CandidateCollector.MAX_CANDIDATES) } }
+        listOf(net, pageThread, reader).forEach { it.start() }
+        listOf(net, pageThread, reader).forEach { it.join() }
+        val urls = c.findings().candidates.map { it.url }
+        assertTrue(urls.size <= CandidateCollector.MAX_CANDIDATES)
+        assertEquals(urls.size, urls.toSet().size)
     }
 }

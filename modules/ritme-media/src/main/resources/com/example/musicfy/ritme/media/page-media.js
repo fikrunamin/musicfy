@@ -111,15 +111,30 @@
     return out;
   }
 
-  // The message as JSON, with trailing srcs and then trailing videos dropped until it fits.
+  // The message as JSON, trimmed until it fits: trailing srcs, then videos (not playing and smallest first,
+  // so the playing / largest stay), then trailing JSON-LD and og entries.
   function fit(body) {
     var message = JSON.stringify(body);
     for (var n = MAX_SRCS - 1; n >= 1 && message.length > MAX_MESSAGE; n--) {
       for (var i = 0; i < body.videos.length; i++) body.videos[i].srcs = body.videos[i].srcs.slice(0, n);
       message = JSON.stringify(body);
     }
-    while (message.length > MAX_MESSAGE && body.videos.length > 0) {
-      body.videos.pop();
+    if (message.length > MAX_MESSAGE && body.videos.length > 0) {
+      var ranked = body.videos.map(function (v, i) { return { v: v, i: i }; }).sort(function (a, b) {
+        return (b.v.playing ? 1 : 0) - (a.v.playing ? 1 : 0) || b.v.area - a.v.area || a.i - b.i;
+      });
+      while (message.length > MAX_MESSAGE && ranked.length > 0) {
+        ranked.pop();
+        body.videos = ranked.slice().sort(function (a, b) { return a.i - b.i; }).map(function (r) { return r.v; });
+        message = JSON.stringify(body);
+      }
+    }
+    while (message.length > MAX_MESSAGE && body.ld.length > 0) {
+      body.ld.pop();
+      message = JSON.stringify(body);
+    }
+    while (message.length > MAX_MESSAGE && body.og.length > 0) {
+      body.og.pop();
       message = JSON.stringify(body);
     }
     return message;
@@ -149,11 +164,18 @@
     }
   }
 
+  function clock() {
+    return typeof performance !== 'undefined' && performance && typeof performance.now === 'function' ? performance.now() : Date.now();
+  }
+
   function schedule() {
-    // A page may clear timers it did not set: a timer older than twice the debounce is gone.
-    var now = Date.now();
-    if (timer && now - timerAt <= 2 * DEBOUNCE_MS) return;
-    timerAt = now;
+    // A page may clear timers it did not set: a timer older than twice the debounce (or from a clock that
+    // went backwards) is gone. A fresh event inside the window re-arms the timer, so a trailing report
+    // happens even when the pending one was cleared; the window start stays, so reports are never starved.
+    var now = clock();
+    var live = timer && now >= timerAt && now - timerAt <= 2 * DEBOUNCE_MS;
+    if (live) clearTimeout(timer);
+    else timerAt = now;
     timer = setTimeout(report, DEBOUNCE_MS);
   }
 

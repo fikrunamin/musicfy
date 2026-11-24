@@ -197,6 +197,43 @@ describe('page-media.js', () => {
     expect(reports(posted)[1].videos.map((v) => v.srcs[0])).toEqual(['https://cdn.example.com/one.mp4', 'https://cdn.example.com/two.mp4']);
   });
 
+  it('keeps the playing largest video when trimming drops videos to fit', async () => {
+    const long = (n: number): string => `https://cdn.example.com/${'q'.repeat(1900)}/${n}.mp4`;
+    document.body.innerHTML = Array.from({ length: 20 }, (_, n) => `<video id="v${n}" src="${long(n)}"></video>`).join('');
+    document.head.innerHTML = `<script type="application/ld+json">${JSON.stringify(
+      Array.from({ length: 20 }, (_, n) => ({ '@type': 'VideoObject', contentUrl: `https://cdn.example.com/${'l'.repeat(1900)}/${n}.mp4`, name: 'n'.repeat(300) })),
+    )}</script>`;
+    for (let n = 0; n < 20; n++) {
+      const el = document.getElementById(`v${n}`) as HTMLVideoElement;
+      el.getBoundingClientRect = () => ({ width: n === 17 ? 900 : 10, height: n === 17 ? 500 : 10 }) as DOMRect;
+    }
+    Object.defineProperty(document.getElementById('v17'), 'paused', { value: false });
+    const posted = install();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(posted).toHaveLength(1);
+    expect(posted[0].length).toBeLessThanOrEqual(60_000);
+    const { videos } = reports(posted)[0];
+    expect(videos.length).toBeLessThan(20);
+    expect(videos.some((v) => v.playing && v.srcs[0] === long(17))).toBe(true);
+  });
+
+  it('still sends a trailing report when a page cleared the pending timer and another event follows', async () => {
+    const posted = install();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(posted).toHaveLength(1);
+    const a = document.createElement('video');
+    a.setAttribute('src', 'https://cdn.example.com/a.mp4');
+    document.body.appendChild(a);
+    await vi.advanceTimersByTimeAsync(10);
+    vi.clearAllTimers();
+    const b = document.createElement('video');
+    b.setAttribute('src', 'https://cdn.example.com/b.mp4');
+    document.body.appendChild(b);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(posted).toHaveLength(2);
+    expect(reports(posted)[1].videos.map((v) => v.srcs[0])).toEqual(['https://cdn.example.com/a.mp4', 'https://cdn.example.com/b.mp4']);
+  });
+
   it('does not throw into the page when scheduling fails inside the DRM hook', async () => {
     const original = vi.fn(() => Promise.resolve('access'));
     Object.defineProperty(navigator, 'requestMediaKeySystemAccess', { value: original, configurable: true, writable: true });
