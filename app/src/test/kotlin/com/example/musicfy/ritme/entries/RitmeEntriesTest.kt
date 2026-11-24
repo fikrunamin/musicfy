@@ -3,6 +3,7 @@ package com.example.musicfy.ritme.entries
 import com.example.musicfy.models.MediaMetadata
 import com.example.musicfy.ritme.protocol.MediaKind
 import com.example.musicfy.ritme.protocol.NewEntry
+import com.example.musicfy.ritme.protocol.StreamType
 import com.example.musicfy.ritme.testing.entry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -334,5 +335,17 @@ class RitmeEntriesTest {
         )
         assertEquals("cdn.example.com", RitmeEntries.toUrlEntry("https://cdn.example.com/v.mp4", "  ", "cdn.example.com")?.title)
         assertNull(RitmeEntries.toUrlEntry("http://10.0.0.1/v.mp4", "T", "10.0.0.1"))
+    }
+
+    @Test
+    fun aUrlEntryCarriesItsStreamTypeAndOnlyAnOriginReferrer() {
+        val hls = RitmeEntries.toUrlEntry("https://cdn.example.com/v/manifest?token=a", "Film", "example.com", 0, StreamType.HLS, "https://example.com/")!!
+        assertEquals(StreamType.HLS, hls.streamType)
+        assertEquals("https://example.com/", hls.referrer)
+        val file = { referrer: String? -> RitmeEntries.toUrlEntry("https://cdn.example.com/v.mp4", "Film", "example.com", 1_000, StreamType.FILE, referrer)!! }
+        assertNull(file("https://example.com/watch/1").referrer)
+        assertNull(file("http://192.168.1.1/").referrer)
+        assertNull(RitmeEntries.toUrlEntry("https://cdn.example.com/v.mp4", "Film", "example.com", 1_000, StreamType.UNKNOWN)!!.streamType)
+        assertNull(RitmeEntries.toUrlEntry("https://cdn.example.com/v.mp4", "Film", "example.com", 1_000)!!.streamType)
     }
 }

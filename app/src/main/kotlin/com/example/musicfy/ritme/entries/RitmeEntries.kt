@@ -4,6 +4,7 @@ import com.example.musicfy.models.MediaMetadata
 import com.example.musicfy.ritme.protocol.MediaKind
 import com.example.musicfy.ritme.protocol.MediaUrlRules
 import com.example.musicfy.ritme.protocol.NewEntry
+import com.example.musicfy.ritme.protocol.StreamType
 import com.example.musicfy.ritme.protocol.QueueEntry
 import com.music.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_UGC
 import java.net.URI
@@ -141,7 +142,14 @@ object RitmeEntries {
      * seeks the entry to the live edge. A direct .m3u8/.mpd link that is really VOD is added with
      * durationMs = 0 and therefore restarts from 0 on every play after a pause.
      */
-    fun toUrlEntry(url: String, title: String, domain: String, durationMs: Long = 0): NewEntry? {
+    fun toUrlEntry(
+        url: String,
+        title: String,
+        domain: String,
+        durationMs: Long = 0,
+        streamType: StreamType? = null,
+        referrer: String? = null,
+    ): NewEntry? {
         if (!MediaUrlRules.isAcceptableMediaUrl(url)) return null
         val cleanTitle = truncate(title.trim()).takeIf(::hasVisibleText)
             ?: truncate(domain.trim()).takeIf(::hasVisibleText)
@@ -154,6 +162,8 @@ object RitmeEntries {
             durationMs = durationMs.coerceIn(0, MAX_DURATION_MS),
             kind = MediaKind.URL,
             url = url,
+            streamType = streamType?.takeUnless { it == StreamType.UNKNOWN },
+            referrer = referrer?.takeIf(MediaUrlRules::isAcceptableReferrer),
         )
     }
 

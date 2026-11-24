@@ -102,7 +102,7 @@ class RitmeAddVideoModel(private val lookup: VideoLookup) {
             val entry = preview.entry
             if (!preview.editableTitle || entry.kind != MediaKind.URL) return entry
             val url = entry.url ?: return null
-            return RitmeEntries.toUrlEntry(url, title, entry.artist, entry.durationMs)
+            return RitmeEntries.toUrlEntry(url, title, entry.artist, entry.durationMs, entry.streamType, entry.referrer)
         }
     }
 }

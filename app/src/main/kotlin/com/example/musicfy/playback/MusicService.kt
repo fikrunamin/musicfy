@@ -3556,7 +3556,7 @@ class MusicService :
      * YouTube resolver, the song caches or the proxy; no cookies; a local address is refused before
      * the socket connects (RitmeUrlHttp). OkHttpDataSource only speaks http(s), so file:/content: never play from a room.
      */
-    private val ritmeUrlSourceFactory by lazy {
+    private val ritmeUrlDataSourceFactory by lazy {
         // Reading the WebView's user agent can load WebView, which must not hold up the player's
         // thread: requests send the fallback until it's ready.
         scope.launch(Dispatchers.IO) {
@@ -3564,8 +3564,28 @@ class MusicService :
                 com.example.musicfy.ui.screens.settings.importsync.chromeUserAgent(android.webkit.WebSettings.getDefaultUserAgent(this@MusicService))
             }.onSuccess { ritmeUserAgent = it }
         }
-        DefaultMediaSourceFactory(OkHttpDataSource.Factory(com.example.musicfy.ritme.playback.RitmeUrlHttp.client { ritmeUserAgent }))
+        OkHttpDataSource.Factory(com.example.musicfy.ritme.playback.RitmeUrlHttp.client { ritmeUserAgent })
+    }
+
+    private val ritmeUrlSourceFactory by lazy {
+        DefaultMediaSourceFactory(ritmeUrlDataSourceFactory)
             .setLoadErrorHandlingPolicy(com.example.musicfy.ritme.playback.RitmeUrlHttp.loadErrorPolicy)
+    }
+
+    /**
+     * A room URL item's source. An entry that carries a referrer (a host that checks it, spec D8)
+     * sends that origin as the Referer on every request of this item only; nothing else changes and
+     * nothing is shared with other items.
+     */
+    private fun ritmeUrlMediaSource(mediaItem: androidx.media3.common.MediaItem): androidx.media3.exoplayer.source.MediaSource {
+        val referrer = com.example.musicfy.ritme.playback.RitmeItems.referrerOf(mediaItem)
+            ?: return ritmeUrlSourceFactory.createMediaSource(mediaItem)
+        val withReferer = androidx.media3.datasource.ResolvingDataSource.Factory(ritmeUrlDataSourceFactory) { spec ->
+            spec.withAdditionalHeaders(mapOf("Referer" to referrer))
+        }
+        return DefaultMediaSourceFactory(withReferer)
+            .setLoadErrorHandlingPolicy(com.example.musicfy.ritme.playback.RitmeUrlHttp.loadErrorPolicy)
+            .createMediaSource(mediaItem)
     }
 
     @Volatile
@@ -3580,7 +3600,7 @@ class MusicService :
         return object : androidx.media3.exoplayer.source.MediaSource.Factory by defaultFactory {
             override fun createMediaSource(mediaItem: androidx.media3.common.MediaItem): androidx.media3.exoplayer.source.MediaSource {
                 if (com.example.musicfy.ritme.entries.RitmeEntries.isUrlMediaId(mediaItem.mediaId)) {
-                    return ritmeUrlSourceFactory.createMediaSource(mediaItem)
+                    return ritmeUrlMediaSource(mediaItem)
                 }
                 return com.example.musicfy.playback.custom.DynamicResolvingMediaSource(
                     originalMediaItem = mediaItem,

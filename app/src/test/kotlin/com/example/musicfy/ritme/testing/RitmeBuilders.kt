@@ -7,6 +7,7 @@ import com.example.musicfy.ritme.protocol.QueueEntry
 import com.example.musicfy.ritme.protocol.RoomSettings
 import com.example.musicfy.ritme.protocol.RoomState
 import com.example.musicfy.ritme.protocol.ServerMessage
+import com.example.musicfy.ritme.protocol.StreamType
 
 fun entry(
     id: String,
@@ -15,6 +16,8 @@ fun entry(
     kind: MediaKind = MediaKind.YOUTUBE_MUSIC,
     videoId: String = "vid$id",
     url: String? = null,
+    streamType: StreamType? = null,
+    referrer: String? = null,
 ) = QueueEntry(
     entryId = id,
     videoId = videoId,
@@ -25,6 +28,8 @@ fun entry(
     addedBy = addedBy,
     kind = kind,
     url = url,
+    streamType = streamType,
+    referrer = referrer,
 )
 
 fun member(id: String, isHost: Boolean = false, connected: Boolean = true) =
