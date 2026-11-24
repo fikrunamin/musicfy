@@ -199,6 +199,7 @@ export function AddVideoPanel({ session, online, pageIsHttps, draft, fetchImpl, 
 
   const onSubmit = async (e: Event) => {
     e.preventDefault();
+    setPasteFailed(false);
     inflight.current?.abort();
     const controller = new AbortController();
     inflight.current = controller;
@@ -270,11 +271,12 @@ export function AddVideoPanel({ session, online, pageIsHttps, draft, fetchImpl, 
           onInput={(e) => changeLink(e.currentTarget.value)}
         />
         {canReadClipboard() && <IconButton icon="content_paste" variant="filled" label={t.pasteLink} title={t.pasteLink} onClick={() => void paste()} />}
-        <IconButton type="submit" icon="search" variant="accent" label={busy ? t.loadingPreview : t.preview} disabled={busy} />
+        <IconButton type="submit" icon="search" variant="accent" label={busy ? t.loadingPreview : t.preview} title={busy ? t.loadingPreview : t.preview} disabled={busy} />
       </form>
       {error && <FieldError id={ERROR_ID}>{error}</FieldError>}
       {error === videoLinkProblemText.unrecognized && <p class="add-hint">{t.videoLinkHint}</p>}
       {pasteFailed && <p class="add-hint">{t.pasteFailed}</p>}
+      {busy && <p class="add-hint" aria-hidden="true">{t.loadingPreview}</p>}
       {preview.kind === 'youtube' && <YouTubeCard preview={preview} />}
       {preview.kind === 'direct' && (
         <>

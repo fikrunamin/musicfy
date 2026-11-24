@@ -340,6 +340,18 @@ describe('AddVideoPanel', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it('pasting a direct link does not probe it until submit', async () => {
+    const readText = vi.fn(async () => 'https://cdn.example.com/media/clip.mp4');
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { readText } });
+    const probe = probing({ kind: 'ready', durationMs: 1_000, live: false });
+    render(<AddVideoPanel session={fakeSession()} online pageIsHttps probe={probe} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Tempel dari papan klip' }));
+    await waitFor(() => expect((screen.getByLabelText('Tempel link video') as HTMLInputElement).value).toBe('https://cdn.example.com/media/clip.mp4'));
+    expect(probe).not.toHaveBeenCalled();
+    fireEvent.submit((screen.getByLabelText('Tempel link video') as HTMLInputElement).closest('form')!);
+    await waitFor(() => expect(probe).toHaveBeenCalledTimes(1));
+  });
+
   it('hides the paste button where the clipboard cannot be read', () => {
     vi.stubGlobal('navigator', { ...navigator, clipboard: undefined });
     render(<AddVideoPanel session={fakeSession()} online pageIsHttps />);
@@ -417,6 +429,21 @@ describe('AddVideoPanel', () => {
       // Typing (or a paste that works) clears the note.
       fireEvent.input(field(), { target: { value: 'https://youtu.be/aqz-KE-bpKQ' } });
       expect(screen.queryAllByText(note)).toHaveLength(0);
+    });
+
+    it('clears the paste note when the preview starts, so the loading and preview text is announced', async () => {
+      const readText = vi.fn(async () => {
+        throw new DOMException('denied', 'NotAllowedError');
+      });
+      vi.stubGlobal('navigator', { ...navigator, clipboard: { readText } });
+      render(<AddVideoPanel session={fakeSession()} online pageIsHttps fetchImpl={respond(200)} />);
+      fireEvent.input(field(), { target: { value: 'https://youtu.be/aqz-KE-bpKQ' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Tempel dari papan klip' }));
+      await waitFor(() => expect(document.querySelector('.add-hint')).toBeTruthy());
+      fireEvent.submit(field().closest('form')!);
+      await screen.findByText('Blender · 10:35');
+      expect(document.querySelector('.add-hint')).toBeNull();
+      expect(document.querySelector('[aria-live="polite"]')?.textContent).toBe('Big Buck Bunny · Blender · 10:35');
     });
 
     it('shows a YouTube preview card: 16:9 thumbnail with Video badge and length, title, YouTube · channel · length', async () => {

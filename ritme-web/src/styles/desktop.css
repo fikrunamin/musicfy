@@ -238,6 +238,17 @@
   font-size: var(--fs-body);
 }
 
+/* Narrow inline panel: the link field takes its own row, the paste and "Pratinjau" squares sit under it. */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .add-panel-inline .avp-form {
+    flex-wrap: wrap;
+  }
+
+  .add-panel-inline .avp-form .field {
+    flex: 1 0 100%;
+  }
+}
+
 /* The header's "Bagikan" shares on desktop; the card would push the members below the fold. */
 .room-side .share-card {
   display: none;
