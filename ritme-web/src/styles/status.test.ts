@@ -36,3 +36,13 @@ describe('status.css', () => {
     expect(mediaBlock(base, '(prefers-reduced-motion: reduce)')).toMatch(/animation:\s*none\s*!important/);
   });
 });
+
+describe('the reconnecting banner (room.css)', () => {
+  const room = readFileSync(new URL('./room.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const decls = (selector: string) => new RegExp(`(?:^|[}\\n])\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`).exec(room)?.[1] ?? null;
+
+  it('never sits over the stage: it scrolls away in listen mode and sticks to the top only in remote mode', () => {
+    expect(decls('.reconnect-banner')).not.toMatch(/position:\s*(sticky|fixed|absolute)/);
+    expect(decls('.reconnect-sticky')).toMatch(/position:\s*sticky/);
+  });
+});

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { memoryStore } from '../net/storage';
+import { MODE_KEY, memoryStore } from '../net/storage';
 import { initialSession } from '../session/reducer';
 import { entry, room } from '../testing/builders';
 import { fakeSession } from '../testing/fake-session';
@@ -244,5 +244,45 @@ describe('RoomScreen on a phone', () => {
     expect(screen.getByRole('region', { name: 'Berikutnya' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '2 anggota' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Antrean' })).toBeTruthy();
+  });
+});
+
+describe('the reconnect banner', () => {
+  function offline(desktop: boolean, mode: 'listen' | 'remote' = 'listen') {
+    stubMatchMedia({ [DESKTOP_QUERY]: desktop });
+    const state = { ...inRoom(), connection: 'reconnecting' as const };
+    const prefs = memoryStore();
+    prefs.set(MODE_KEY, mode);
+    render(<RoomScreen session={fakeSession(state)} state={state} prefs={prefs} />);
+    // The desktop members panel has a live region of its own.
+    return screen.getAllByRole('status').find((el) => el.textContent === 'Menyambung ulang…')!;
+  }
+
+  it('is still announced while a sheet is open: never inside an inert or aria-hidden part of the page', () => {
+    const banner = offline(false);
+    fireEvent.click(screen.getByRole('button', { name: '2 anggota' }));
+    expect(screen.getByRole('dialog', { name: 'Anggota' })).toBeTruthy();
+    expect(document.querySelector('main')!.hasAttribute('inert')).toBe(true);
+    expect(banner.isConnected).toBe(true);
+    expect(banner.textContent).toBe('Menyambung ulang…');
+    expect(banner.closest('[inert], [aria-hidden="true"]')).toBeNull();
+    // Above the room, out of its tree: the stage keeps its path (main > .room-left > section > .stage).
+    expect(banner.closest('main')).toBeNull();
+    expect(banner.nextElementSibling).toBe(document.querySelector('main'));
+    expect(document.querySelector('main > .room-left > section.now-playing > .stage')).toBeTruthy();
+  });
+
+  it('stays in its place on top of a desktop room too, with the sheet-free layout', () => {
+    const banner = offline(true);
+    expect(banner.nextElementSibling).toBe(document.querySelector('main.room-desktop'));
+    expect(document.querySelector('main > .room-left > section.now-playing > .stage')).toBeTruthy();
+  });
+
+  it('never sits over the stage: it only sticks to the top in remote mode, where there is no player', () => {
+    const listen = offline(false, 'listen');
+    expect(listen.classList.contains('reconnect-sticky')).toBe(false);
+    cleanup();
+    const remote = offline(false, 'remote');
+    expect(remote.classList.contains('reconnect-sticky')).toBe(true);
   });
 });

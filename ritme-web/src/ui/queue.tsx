@@ -47,7 +47,7 @@ function Row({ entry, session, room, memberId, unplayable, online, pageIsHttps, 
   const meta = video ? (
     <>
       <Badge kind={live ? 'live' : 'video'} />
-      <span>{[entrySource(entry), by].join(' · ')}</span>
+      <span>{[entrySource(entry), by].filter(Boolean).join(' · ')}</span>
     </>
   ) : (
     <span>{[entrySource(entry), live ? t.live : null, by].filter(Boolean).join(' · ')}</span>

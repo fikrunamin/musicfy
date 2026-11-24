@@ -87,6 +87,8 @@ export const t = {
   waitingForHost: 'Menunggu host melewati video ini',
   queue: 'Antrean',
   youtube: 'YouTube',
+  /** A direct link's format when it is an HLS stream (handoff M). */
+  hlsFormat: 'HLS · m3u8',
   back10: 'Mundur 10 detik',
   forward10: 'Maju 10 detik',
   fullscreen: 'Layar penuh',

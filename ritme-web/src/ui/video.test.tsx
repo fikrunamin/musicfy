@@ -350,6 +350,29 @@ describe('fullscreen feedback and focus', () => {
     expect(document.activeElement).toBe(document.getElementById('now-title'));
   });
 
+  it('keeps the exit button, and focus on it, when playback ends in fullscreen (nothing playing)', async () => {
+    stubFullscreen(true);
+    const session = fakeSession();
+    const view = render(<NowPlaying {...props(playing(ytVideo()), session)} />);
+    const button = screen.getByRole('button', { name: 'Layar penuh' });
+    await act(async () => void fireEvent.click(button));
+    button.focus();
+    // The last video ended: the room moved past the end of the queue.
+    view.rerender(<NowPlaying {...props(playing(ytVideo(), { currentEntryId: null }), session)} />);
+    expect(document.querySelector('section.np-full')).toBeTruthy();
+    const exit = screen.getByRole('button', { name: 'Keluar dari layar penuh' });
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(exit);
+    // It is the side bar's last cell, as with an entry: in the controls, nothing else there.
+    expect(exit.closest('.np-controls')?.children).toHaveLength(1);
+    // The queue emptied as well: still there.
+    view.rerender(<NowPlaying {...props(room({ queue: [], currentEntryId: null }), session)} />);
+    expect(screen.getByRole('button', { name: 'Keluar dari layar penuh' })).toBe(exit);
+    await act(async () => void fireEvent.click(exit));
+    expect(document.querySelector('section.np-full')).toBeNull();
+    expect(screen.queryByRole('button', { name: /layar penuh/i })).toBeNull();
+  });
+
   it('keeps focus on the button when it stays (still a video)', async () => {
     stubFullscreen(true);
     renderRoom(mixed('v', 1));
@@ -491,6 +514,25 @@ describe('the desktop theater', () => {
     const { update } = renderRoom(mixed('s', 1));
     update(mixed('v', 2));
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('gives focus to a visible element when the dialog closes with the theater column folded (its "Tambah lagu" is hidden)', () => {
+    const { update } = renderRoom(mixed('v', 1));
+    fireEvent.click(toggle());
+    expect(document.getElementById('room-queue')!.hidden).toBe(true);
+    // A song unfolds the room; what is typed there moves into the dialog when the folded theater returns.
+    update(mixed('s', 2));
+    const input = within(addRegion()).getByRole('searchbox', { name: 'Cari lagu' }) as HTMLInputElement;
+    input.focus();
+    fireEvent.input(input, { target: { value: 'senja' } });
+    update(mixed('v', 3));
+    expect(document.querySelector('main.room-collapsed')).toBeTruthy();
+    fireEvent.click(within(addDialog()).getByRole('button', { name: 'Tutup' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const focused = document.activeElement as HTMLElement;
+    expect(focused).not.toBe(document.body);
+    expect(focused.closest('[hidden]')).toBeNull();
+    expect(focused).toBe(screen.getByRole('heading', { level: 1 }));
   });
 
   it('keeps the add dialog, its tab and its link when the video gives way to a song, until it is closed', () => {

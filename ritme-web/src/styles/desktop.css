@@ -24,12 +24,16 @@
   overflow: hidden;
 }
 
-/* The banner spans the three columns above them, instead of becoming a fourth grid item. */
-.room-desktop > .reconnect-banner {
-  position: static;
-  grid-column: 1 / -1;
-  margin: -24px -24px 16px;
-  padding: 6px 24px;
+/* The banner spans the page above the three columns; the room gives up its 32 px of the window. */
+.reconnect-banner:has(+ .room-desktop) {
+  height: 32px;
+  padding: 0 24px;
+}
+
+.reconnect-banner + .room-desktop {
+  height: calc(100vh - 32px);
+  height: calc(100dvh - 32px);
+  padding-top: 16px;
 }
 
 /* Each column scrolls on its own; the page itself never does. */
@@ -60,8 +64,8 @@
   --stage-base: 388px;
 }
 
-/* The reconnect banner (32) and its 16 px margin replace the page's 24 px top. */
-.room-desktop > .reconnect-banner + .room-left {
+/* The reconnect banner (32) and the 16 px under it replace the page's 24 px top. */
+.reconnect-banner + .room-desktop .room-left {
   --stage-banner: 24px;
 }
 

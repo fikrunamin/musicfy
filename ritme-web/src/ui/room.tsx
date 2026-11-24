@@ -111,11 +111,13 @@ export function RoomScreen({ session, state, prefs }: Props) {
   /**
    * Where focus goes when the sheet closes and the "Tambah lagu" that opened it is gone: the one
    * shown now (the empty state's and the queue header's are different buttons), else the title.
+   * One in the folded theater column is hidden, and focus would fall to <body>: the title then.
    */
   const addReturn = useMemo(
     () => ({
       get current(): HTMLElement | null {
-        return main.current?.querySelector<HTMLElement>('.queue-add') ?? title.current;
+        const add = main.current?.querySelector<HTMLElement>('.queue-add');
+        return add && !add.closest('[hidden]') ? add : title.current;
       },
     }),
     [],
@@ -136,13 +138,16 @@ export function RoomScreen({ session, state, prefs }: Props) {
   return (
     <>
       <Backdrop url={entry?.thumbnailUrl ?? null} video={entry !== null && isVideoEntry(entry)} />
+      {/* Above the room, not in it: a sheet makes <main> inert and aria-hidden, and a live region
+          outside it is left alone, so "Menyambung ulang…" is still heard. Sticky only in remote
+          mode, where there is no player for it to cover. */}
+      {!online && (
+        <p class={cx('reconnect-banner', mode === 'remote' && 'reconnect-sticky')} role="status">
+          <Icon name="sync" size={18} />
+          {t.reconnecting}
+        </p>
+      )}
       <main ref={main} class={cx('room', desktop && 'room-desktop', theater && 'room-theater', folded && 'room-collapsed')}>
-        {!online && (
-          <p class="reconnect-banner" role="status">
-            <Icon name="sync" size={18} />
-            {t.reconnecting}
-          </p>
-        )}
         <div class="room-col room-left">
           <header class="room-header">
             {desktop && <Icon name="radio_button_checked" size={28} class="room-logo" />}

@@ -63,6 +63,17 @@ describe('video.css', () => {
     expect(rule('.np-badges')).toMatch(/column-gap:\s*0/);
   });
 
+  it('keeps the theater meta rules out of the fullscreen side bar: no trailing " · ", "oleh" on its own 13 px line', () => {
+    expect(rule('.room .now-playing.np-full .np-yt .np-src::after')).toMatch(/content:\s*none/);
+    expect(rule('.room .now-playing.np-full .np-yt .np-by')).toMatch(/flex-basis:\s*100%/);
+    expect(rule('.room .now-playing.np-full .np-by')).toMatch(/font-size:\s*var\(--fs-meta\)/);
+  });
+
+  it('places the exit button, and "nothing playing", in the fullscreen bar when no entry is left', () => {
+    expect(rule('.room .now-playing.np-full .np-controls > .np-fs')).toMatch(/grid-area:\s*d3/);
+    expect(rule('.room .now-playing.np-full .np-meta,\n.room .now-playing.np-full .np-empty')).toMatch(/grid-area:\s*meta/);
+  });
+
   it('keeps the theater meta clear of the stage when there is no progress row (LIVE)', () => {
     expect(rule('.room-theater .now-playing:not(:has(.np-progress)) .np-meta')).toMatch(/margin-top:\s*16px/);
   });

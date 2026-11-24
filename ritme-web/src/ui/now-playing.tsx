@@ -137,7 +137,8 @@ export function NowPlaying({ session, room, memberId, unplayable, online, pageIs
   const seekBy = (deltaMs: number) =>
     guarded(() => !live && session.seek(Math.min(Math.max(0, positionAt(room, session.serverNow()) + deltaMs), entry!.durationMs)));
   const skip = { disabled: !online || live, ...lockedProps };
-  // Outside the video, never on it (J/N). Kept while fullscreen, so a song that follows can leave it.
+  // Outside the video, never on it (J/N). Kept while fullscreen, so a song that follows, or the end of
+  // the queue, can leave it.
   const fsButton = (full.active || (video && mode === 'listen' && canFullscreen())) && (
     <IconButton
       icon={full.active ? 'fullscreen_exit' : 'fullscreen'}
@@ -189,71 +190,76 @@ export function NowPlaying({ session, room, memberId, unplayable, online, pageIs
       </div>
       {mode === 'listen' && needsTap && <p class="np-hint">{t.tapPlayer}</p>}
 
-      {entry ? (
-        <>
-          <div class="np-meta">
-            <p class="np-title">{entry.title}</p>
-            {video ? (
-              <>
-                {direct && (
-                  <p class="np-source">
-                    <Icon name="link" size={18} />
-                    {entrySource(entry)}
-                  </p>
-                )}
-                {/* Handoff I/M: the badge, the source (channel on YouTube, or the format), who added it. */}
-                <p class={cx('np-badges', !direct && 'np-yt')}>
-                  <Badge kind={live ? 'live' : 'video'} />
-                  {source && <span class="np-src">{source}</span>}
-                  <span class="np-by">
-                    <Avatar name={adder} size="xs" />
-                    {t.addedBy(memberName(room.members, entry.addedBy, memberId))}
-                  </span>
+      {entry && (
+        <div class="np-meta">
+          <p class="np-title">{entry.title}</p>
+          {video ? (
+            <>
+              {direct && (
+                <p class="np-source">
+                  <Icon name="link" size={18} />
+                  {entrySource(entry)}
                 </p>
-              </>
-            ) : (
-              <p class="np-sub">
-                {[entrySource(entry), t.addedBy(memberName(room.members, entry.addedBy, memberId))].filter(Boolean).join(' · ')}
-              </p>
-            )}
-            {label && <p class="np-warning">{label}</p>}
-          </div>
-
-          {/* A live song says LIVE where the seek bar was; a live video says it in its badge row. */}
-          {live ? (
-            !video && <Badge kind="live" class="np-live" />
-          ) : (
-            <Progress session={session} room={room} entry={entry} now={now} dragMs={dragMs} setDragMs={setDragMs} control={control} />
-          )}
-
-          <div class="np-controls">
-            <span class="np-slot">{direct && <IconButton icon="replay_10" label={t.back10} {...skip} onClick={seekBy(-10_000)} />}</span>
-            <IconButton icon="skip_previous" label={t.previous} disabled={!online} {...lockedProps} onClick={guarded(() => session.previous())} />
-            <IconButton
-              icon={playing ? 'pause' : 'play_arrow'}
-              label={playing ? t.pause : t.play}
-              variant="accent"
-              size="lg"
-              disabled={!online}
-              {...lockedProps}
-              onClick={guarded(() => (playing ? session.pause() : session.play()))}
-            />
-            <IconButton icon="skip_next" label={t.next} disabled={!online} {...lockedProps} onClick={guarded(() => session.next())} />
-            {/* +10 s, or the phone's queue button where there is no fullscreen button to take its place. */}
-            <span class="np-slot">
-              {direct ? (
-                <IconButton icon="forward_10" label={t.forward10} {...skip} onClick={seekBy(10_000)} />
-              ) : (
-                !fsButton && onShowQueue && <IconButton icon="queue_music" label={t.queue} onClick={onShowQueue} />
               )}
-            </span>
-            {/* One slot, the last, for every kind of entry: the button is never re-created, so it keeps focus. */}
-            {fsButton}
-          </div>
-        </>
-      ) : (
-        room.queue.length > 0 && <p class="np-empty">{t.nothingPlaying}</p>
+              {/* Handoff I/M: the badge, the source (channel on YouTube, or the format), who added it. */}
+              <p class={cx('np-badges', !direct && 'np-yt')}>
+                <Badge kind={live ? 'live' : 'video'} />
+                {source && <span class="np-src">{source}</span>}
+                <span class="np-by">
+                  <Avatar name={adder} size="xs" />
+                  {t.addedBy(memberName(room.members, entry.addedBy, memberId))}
+                </span>
+              </p>
+            </>
+          ) : (
+            <p class="np-sub">
+              {[entrySource(entry), t.addedBy(memberName(room.members, entry.addedBy, memberId))].filter(Boolean).join(' · ')}
+            </p>
+          )}
+          {label && <p class="np-warning">{label}</p>}
+        </div>
       )}
+
+      {/* A live song says LIVE where the seek bar was; a live video says it in its badge row. */}
+      {entry &&
+        (live ? (
+          !video && <Badge kind="live" class="np-live" />
+        ) : (
+          <Progress session={session} room={room} entry={entry} now={now} dragMs={dragMs} setDragMs={setDragMs} control={control} />
+        ))}
+
+      {/* Also with nothing playing while fullscreen: the exit stays, in its slot, with its focus. */}
+      {(entry || fsButton) && (
+        <div class="np-controls">
+          {entry && (
+            <>
+              <span class="np-slot">{direct && <IconButton icon="replay_10" label={t.back10} {...skip} onClick={seekBy(-10_000)} />}</span>
+              <IconButton icon="skip_previous" label={t.previous} disabled={!online} {...lockedProps} onClick={guarded(() => session.previous())} />
+              <IconButton
+                icon={playing ? 'pause' : 'play_arrow'}
+                label={playing ? t.pause : t.play}
+                variant="accent"
+                size="lg"
+                disabled={!online}
+                {...lockedProps}
+                onClick={guarded(() => (playing ? session.pause() : session.play()))}
+              />
+              <IconButton icon="skip_next" label={t.next} disabled={!online} {...lockedProps} onClick={guarded(() => session.next())} />
+              {/* +10 s, or the phone's queue button where there is no fullscreen button to take its place. */}
+              <span class="np-slot">
+                {direct ? (
+                  <IconButton icon="forward_10" label={t.forward10} {...skip} onClick={seekBy(10_000)} />
+                ) : (
+                  !fsButton && onShowQueue && <IconButton icon="queue_music" label={t.queue} onClick={onShowQueue} />
+                )}
+              </span>
+            </>
+          )}
+          {/* One slot, the last, for every kind of entry: the button is never re-created, so it keeps focus. */}
+          {fsButton}
+        </div>
+      )}
+      {!entry && room.queue.length > 0 && <p class="np-empty">{t.nothingPlaying}</p>}
 
       {mode === 'listen' ? (
         <p class="np-tip">

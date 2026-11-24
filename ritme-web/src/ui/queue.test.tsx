@@ -53,6 +53,16 @@ describe('QueueList', () => {
     expect(screen.getByText('dari bücher.example · oleh Kamu')).toBeTruthy();
   });
 
+  it('leaves out the separator of a video row whose channel is empty', () => {
+    const videos = [entry('a'), entry('v', { kind: 'YOUTUBE_VIDEO', title: 'Klip', artist: '' })];
+    render(
+      <QueueList session={fakeSession()} room={room({ queue: videos, currentEntryId: 'a' })} memberId="m1" unplayable={{}} online pageIsHttps />,
+    );
+    const meta = screen.getByText('oleh Kamu');
+    expect(meta.textContent).toBe('oleh Kamu');
+    expect(meta.closest('.media-row, li')?.textContent).not.toContain('·');
+  });
+
   it('shows only own remove buttons to a guest when control is locked', () => {
     renderQueue('m2', false);
     // Only the row with an action available gets the ⋮ menu.

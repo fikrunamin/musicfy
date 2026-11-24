@@ -184,7 +184,8 @@ main:has(:fullscreen) ~ .toast-region {
   overflow-wrap: anywhere;
 }
 
-.room .now-playing.np-full .np-meta {
+.room .now-playing.np-full .np-meta,
+.room .now-playing.np-full .np-empty {
   grid-area: meta;
 }
 
@@ -198,6 +199,19 @@ main:has(:fullscreen) ~ .toast-region {
 .room .now-playing.np-full .np-badges {
   font-size: var(--fs-meta);
   margin: 0;
+}
+
+/* Over the theater's one-line meta: the side bar keeps the phone's "oleh" line, at 13 px. */
+.room .now-playing.np-full .np-yt .np-src::after {
+  content: none;
+}
+
+.room .now-playing.np-full .np-yt .np-by {
+  flex-basis: 100%;
+}
+
+.room .now-playing.np-full .np-by {
+  font-size: var(--fs-meta);
 }
 
 .room .now-playing.np-full .np-progress,

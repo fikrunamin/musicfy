@@ -20,6 +20,9 @@ Kalau ada yang gagal, catat perangkat, browser, langkah, dan screenshot-nya.
   "Ketuk untuk ikut dengar".
 - [ ] Setelah diketuk, pemutar YouTube resmi muncul di slot artwork dan suara terdengar sinkron
   dengan host.
+- [ ] Perhatikan transisi dari cover ke pemutar. Fade pemutar (400 ms) kemungkinan selesai sebelum
+  iframe YouTube selesai menggambar, jadi videonya bisa "muncul tiba-tiba" setelah fade. Nilai apakah
+  ini masih terlihat wajar.
 - [ ] Pemutar terlihat penuh dengan lebar dan tinggi minimal 200 px.
 - [ ] Tidak ada apa pun yang menempel di atas pemutar: tidak ada label, ikon, gradien, gerbang
   ketuk, atau toast yang menetap di sana. Sheet atau toast yang kamu buka sendiri boleh menutupi
@@ -37,6 +40,8 @@ Kalau ada yang gagal, catat perangkat, browser, langkah, dan screenshot-nya.
 - [ ] Sebelum ketukan pertama tampil cover dengan "Ketuk untuk ikut dengar". Setelah diketuk,
   suara terdengar (Safari butuh ketukan ini).
 - [ ] Pemutar terlihat, minimal 200 px, dan tidak tertutup apa pun (seperti di Android).
+- [ ] Video terpotong rapi mengikuti sudut membulat stage: tidak ada sudut video yang kotak dan
+  menyembul keluar dari lengkungan.
 - [ ] Tombol layar penuh **tidak ada** di iPhone (Safari iPhone tidak mendukung layar penuh untuk
   elemen halaman). Tidak ada tombol mati yang tersisa di tempatnya.
 - [ ] Kunci layar sebentar lalu buka lagi: pemutar menyusul posisi room.

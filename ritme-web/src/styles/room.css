@@ -44,13 +44,13 @@
   gap: 20px;
 }
 
+/*
+ * The banner is the room's sibling, above it (a sheet leaves it audible). It scrolls away with the
+ * page, so it never covers the player; only remote mode, with no player, keeps it on top.
+ */
 .reconnect-banner {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  margin: 0 calc(-1 * var(--gutter));
   min-height: 32px;
-  padding: 6px var(--gutter);
+  padding: max(6px, env(safe-area-inset-top)) var(--gutter) 6px;
   background: var(--warn);
   color: var(--on-warn);
   font-size: var(--fs-meta);
@@ -58,6 +58,17 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+
+.reconnect-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+/* The banner has taken the safe area at the top. */
+.reconnect-banner + .room {
+  padding-top: 12px;
 }
 
 .room-header {

@@ -54,7 +54,12 @@ describe('desktop.css', () => {
   });
 
   it('counts what can appear around the stage: the reconnect banner, the mode or tap hint, the warning', () => {
-    expect(rule('.room-desktop > .reconnect-banner + .room-left')).toMatch(/--stage-banner:\s*\d+px/);
+    expect(rule('.reconnect-banner + .room-desktop .room-left')).toMatch(/--stage-banner:\s*\d+px/);
+    // The banner is the room's sibling (so a sheet leaves it audible): the room gives up its height.
+    const room = rule('.reconnect-banner + .room-desktop');
+    expect(room).toMatch(/height:\s*calc\(100vh - 32px\);/);
+    expect(room).toMatch(/height:\s*calc\(100dvh - 32px\);/);
+    expect(rule('.reconnect-banner:has(+ .room-desktop)')).toMatch(/height:\s*32px/);
     expect(rule('.room-desktop .np-remote')).toMatch(/--stage-extra:\s*\d+px/);
     expect(rule('.room-desktop .now-playing:has(> .np-hint)')).toMatch(/--stage-extra:\s*\d+px/);
     expect(rule('.room-desktop .now-playing:has(.np-warning)')).toMatch(/--stage-warning:\s*\d+px/);

@@ -36,7 +36,7 @@ export function mediaFormat(url: string | null): string | null {
   } catch {
     return null;
   }
-  return !ext ? null : ext === 'm3u8' ? 'HLS · m3u8' : ext.toUpperCase();
+  return !ext ? null : ext === 'm3u8' ? t.hlsFormat : ext.toUpperCase();
 }
 
 export function memberName(members: { id: string; name: string }[], id: string, me: string | null): string {
