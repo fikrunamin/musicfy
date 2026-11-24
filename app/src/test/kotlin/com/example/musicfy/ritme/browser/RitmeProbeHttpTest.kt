@@ -53,4 +53,12 @@ class RitmeProbeHttpTest {
     fun aShortAnswerComesWhole() {
         assertEquals(8, RitmeProbeHttp(client("#EXTM3U\n", allowOrigin = null)).get("https://cdn.example.com/v.m3u8", emptyMap(), 4096).body.size)
     }
+
+    @Test
+    fun handsEachCallToTheCallerSoItCanBeCancelled() {
+        val calls = mutableListOf<okhttp3.Call>()
+        RitmeProbeHttp(client("#EXTM3U\n"), calls::add).get("https://cdn.example.com/v.m3u8", emptyMap(), 4096)
+        assertEquals(1, calls.size)
+        assertEquals("https://cdn.example.com/v.m3u8", calls.single().request().url.toString())
+    }
 }
