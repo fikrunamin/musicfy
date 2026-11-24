@@ -89,4 +89,7 @@
     <string name="ritme_video_unavailable">Video unavailable, audio keeps playing</string>
     <string name="ritme_video_cannot_play">This video can\'t play on this device</string>
     <string name="ritme_video_skip">Skip</string>
+    <string name="ritme_video_fullscreen">Full screen</string>
+    <string name="ritme_video_exit_fullscreen">Exit full screen</string>
+    <string name="ritme_see_video">See video</string>
 </resources>

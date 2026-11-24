@@ -80,4 +80,7 @@
     <string name="ritme_video_unavailable">Video tidak tersedia, audio tetap diputar</string>
     <string name="ritme_video_cannot_play">Video ini tidak bisa diputar di perangkat ini</string>
     <string name="ritme_video_skip">Lewati</string>
+    <string name="ritme_video_fullscreen">Layar penuh</string>
+    <string name="ritme_video_exit_fullscreen">Keluar layar penuh</string>
+    <string name="ritme_see_video">Lihat video</string>
 </resources>

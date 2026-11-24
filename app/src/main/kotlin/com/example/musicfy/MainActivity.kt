@@ -1314,6 +1314,11 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+                    // Ritme watch-together: the room's video full screen, over the player, under the sheets.
+                    com.example.musicfy.ui.screens.ritme.video.RitmeVideoFullscreenHost(
+                        window = window,
+                        playerBarsBehavior = { window.playerNavBarBehavior() },
+                    )
                     }
 
                     // action feedback ("Added to Queue", "Undo"...) drops in over the sheets too

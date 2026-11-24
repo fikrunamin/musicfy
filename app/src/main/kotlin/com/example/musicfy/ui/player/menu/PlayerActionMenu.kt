@@ -97,6 +97,8 @@ fun PlayerActionMenu(
     // The song playing right now - what add to playlist, library and download act on.
     val currentMetadata by playerConnection.mediaMetadata.collectAsState()
     val songId = currentMetadata?.id
+    // A Ritme URL entry is no YouTube song: it cannot go into a playlist or be downloaded.
+    val ritmeUrl = com.example.musicfy.ritme.entries.RitmeEntries.isUrlMediaId(songId)
     val download by remember(downloadUtil, songId) {
         if (songId != null) downloadUtil.getDownload(songId) else flowOf(null)
     }.collectAsState(initial = null)
@@ -243,7 +245,7 @@ fun PlayerActionMenu(
                 MenuRow(
                     icon = R.drawable.playlist_add,
                     title = "add to playlist",
-                    enabled = currentMetadata != null,
+                    enabled = currentMetadata != null && !ritmeUrl,
                     onClick = { showChoosePlaylistDialog = true },
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -269,7 +271,7 @@ fun PlayerActionMenu(
                         Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> "downloading, tap to cancel"
                         else -> "download music"
                     },
-                    enabled = currentMetadata != null,
+                    enabled = currentMetadata != null && !ritmeUrl,
                     onClick = {
                         currentMetadata?.let { metadata ->
                             when (downloadState) {
@@ -313,6 +315,19 @@ fun PlayerActionMenu(
                             ritme.controller.openSheet()
                         },
                     )
+                    // The other player styles have no video stage: "See video" opens it full screen (spec U9).
+                    val ritmeStage = com.example.musicfy.ui.screens.ritme.video.rememberRitmeStageTarget(trackInfo.mediaId)
+                    if (ritmeStage != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        MenuRow(
+                            icon = R.drawable.slow_motion_video,
+                            title = stringResource(R.string.ritme_see_video),
+                            onClick = {
+                                onDismiss()
+                                com.example.musicfy.ui.screens.ritme.video.RitmeFullscreen.open = true
+                            },
+                        )
+                    }
                 }
 
                 MenuDivider()

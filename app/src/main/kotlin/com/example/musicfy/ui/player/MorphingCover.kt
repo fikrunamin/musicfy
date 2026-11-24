@@ -1049,7 +1049,13 @@ fun MorphingCover(
                 if (ritmeStage != null && !alternateStyle) {
                     // not under fully open lyrics either: no decoding, screen-on or video track for a hidden stage
                     val stageShown by remember { derivedStateOf { progressProvider() > 0.5f && lyricsProgressProvider() < 0.999f } }
-                    if (stageShown) {
+                    // One stage at a time (one follower, one texture, one screen-on hold): full screen takes it.
+                    val slot = com.example.musicfy.ritme.video.RitmeStageSlot.of(
+                        hasTarget = true,
+                        fullscreenOpen = com.example.musicfy.ui.screens.ritme.video.RitmeFullscreen.open,
+                        coverShown = stageShown,
+                    )
+                    if (slot == com.example.musicfy.ritme.video.RitmeStageSlot.COVER) {
                         com.example.musicfy.ui.screens.ritme.video.RitmeVideoStage(
                             target = ritmeStage,
                             modifier = Modifier

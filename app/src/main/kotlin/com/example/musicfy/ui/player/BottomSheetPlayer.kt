@@ -568,10 +568,13 @@ fun BottomSheetPlayer(
         // set to one of these in the editor
         val ritmeActive by playerConnection.ritmeGate.active.collectAsState()
         val ritme = com.example.musicfy.ui.screens.ritme.rememberRitme()
+        // The room's current video, once the player holds it: "See video" becomes full screen.
+        val ritmeStage = com.example.musicfy.ui.screens.ritme.video.rememberRitmeStageTarget(trackInfo.mediaId)
         fun menuActionActive(action: com.example.musicfy.ui.player.studio.PlayerMenuAction): Boolean = when (action) {
             com.example.musicfy.ui.player.studio.PlayerMenuAction.LIKE -> trackInfo.liked
             com.example.musicfy.ui.player.studio.PlayerMenuAction.SLEEP_TIMER -> playerConnection.service.sleepTimer.isActive
-            com.example.musicfy.ui.player.studio.PlayerMenuAction.SEE_VIDEO -> seeVideo
+            com.example.musicfy.ui.player.studio.PlayerMenuAction.SEE_VIDEO ->
+                seeVideo || com.example.musicfy.ui.screens.ritme.video.RitmeFullscreen.open
             com.example.musicfy.ui.player.studio.PlayerMenuAction.REPEAT -> transportState.repeatMode != Player.REPEAT_MODE_OFF
             com.example.musicfy.ui.player.studio.PlayerMenuAction.SHUFFLE -> transportState.shuffleModeEnabled
             else -> false
@@ -586,7 +589,11 @@ fun BottomSheetPlayer(
                     showActionMenu = true
                 }
                 com.example.musicfy.ui.player.studio.PlayerMenuAction.SLEEP_TIMER -> showSleepTimer = true
-                com.example.musicfy.ui.player.studio.PlayerMenuAction.SEE_VIDEO -> seeVideo = !seeVideo
+                // In a Ritme room with a video current, "See video" opens it full screen (spec U9).
+                com.example.musicfy.ui.player.studio.PlayerMenuAction.SEE_VIDEO -> {
+                    if (ritmeStage != null) com.example.musicfy.ui.screens.ritme.video.RitmeFullscreen.open = true
+                    else seeVideo = !seeVideo
+                }
                 com.example.musicfy.ui.player.studio.PlayerMenuAction.REPEAT ->
                     playerConnection.ritmeOr(RitmeLocalAction.Repeat) { playerConnection.player.toggleRepeatMode() }
                 com.example.musicfy.ui.player.studio.PlayerMenuAction.SHUFFLE ->
@@ -710,6 +717,14 @@ fun BottomSheetPlayer(
                 // open player, on the chevron's right edge. Same fade as the pill; in a room the pill takes over. Not in
                 // the editor, where a tap on the shrunken player belongs to the studio.
                 if (playerStyle.flagshipFamily && !studioEngaged) com.example.musicfy.ui.screens.ritme.RitmeCornerButton(
+                    alphaProvider = { ((progressProvider() - 0.5f) * 2f).coerceIn(0f, 1f) * (1f - lyricsProgress) },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = statusBarTopInset + 4.dp, end = PlayerHorizontalPadding),
+                )
+                // In a room the corner is free (the pill is top-centre): "Full screen" while a room video is current.
+                if (playerStyle.flagshipFamily && !studioEngaged) com.example.musicfy.ui.screens.ritme.video.RitmeFullscreenButton(
+                    loadedMediaId = trackInfo.mediaId,
                     alphaProvider = { ((progressProvider() - 0.5f) * 2f).coerceIn(0f, 1f) * (1f - lyricsProgress) },
                     modifier = Modifier
                         .align(Alignment.TopEnd)

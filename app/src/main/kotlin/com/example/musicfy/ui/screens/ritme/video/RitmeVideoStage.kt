@@ -57,6 +57,7 @@ import com.example.musicfy.ritme.session.RitmePermissions
 import com.example.musicfy.ritme.video.FollowAction
 import com.example.musicfy.ritme.video.RitmeStageTarget
 import com.example.musicfy.ritme.video.RitmeVideoStreams
+import com.example.musicfy.ritme.video.ScreenOnHolds
 import com.example.musicfy.ritme.video.VideoFollower
 import com.example.musicfy.ui.screens.ritme.RitmeChip
 import com.example.musicfy.ui.screens.ritme.RitmeChipFill
@@ -100,12 +101,16 @@ internal fun RitmeVideoStage(target: RitmeStageTarget, modifier: Modifier = Modi
     }
 }
 
+/** Every stage's screen-on hold: the flag is the root view's, shared by the cover's and full screen's stages. */
+private val screenOnHolds = ScreenOnHolds()
+
 @Composable
 private fun KeepScreenOn() {
     val view = LocalView.current
     DisposableEffect(view) {
+        screenOnHolds.acquire(view)
         view.keepScreenOn = true
-        onDispose { view.keepScreenOn = false }
+        onDispose { if (screenOnHolds.release(view)) view.keepScreenOn = false }
     }
 }
 
