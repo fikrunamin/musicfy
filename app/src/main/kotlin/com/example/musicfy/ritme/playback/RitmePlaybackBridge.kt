@@ -298,6 +298,12 @@ class RitmePlaybackBridge internal constructor(
                 endedEntryId = null
                 reportedEndFor = null // a replayed entry reports its end again
             }
+            PlayerOp.SeekToLiveEdge -> {
+                player.seekToDefaultPosition()
+                lastSeekAt = localNow
+                endedEntryId = null
+                reportedEndFor = null
+            }
             is PlayerOp.SetSpeed -> player.playbackParameters = PlaybackParameters(op.speed, 1f)
             PlayerOp.Halt -> {
                 player.pause()

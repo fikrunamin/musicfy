@@ -82,6 +82,10 @@ private class FakePlayer {
                 ops += "prepare"
                 null
             }
+            "seekToDefaultPosition" -> {
+                ops += "live edge"
+                null
+            }
             "addListener" -> {
                 listeners += args!![0] as Player.Listener
                 null
@@ -130,9 +134,9 @@ private class FakeHost(private val fake: FakePlayer, private val gate: RitmeGate
         return snapshot
     }
 
-    override fun loadRitmeItem(item: MediaItem, startPositionMs: Long) {
+    override fun loadRitmeItem(item: MediaItem, startPositionMs: Long?) {
         calls += "load ${item.mediaId}@$startPositionMs"
-        fake.positionMs = startPositionMs
+        fake.positionMs = startPositionMs ?: 0
         fake.itemCount = 1
         fake.state = Player.STATE_READY
         fake.playWhenReady = false
@@ -519,5 +523,23 @@ class RitmePlaybackBridgeTest {
         assertEquals(emptyList<String>(), host.calls)
         assertEquals(emptyList<String>(), fake.ops)
         assertFalse(gate.isActive)
+    }
+
+    @Test
+    fun aLiveEntryLoadsAtItsLiveEdgeAndJumpsBackThereAfterAPause() {
+        val live = room(
+            queue = listOf(entry("l", durationMs = 0)),
+            currentEntryId = "l",
+            playback = Playback(isPlaying = true, positionMs = 0, anchorServerTimeMs = 0),
+        )
+        join(live)
+        assertEquals("load l@null", host.calls.last())
+        assertTrue(fake.playWhenReady)
+
+        update(live.copy(version = 2, playback = Playback(isPlaying = false, positionMs = 0, anchorServerTimeMs = timers.time)))
+        assertFalse(fake.playWhenReady)
+        fake.ops.clear()
+        update(live.copy(version = 3, playback = Playback(isPlaying = true, positionMs = 0, anchorServerTimeMs = timers.time)))
+        assertEquals(listOf("live edge", "play"), fake.ops)
     }
 }

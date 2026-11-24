@@ -23,7 +23,9 @@ data class LocalPlayerView(
 
 sealed interface PlayerOp {
     /** Replace the player's item with [entry] at [startMs], paused. */
-    data class Load(val entry: QueueEntry, val startMs: Long) : PlayerOp
+    data class Load(val entry: QueueEntry, val startMs: Long?) : PlayerOp
+    /** Back to the live edge: a live entry played again after a pause (spec 4.4). */
+    data object SeekToLiveEdge : PlayerOp
     data object Play : PlayerOp
     data object Pause : PlayerOp
     data class SeekTo(val positionMs: Long) : PlayerOp
@@ -106,7 +108,8 @@ object RitmeSyncPlanner {
         val drift = local.positionMs - expected
         val ops = mutableListOf<PlayerOp>()
 
-        if (justLoaded) ops += PlayerOp.Load(entry, if (live) 0 else expected)
+        // A live stream's position 0 is the start of its DVR window: it loads at its live edge.
+        if (justLoaded) ops += PlayerOp.Load(entry, if (live) null else expected)
 
         when {
             waiting -> {
@@ -128,6 +131,8 @@ object RitmeSyncPlanner {
                 ops += PlayerOp.Play
             }
             changed -> {
+                // Every device rejoins the live edge together (same target offset), never where it paused.
+                if (live && (!local.playWhenReady || local.ended)) ops += PlayerOp.SeekToLiveEdge
                 if (!live && (local.ended || abs(drift) > RESYNC_ON_CHANGE_MS)) ops += PlayerOp.SeekTo(expected)
                 if (local.speed != DriftCorrector.NORMAL) ops += PlayerOp.SetSpeed(DriftCorrector.NORMAL)
                 if (!local.playWhenReady || local.ended) ops += PlayerOp.Play

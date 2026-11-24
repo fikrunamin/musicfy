@@ -3763,13 +3763,14 @@ class MusicService :
             return snapshot
         }
 
-        override fun loadRitmeItem(item: MediaItem, startPositionMs: Long) {
+        override fun loadRitmeItem(item: MediaItem, startPositionMs: Long?) {
             val p = this@MusicService.player
             clearStreamFailure()
             // Whatever set them since Enter: REPEAT_ONE would loop the room's item and never report its end.
             if (p.repeatMode != REPEAT_MODE_OFF) p.repeatMode = REPEAT_MODE_OFF
             if (p.shuffleModeEnabled) p.shuffleModeEnabled = false
-            p.setMediaItem(item, startPositionMs)
+            // null: the item's default position, which for a live stream is its live edge (spec 4.4)
+            if (startPositionMs == null) p.setMediaItem(item) else p.setMediaItem(item, startPositionMs)
             p.prepare()
             p.playWhenReady = false
         }

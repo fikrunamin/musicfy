@@ -23,8 +23,8 @@ interface RitmePlayerHost {
      */
     fun enterRitmeMode(): LocalQueueSnapshot
 
-    /** Replaces the player's item with [item] at [startPositionMs], prepared and paused. */
-    fun loadRitmeItem(item: MediaItem, startPositionMs: Long)
+    /** Replaces the player's item with [item] at [startPositionMs] (null: its default position, a live stream's live edge), prepared and paused. */
+    fun loadRitmeItem(item: MediaItem, startPositionMs: Long?)
 
     /** Puts [snapshot] back, paused, and restores the local settings. */
     fun exitRitmeMode(snapshot: LocalQueueSnapshot)

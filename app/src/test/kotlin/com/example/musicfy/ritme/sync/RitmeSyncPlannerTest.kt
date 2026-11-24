@@ -134,9 +134,24 @@ class RitmeSyncPlannerTest {
     fun liveEntriesNeverSeek() {
         val live = entry("l", durationMs = 0)
         val room = room(queue = listOf(live), currentEntryId = "l", playback = Playback(true, 0, 1_000))
-        assertEquals(listOf(PlayerOp.Load(live, 0), PlayerOp.Play), plan(room, 5_000, local(loaded = null)).ops)
+        assertEquals(listOf(PlayerOp.Load(live, null), PlayerOp.Play), plan(room, 5_000, local(loaded = null)).ops)
         val steady = plan(room, 50_000, local(loaded = "l", pos = 1_000, advancing = true, pwr = true), lastKey = keyAt(room, 50_000))
         assertEquals(emptyList<PlayerOp>(), steady.ops)
+    }
+
+    @Test
+    fun aLiveEntryPlayedAgainAfterAPauseJumpsToTheLiveEdge() {
+        // Bug 2 (spec 4.4): position 0 of a live stream is the start of its DVR window, not "now".
+        val live = entry("l", durationMs = 0)
+        val room = room(queue = listOf(live), currentEntryId = "l", playback = Playback(true, 0, 1_000))
+        assertEquals(listOf(PlayerOp.SeekToLiveEdge, PlayerOp.Play), plan(room, 5_000, local(loaded = "l", pos = 30_000)).ops)
+    }
+
+    @Test
+    fun aLiveEntryStillPlayingIsNotPulledToTheEdgeByARoomChange() {
+        val live = entry("l", durationMs = 0)
+        val room = room(queue = listOf(live), currentEntryId = "l", playback = Playback(true, 0, 1_000))
+        assertEquals(emptyList<PlayerOp>(), plan(room, 5_000, local(loaded = "l", pos = 30_000, advancing = true, pwr = true)).ops)
     }
 
     @Test
