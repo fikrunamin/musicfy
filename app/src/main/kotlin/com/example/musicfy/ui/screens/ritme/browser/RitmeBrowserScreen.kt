@@ -129,6 +129,8 @@ fun RitmeBrowserScreen(navController: NavController, initialText: String?) {
     var problem by remember { mutableStateOf<AddressRefusal?>(null) }
     // The ⋯ menu and the external-app confirmation: dismissed with the browser, never left behind it.
     val sheets = remember { mutableListOf<PopupSheetHandle?>() }
+    // The found list (its exit takes the confirmation along): a new page closes them.
+    val foundSheet = remember { arrayOfNulls<PopupSheetHandle>(1) }
     val entry = remember { navController.currentBackStackEntry }
     fun leave() {
         if (navController.currentBackStackEntry == entry) navController.navigateUp()
@@ -161,6 +163,8 @@ fun RitmeBrowserScreen(navController: NavController, initialText: String?) {
         object : RitmeWebEvents {
             override fun onPageStarted(url: String) {
                 browser.pageStarted(url)
+                foundSheet[0]?.dismiss()
+                foundSheet[0] = null
                 problem = null
                 pageUrl = url
                 if (!editing) address = url
@@ -307,7 +311,7 @@ fun RitmeBrowserScreen(navController: NavController, initialText: String?) {
                     icon = R.drawable.play,
                     onClick = {
                         keyboard?.hide()
-                        sheets += popup.showRitmeFoundSheet(
+                        val found = popup.showRitmeFoundSheet(
                             ritme = ritme,
                             browser = browser,
                             roomMode = roomMode,
@@ -316,6 +320,8 @@ fun RitmeBrowserScreen(navController: NavController, initialText: String?) {
                             // Start mode: the start sheet takes over; the browser's job is done.
                             onStarted = { navController.navigateUp() },
                         )
+                        foundSheet[0] = found
+                        sheets += found
                     },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)

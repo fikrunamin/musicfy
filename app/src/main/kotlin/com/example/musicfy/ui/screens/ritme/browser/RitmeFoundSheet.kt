@@ -41,6 +41,7 @@ import com.example.musicfy.ritme.media.Candidate
 import com.example.musicfy.ritme.media.ExpiryHints
 import com.example.musicfy.ritme.media.ProbeVerdict
 import com.example.musicfy.ritme.media.Refusal
+import com.example.musicfy.ritme.protocol.NewEntry
 import com.example.musicfy.ui.component.PopupSheetHandle
 import com.example.musicfy.ui.component.PopupSheetState
 import com.example.musicfy.ui.component.SheetLabel
@@ -198,6 +199,9 @@ private fun refusalText(refusal: Refusal): Int = when (refusal) {
 @Stable
 private class RitmeConfirmForm(initialTitle: String) {
     var title by mutableStateOf(initialTitle)
+
+    /** One-shot: a second tap while the sheet leaves must not add again. Main thread only. */
+    var sent = false
 }
 
 /**
@@ -218,7 +222,6 @@ private fun PopupSheetState.showRitmeConfirmSheet(
     val candidate = findings.candidates.firstOrNull { it.url == url } ?: return null
     val form = RitmeConfirmForm(RitmeBrowserEntries.defaultTitle(candidate, findings))
     val source = RitmeBrowserEntries.source(findings, candidate)
-    val pageUrl = findings.pageUrl
     var handle: PopupSheetHandle? = null
     handle = showWithHandle(
         buttonBar = {
@@ -228,7 +231,6 @@ private fun PopupSheetState.showRitmeConfirmSheet(
                 candidate = candidate,
                 form = form,
                 source = source,
-                pageUrl = pageUrl,
                 roomMode = roomMode,
                 onAdded = {
                     handle?.dismiss()
@@ -331,7 +333,6 @@ private fun RitmeConfirmButtons(
     candidate: Candidate,
     form: RitmeConfirmForm,
     source: String,
-    pageUrl: String?,
     roomMode: Boolean,
     onAdded: () -> Unit,
     onStarted: () -> Unit,
@@ -351,15 +352,23 @@ private fun RitmeConfirmButtons(
         SheetPillButton(text = stringResource(R.string.ritme_retry), onClick = { browser.retry(candidate.url) })
         return
     }
-    val entry = RitmeBrowserEntries.entryOf(candidate, verdict, form.title, source, pageUrl)
-    val enabled = entry != null
+    // The referrer is the page now, not the one this sheet opened on: read at the tap.
+    fun entryNow() =
+        RitmeBrowserEntries.entryOf(candidate, verdict, form.title, source, browser.findings.value.pageUrl)
+    fun send(block: (NewEntry) -> Unit) {
+        if (form.sent) return
+        val entry = entryNow() ?: return
+        form.sent = true
+        block(entry)
+    }
+    val enabled = entryNow() != null
     if (session.inRoom) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SheetPillButton(
                 text = stringResource(R.string.ritme_add),
                 enabled = enabled,
                 onClick = {
-                    entry?.let {
+                    send {
                         ritme.controller.addEntries(listOf(it), playNext = false)
                         onAdded()
                     }
@@ -370,7 +379,7 @@ private fun RitmeConfirmButtons(
                 text = stringResource(R.string.ritme_play_next_button),
                 enabled = enabled,
                 onClick = {
-                    entry?.let {
+                    send {
                         ritme.controller.addEntries(listOf(it), playNext = true)
                         onAdded()
                     }
@@ -383,7 +392,7 @@ private fun RitmeConfirmButtons(
             text = stringResource(R.string.ritme_start_with_video),
             enabled = enabled,
             onClick = {
-                entry?.let {
+                send {
                     // The start sheet goes in underneath while these leave (PopupSheetState).
                     onStarted()
                     ritme.controller.startOrAddEntries(listOf(it))
