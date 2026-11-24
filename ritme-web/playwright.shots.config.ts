@@ -4,7 +4,8 @@ import base from './playwright.config';
 /**
  * Redesign screenshots (not assertions): `npm run shots` (after `npm run build`), optionally
  * `-- --grep @room`. Same server and fake YouTube as the e2e; PNGs land in
- * test-results/redesign/<project>/<screen>.png (gitignored) for comparison with the handoff.
+ * test-results/redesign/<set>/<project>/<screen>.png (gitignored; <set> is SHOTS_SET, default
+ * "after") for comparison with the handoff.
  */
 export default defineConfig({
   ...base,

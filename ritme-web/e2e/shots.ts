@@ -6,15 +6,57 @@ export function shotPath(info: TestInfo, name: string): string {
   return `test-results/redesign/${process.env.SHOTS_SET ?? 'after'}/${info.project.name}/${name}.png`;
 }
 
+/** Controls the touch-target audit measures (role-carrying elements included). */
+const CONTROLS =
+  'button, a[href], input:not([type="hidden"]), select, textarea, summary, [role="button"], [role="tab"], [role="switch"], [role="slider"], [role="checkbox"], [role="radio"], [role="menuitem"]';
+
+/**
+ * Soft touch-target audit (spec: every target ≥ 44 × 44): lists each visible control smaller than
+ * that. Inline text links (an `<a>` laid out inline in a sentence) are exempt, and so are controls
+ * behind an open modal (inert) and visually hidden ones. It never fails the shot: what it finds is
+ * a console warning and a `touch-target` annotation on the test, for the reviewer to judge.
+ */
+export async function auditTouchTargets(page: Page, info: TestInfo, name: string): Promise<string[]> {
+  let small: string[];
+  try {
+    small = await page.evaluate((selector) => {
+      const found: string[] = [];
+      for (const el of document.querySelectorAll<HTMLElement>(selector)) {
+        if (el.closest('[hidden], [inert], .visually-hidden')) continue;
+        const style = getComputedStyle(el);
+        if (style.visibility === 'hidden' || style.display === 'none') continue;
+        if (el.tagName === 'A' && style.display === 'inline') continue; // a text link inside a sentence
+        const { width, height } = el.getBoundingClientRect();
+        if (width === 0 || height === 0 || (width >= 44 && height >= 44)) continue;
+        const label = (el.getAttribute('aria-label') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 40);
+        const cls = typeof el.className === 'string' && el.className ? `.${el.className.trim().split(/\s+/).join('.')}` : '';
+        found.push(`${el.tagName.toLowerCase()}${cls} "${label}" ${Math.round(width)}×${Math.round(height)}`);
+      }
+      return found;
+    }, CONTROLS);
+  } catch (error) {
+    console.warn(`[touch-target] ${info.project.name}/${name}: audit skipped (${String(error)})`);
+    return [];
+  }
+  if (small.length > 0) {
+    const description = `${info.project.name}/${name}: ${small.length} control(s) under 44×44: ${small.join('; ')}`;
+    console.warn(`[touch-target] ${description}`);
+    info.annotations.push({ type: 'touch-target', description });
+  }
+  return small;
+}
+
 /**
  * Full-page screenshot once fonts and images settled. The flow runs with motion; for the capture
  * itself the page switches to reduced motion, so endless motion (marquee, equalizer, sync pulse,
  * spinner) rests in its still state and every PNG is deterministic. Motion comes back afterwards.
- * `fullPage: false` for a fullscreen element, which covers the window, not the page.
+ * `fullPage: false` for a fullscreen element, which covers the window, not the page. Each shot
+ * also runs the soft touch-target audit above.
  */
 export async function shot(page: Page, info: TestInfo, name: string, { fullPage = true }: { fullPage?: boolean } = {}) {
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(700); // crossfades (600 ms) and the sheet (280 ms) finish
+  await auditTouchTargets(page, info, name);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
   await page.screenshot({ path: shotPath(info, name), fullPage });
