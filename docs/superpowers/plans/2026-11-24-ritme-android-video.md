@@ -3458,13 +3458,30 @@ Siapkan 2 HP Android dengan build ini dan 1 browser (web Ritme). Satu HP jadi ho
 - [ ] **Link `http://192.168.1.1/v.mp4`:** "Link ini tidak bisa ditambahkan".
 - [ ] **Ketik kata kunci** (misalnya "lofi"): hasil video YouTube umum dengan thumbnail 16:9. Ketuk hasil → pratinjau → "Tambah".
 - [ ] **Tidak pernah menambah otomatis:** menempel link atau memilih hasil saja tidak menambah apa pun sampai tombol ditekan.
-- [ ] **Tamu saat `guestsCanAdd` mati:** baris "Tambah video" tidak tampil. Share ke Ritme → toast "Host menutup penambahan lagu".
+- [ ] **Tamu saat `guestsCanAdd` mati:** baris "Tambah video" tidak tampil. Share ke Ritme → toast "Host menutup penambahan video".
 - [ ] **Share dari aplikasi YouTube → "Tambah ke Ritme" (di room):** Musicfy terbuka dengan sheet "Tambah video", link terisi, pratinjau termuat.
 - [ ] **Share dari aplikasi YouTube → "Tambah ke Ritme" (di luar room):** sheet pratinjau dengan tombol "Mulai Ritme dengan video ini" → form mulai Ritme → room baru dimulai dengan video itu.
 - [ ] **Share teks berisi link room Ritme ke "Tambah ke Ritme":** tetap membuka form gabung room (perilaku #1).
 - [ ] **Target share "Musicfy" yang lama:** tetap bekerja seperti sebelumnya.
 - [ ] **Tampilan:** semua sheet, baris, tombol, chip, ikon, dan font sama dengan bagian aplikasi lain (tidak ada gaya baru).
 - [ ] **VOD .m3u8:** jeda lalu putar, cek apakah mulai dari awal (keterbatasan sampai #3).
+
+**Perbaikan review akhir**
+
+- [ ] **Share saat Musicfy sudah terbuka (warm), di dalam room:** share dari YouTube → "Tambah ke Ritme" → sheet "Tambah video" terbuka dengan link terisi dan pratinjau termuat (tidak kosong).
+- [ ] **Share saat Musicfy sudah terbuka (warm), di luar room:** sama, sheet dalam mode mulai dengan link terisi.
+- [ ] **Share link room Ritme saat Musicfy sudah terbuka (warm) ke "Tambah ke Ritme":** form gabung room terbuka dengan kode terisi, tidak digantikan sheet "Tambah video" kosong.
+- [ ] **Ganti mode gelap saat sheet "Tambah video" terbuka setelah share:** tidak ada yang diputar atau ditambahkan dengan sendirinya (di dalam room dan di luar room).
+- [ ] **`.mp4` lambat di data seluler:** pratinjau menunjukkan durasi, atau pesan "Panjang video tidak terbaca, coba lagi" dengan tombol "Coba lagi". Tidak pernah LIVE.
+- [ ] **Dua `.mp4` ditempel cepat berturut-turut, yang pertama dari host yang tidak merespons:** link kedua tetap terbaca durasinya (tidak ikut gagal).
+- [ ] **Saat mengisi URL:** ciutkan dan buka lagi pemutar, matikan lalu nyalakan layar. Audio paling banyak tersendat sekali per perpindahan.
+- [ ] **Geser sheet pemutar sampai kira-kira setengah saat video YouTube diputar:** video dan audio tetap normal.
+- [ ] **`.mp4` mati (404) selama satu menit:** hitung toast-nya. Harusnya satu toast saja, lalu dicoba lagi makin jarang (5 → 15 → 60 detik).
+- [ ] **YouTube live selama 2 menit:** lancar, atau "Video tidak tersedia".
+- [ ] **HLS live dijeda 5 menit, lalu diputar:** kembali ke titik live bersama.
+- [ ] **Wi-Fi mati 10 detik saat video YouTube diputar:** pemutaran pulih sendiri setelah Wi-Fi kembali.
+- [ ] **Back dari layar penuh saat sheet room terbuka di atasnya:** Back menutup sheet dulu, lalu layar penuh.
+- [ ] **Teks toast saat menambah video:** "1 video ditambahkan ke Ritme" (bukan "lagu"). Saat tamu tidak boleh menambah: "Host menutup penambahan video".
 
 ---
 

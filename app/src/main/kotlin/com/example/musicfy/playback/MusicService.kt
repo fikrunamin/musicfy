@@ -502,6 +502,7 @@ class MusicService :
     private val MAX_RETRY_PER_SONG = 3
     private val RETRY_DELAY_MS = 1000L
     private val STREAM_RETRY_INTERVAL_MS = 5000L
+    private val ritmeRefusedUrlRetry = com.example.musicfy.ritme.playback.RitmeRefusedUrlRetry()
     /** How often the Ritme readiness check looks whether the restored queue has finished loading. */
     private val RITME_READY_POLL_MS = 50L
     private val RITME_READY_MAX_WAIT_MS = 10_000L
@@ -1376,17 +1377,21 @@ class MusicService :
         consecutivePlaybackErr = 0
     }
 
-    /** A failed stream the player has given up on: says so, and skips after the timeout unless that's turned off. */
-    private fun failStream() {
+    /**
+     * A failed stream the player has given up on: says so, and skips after the timeout unless that's
+     * turned off. [announce] and [retryDelayMs]: a Ritme URL entry its server keeps refusing toasts
+     * once and backs off (RitmeRefusedUrlRetry).
+     */
+    private fun failStream(announce: Boolean = true, retryDelayMs: Long = STREAM_RETRY_INTERVAL_MS) {
         player.pause()
-        announceStreamFailure()
+        if (announce) announceStreamFailure()
         clearStreamFailure()
         // In a Ritme room a failed stream never skips: the device keeps retrying and follows the room (spec 4.1).
         if (dataStore.get(DontSkipOnFailureKey, false) || ritmeGate.isActive) {
             // staying on it means trying it again every few seconds until it plays: loading it
             // again ends this job, and a failure starts the next wait
             failureJob = scope.launch {
-                delay(STREAM_RETRY_INTERVAL_MS)
+                delay(retryDelayMs)
                 Timber.tag(TAG).d("Retrying the failed stream")
                 player.prepare()
                 // In a Ritme room the planner decides play or pause (the room may be paused or not started yet).
@@ -2557,6 +2562,7 @@ class MusicService :
 
         if (playbackState == Player.STATE_READY) {
             consecutivePlaybackErr = 0
+            ritmeRefusedUrlRetry.reset()
             retryCount = 0
             waitingForNetworkConnection.value = false
             retryJob?.cancel()
@@ -2891,6 +2897,12 @@ class MusicService :
                 player.pause()
                 clearStreamFailure()
                 com.example.musicfy.ui.component.TopToaster.error(getString(R.string.ritme_url_local_address_blocked))
+                return
+            }
+            // A dead link (HTTP 4xx) would fail the same way every 5 s: one toast, then 5 → 15 → 60 s.
+            if (getHttpResponseCode(error) in 400..499) {
+                val step = ritmeRefusedUrlRetry.next(mediaId)
+                failStream(announce = step.toast, retryDelayMs = step.delayMs)
                 return
             }
             failStream()

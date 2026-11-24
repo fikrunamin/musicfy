@@ -322,7 +322,7 @@ internal fun RitmeAddVideoContent(ritme: RitmeUi, form: RitmeAddVideoForm, onRoo
         if (session.inRoom && !form.canSend(session)) {
             Spacer(Modifier.height(12.dp))
             RitmeSecondaryText(
-                text = stringResource(R.string.ritme_toast_add_locked),
+                text = stringResource(R.string.ritme_toast_add_video_locked),
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )

@@ -1,5 +1,7 @@
 package com.music.innertube.pages
 
+import com.music.innertube.models.Thumbnail
+import com.music.innertube.models.firstAtLeast
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -16,6 +18,9 @@ data class WebVideoItem(
 
 /** Reads `twoColumnSearchResultsRenderer` → `itemSectionRenderer` → `videoRenderer`; everything else (ads, shelves) is skipped. */
 object WebVideoSearchPage {
+
+    /** Ritme's rows show a result at 78 x 44 dp and every member loads it: the first this wide (Thumbnail.firstAtLeast). */
+    const val THUMBNAIL_MIN_WIDTH = 320
 
     fun parse(root: JsonObject): List<WebVideoItem> {
         val sections = root.obj("contents")?.obj("twoColumnSearchResultsRenderer")?.obj("primaryContents")
@@ -35,7 +40,11 @@ object WebVideoSearchPage {
         }
         val seconds = parseLength(length)
         val live = liveBadge || seconds == null
-        val thumbnail = (r.obj("thumbnail")?.arr("thumbnails")?.lastOrNull() as? JsonObject)?.str("url")?.substringBefore('?')
+        val thumbnails = r.obj("thumbnail")?.arr("thumbnails").orEmpty().mapNotNull { t ->
+            val o = t as? JsonObject ?: return@mapNotNull null
+            Thumbnail(o.str("url") ?: return@mapNotNull null, o.int("width"), o.int("height"))
+        }
+        val thumbnail = thumbnails.firstAtLeast(THUMBNAIL_MIN_WIDTH)?.url?.substringBefore('?')
         return WebVideoItem(id, title, channel, if (live) null else seconds, thumbnail, live)
     }
 
@@ -49,5 +58,6 @@ object WebVideoSearchPage {
     private fun JsonObject.obj(key: String): JsonObject? = this[key] as? JsonObject
     private fun JsonObject.arr(key: String): JsonArray? = this[key] as? JsonArray
     private fun JsonObject.str(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    private fun JsonObject.int(key: String): Int? = (this[key] as? JsonPrimitive)?.takeUnless { it.isString }?.content?.toIntOrNull()
     private fun JsonObject.firstRun(): String? = (arr("runs")?.firstOrNull() as? JsonObject)?.str("text")
 }

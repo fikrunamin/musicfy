@@ -12,12 +12,14 @@ sealed interface RitmeToast {
     data object CastingBlocked : RitmeToast
     /** Casting started while in a room: this device left it. */
     data object CastingStopped : RitmeToast
-    data class Added(val count: Int) : RitmeToast
+    /** [videos]: entries from "Add video", said as videos rather than songs. */
+    data class Added(val count: Int, val videos: Boolean = false) : RitmeToast
     /** A list add cut short by the room's 500-entry cap: [count] went in, the rest did not fit. */
     data class AddedRestFull(val count: Int) : RitmeToast
     data class SkippedLocal(val count: Int) : RitmeToast
     data class Ended(val reason: EndReason) : RitmeToast
-    data class CommandFailed(val key: NoticeKey) : RitmeToast
+    /** [videos]: refused while adding videos (ADD_FORBIDDEN says "adding videos"). */
+    data class CommandFailed(val key: NoticeKey, val videos: Boolean = false) : RitmeToast
 }
 
 fun interface RitmeNotifier {

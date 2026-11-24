@@ -121,13 +121,13 @@ class RitmeController @Inject constructor(
     fun addEntries(entries: List<NewEntry>, playNext: Boolean) {
         val state = session.state.value
         val room = state.room ?: return
-        if (!addAllowed(room, state.memberId)) return
+        if (!addAllowed(room, state.memberId, videos = true)) return
         if (entries.isEmpty()) return notifier.show(RitmeToast.NotAvailable)
         val batches = entries.take(RitmeEntries.MAX_QUEUE).chunked(RitmeEntries.MAX_BATCH)
         val stacked = playNext && room.currentEntryId != null
         val ordered = if (stacked) batches.asReversed() else batches
         val sent = ordered.all { session.add(it, playNext) }
-        notifier.show(if (sent) RitmeToast.Added(entries.size.coerceAtMost(RitmeEntries.MAX_QUEUE)) else RitmeToast.Reconnecting)
+        notifier.show(if (sent) RitmeToast.Added(entries.size.coerceAtMost(RitmeEntries.MAX_QUEUE), videos = true) else RitmeToast.Reconnecting)
     }
 
     /**
@@ -138,7 +138,7 @@ class RitmeController @Inject constructor(
     fun openAddVideo(text: String? = null) {
         val state = session.state.value
         val room = state.room
-        if (state.inRoom && room != null && !addAllowed(room, state.memberId)) return
+        if (state.inRoom && room != null && !addAllowed(room, state.memberId, videos = true)) return
         request(RitmeSheetRequest.Kind.AddVideo(text))
     }
 
@@ -281,10 +281,10 @@ class RitmeController @Inject constructor(
         notifier.show(if (sent) RitmeToast.Added(batches.count) else RitmeToast.Reconnecting)
     }
 
-    /** The server would answer FORBIDDEN; say it right away, with the same message (spec 8). */
-    private fun addAllowed(room: RoomState, me: String?): Boolean {
+    /** The server would answer FORBIDDEN; say it right away, with the same message (spec 8), about [videos] or songs. */
+    private fun addAllowed(room: RoomState, me: String?, videos: Boolean = false): Boolean {
         if (RitmePermissions.canAdd(room, me)) return true
-        notifier.show(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN))
+        notifier.show(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN, videos))
         return false
     }
 }

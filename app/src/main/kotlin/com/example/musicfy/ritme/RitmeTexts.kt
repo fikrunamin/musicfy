@@ -8,10 +8,11 @@ import com.example.musicfy.ritme.session.NoticeKey
 
 /** Which string describes a Ritme rejection or ending (spec 4.1). */
 object RitmeTexts {
+    /** [videos]: the refusal came from adding videos, so ADD_FORBIDDEN says videos, not songs. */
     @StringRes
-    fun notice(key: NoticeKey): Int = when (key) {
+    fun notice(key: NoticeKey, videos: Boolean = false): Int = when (key) {
         NoticeKey.FORBIDDEN -> R.string.ritme_toast_forbidden
-        NoticeKey.ADD_FORBIDDEN -> R.string.ritme_toast_add_locked
+        NoticeKey.ADD_FORBIDDEN -> if (videos) R.string.ritme_toast_add_video_locked else R.string.ritme_toast_add_locked
         NoticeKey.RATE_LIMITED -> R.string.ritme_error_rate_limited
         NoticeKey.QUEUE_FULL -> R.string.ritme_toast_queue_full
         NoticeKey.INVALID -> R.string.ritme_error_invalid

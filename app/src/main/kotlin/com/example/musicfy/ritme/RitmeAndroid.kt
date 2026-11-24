@@ -59,14 +59,16 @@ class TopToastRitmeNotifier(
             RitmeToast.Reconnecting -> info(res.getString(R.string.ritme_reconnecting))
             RitmeToast.CastingBlocked -> error(res.getString(R.string.ritme_toast_casting))
             RitmeToast.CastingStopped -> info(res.getString(R.string.ritme_toast_casting_stopped))
-            is RitmeToast.Added ->
-                info(res.getQuantityString(R.plurals.ritme_toast_added, toast.count, toast.count), R.drawable.queue_music)
+            is RitmeToast.Added -> info(
+                res.getQuantityString(if (toast.videos) R.plurals.ritme_toast_added_video else R.plurals.ritme_toast_added, toast.count, toast.count),
+                R.drawable.queue_music,
+            )
             is RitmeToast.AddedRestFull ->
                 info(res.getQuantityString(R.plurals.ritme_toast_added_rest_full, toast.count, toast.count), R.drawable.queue_music)
             is RitmeToast.SkippedLocal ->
                 info(res.getQuantityString(R.plurals.ritme_toast_skipped_local, toast.count, toast.count))
             is RitmeToast.Ended -> RitmeTexts.endedToast(toast.reason)?.let { info(res.getString(it)) }
-            is RitmeToast.CommandFailed -> error(res.getString(RitmeTexts.notice(toast.key)))
+            is RitmeToast.CommandFailed -> error(res.getString(RitmeTexts.notice(toast.key, toast.videos)))
         }
     }
 }

@@ -4,9 +4,11 @@ import com.example.musicfy.ritme.entries.RitmeEntries
 import com.music.innertube.models.PlaylistPanelVideoRenderer
 import com.music.innertube.models.SongItem
 import com.music.innertube.models.Thumbnail
+import com.music.innertube.models.firstAtLeast
 import com.music.innertube.models.response.PlayerResponse
 import com.music.innertube.pages.NextPage
 import com.music.innertube.pages.WebVideoItem
+import com.music.innertube.pages.WebVideoSearchPage
 
 /**
  * Turns YouTube's answers into [VideoChoice]s, and decides which answer to trust (pure; the network
@@ -37,11 +39,7 @@ object RitmeVideoInfo {
      * largest (maxres is 1920 × 1080); when none is that wide, the largest there is (the last one
      * when no widths are given).
      */
-    fun thumbnail(thumbnails: List<Thumbnail>): String? =
-        (
-            thumbnails.firstOrNull { (it.width ?: 0) >= THUMBNAIL_MIN_WIDTH }
-                ?: thumbnails.asReversed().maxByOrNull { it.width ?: 0 }
-            )?.url
+    fun thumbnail(thumbnails: List<Thumbnail>): String? = thumbnails.firstAtLeast(THUMBNAIL_MIN_WIDTH)?.url
 
     /** The WEB player's videoDetails for [videoId] if usable (present, that video, a visible title). */
     fun fromPlayer(response: PlayerResponse, videoId: String): VideoChoice? {
@@ -88,7 +86,8 @@ object RitmeVideoInfo {
         web().getOrNull()?.takeIf { it.isNotEmpty() }?.map(::fromWeb)
             ?: music().getOrNull()?.map(::fromSong).orEmpty()
 
-    const val THUMBNAIL_MIN_WIDTH = 320
+    /** The same rule as the search results' (WebVideoSearchPage). */
+    const val THUMBNAIL_MIN_WIDTH = WebVideoSearchPage.THUMBNAIL_MIN_WIDTH
 
     /**
      * Lengths the way RitmeEntries.toVideoEntry takes them (2a Decision 10): missing, 0 or at least

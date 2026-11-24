@@ -11,6 +11,9 @@
     <plurals name="ritme_toast_added">
         <item quantity="other">%d lagu ditambahkan ke Ritme</item>
     </plurals>
+    <plurals name="ritme_toast_added_video">
+        <item quantity="other">%d video ditambahkan ke Ritme</item>
+    </plurals>
     <plurals name="ritme_toast_added_rest_full">
         <item quantity="other">Ditambahkan %d lagu, sisanya tidak muat</item>
     </plurals>
@@ -22,6 +25,7 @@
     <string name="ritme_toast_lost">Terputus dari Ritme</string>
     <string name="ritme_toast_forbidden">Tidak diizinkan di Ritme ini</string>
     <string name="ritme_toast_add_locked">Host menutup penambahan lagu</string>
+    <string name="ritme_toast_add_video_locked">Host menutup penambahan video</string>
     <string name="ritme_toast_queue_full">Antrean Ritme penuh</string>
 
     <string name="ritme_error_unreachable">Tidak bisa terhubung ke server Ritme</string>

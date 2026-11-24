@@ -94,9 +94,13 @@ fun RitmeVideoFullscreenHost(window: Window, playerBarsBehavior: () -> Int) {
     val ritme = rememberRitme()
     val state by ritme.session.state.collectAsState()
     val stays = RitmeStageSlot.fullscreenStays(state.room, state.inRoom)
-    // Before anything else can return early (no player connection): `open` never outlives the room's video.
-    LaunchedEffect(stays, RitmeFullscreen.open) { if (!stays && RitmeFullscreen.open) RitmeFullscreen.open = false }
-    val connection = LocalPlayerConnection.current ?: return
+    val connection = LocalPlayerConnection.current
+    // Before anything can return early: `open` never outlives the room's video, nor the player
+    // connection (without one nothing is shown, so it would stay open unseen, with the player's
+    // stage and system bars standing aside for it).
+    val closes = !stays || connection == null
+    LaunchedEffect(closes, RitmeFullscreen.open) { if (closes && RitmeFullscreen.open) RitmeFullscreen.open = false }
+    if (connection == null) return
     val track by connection.uiState.trackInfo.collectAsState()
     val target = rememberRitmeStageTarget(track.mediaId)
     // While open, the cover's stage steps aside (MorphingCover asks the same question), target or not.

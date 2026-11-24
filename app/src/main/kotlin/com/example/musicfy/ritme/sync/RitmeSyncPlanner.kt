@@ -22,7 +22,11 @@ data class LocalPlayerView(
 )
 
 sealed interface PlayerOp {
-    /** Replace the player's item with [entry] at [startMs], paused. */
+    /**
+     * Replace the player's item with [entry], paused: at [startMs] (the room's position), or at its
+     * default position when null, which for a live entry is its live edge (spec 4.4). A Play in the
+     * same plan starts it (a late joiner, or the anchor already passed).
+     */
     data class Load(val entry: QueueEntry, val startMs: Long?) : PlayerOp
     /** Back to the live edge: a live entry played again after a pause (spec 4.4). */
     data object SeekToLiveEdge : PlayerOp

@@ -49,4 +49,32 @@ class WebVideoSearchPageTest {
         assertNull(WebVideoSearchPage.parseLength("LIVE"))
         assertNull(WebVideoSearchPage.parseLength(null))
     }
+
+    @Test
+    fun theThumbnailIsTheFirstAtLeast320WideNotTheLargest() {
+        // Search lists them small to large; rows show them at 78 x 44 dp, every member loads them.
+        val json = """
+            {"contents":{"twoColumnSearchResultsRenderer":{"primaryContents":{"sectionListRenderer":{"contents":[
+              {"itemSectionRenderer":{"contents":[
+                {"videoRenderer":{"videoId":"dQw4w9WgXcQ",
+                  "thumbnail":{"thumbnails":[
+                    {"url":"https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg?a","width":168,"height":94},
+                    {"url":"https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg?b","width":336,"height":188},
+                    {"url":"https://i.ytimg.com/vi/dQw4w9WgXcQ/hq720.jpg?c","width":720,"height":404}]},
+                  "title":{"runs":[{"text":"Rick"}]},
+                  "lengthText":{"simpleText":"3:33"}}},
+                {"videoRenderer":{"videoId":"jfKfPfyJRdk",
+                  "thumbnail":{"thumbnails":[
+                    {"url":"https://i.ytimg.com/vi/jfKfPfyJRdk/default.jpg","width":168,"height":94},
+                    {"url":"https://i.ytimg.com/vi/jfKfPfyJRdk/s.jpg","width":246,"height":138}]},
+                  "title":{"runs":[{"text":"Lofi"}]},
+                  "lengthText":{"simpleText":"1:00"}}}
+              ]}}
+            ]}}}}}
+        """.trimIndent()
+        val items = WebVideoSearchPage.parse(Json.parseToJsonElement(json).jsonObject)
+        assertEquals("https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg", items[0].thumbnailUrl)
+        // none that wide: the largest there is
+        assertEquals("https://i.ytimg.com/vi/jfKfPfyJRdk/s.jpg", items[1].thumbnailUrl)
+    }
 }

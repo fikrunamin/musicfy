@@ -530,7 +530,7 @@ class RitmeControllerTest {
         inRoom(playing)
         controller.addEntries(listOf(clip), playNext = true)
         assertEquals(listOf<Command>(Command.Add(listOf(clip), playNext = true)), commands)
-        assertEquals(listOf<RitmeToast>(RitmeToast.Added(1)), toasts.shown)
+        assertEquals(listOf<RitmeToast>(RitmeToast.Added(1, videos = true)), toasts.shown)
     }
 
     @Test
@@ -538,7 +538,7 @@ class RitmeControllerTest {
         inRoom(playing.copy(settings = RoomSettings(guestsCanAdd = false)), memberId = "m2")
         controller.addEntries(listOf(clip), playNext = false)
         assertTrue(commands.isEmpty())
-        assertEquals(listOf<RitmeToast>(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN)), toasts.shown)
+        assertEquals(listOf<RitmeToast>(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN, videos = true)), toasts.shown)
     }
 
     @Test
@@ -570,7 +570,7 @@ class RitmeControllerTest {
         val before = controller.sheetRequest.value
         controller.startOrAddEntries(listOf(clip))
         assertEquals(listOf<Command>(Command.Add(listOf(clip), playNext = false)), commands)
-        assertEquals(listOf<RitmeToast>(RitmeToast.Added(1)), toasts.shown)
+        assertEquals(listOf<RitmeToast>(RitmeToast.Added(1, videos = true)), toasts.shown)
         // no room sheet in its place
         assertEquals(before, controller.sheetRequest.value)
     }
@@ -581,7 +581,7 @@ class RitmeControllerTest {
         val before = controller.sheetRequest.value
         controller.startOrAddEntries(listOf(clip))
         assertTrue(commands.isEmpty())
-        assertEquals(listOf<RitmeToast>(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN)), toasts.shown)
+        assertEquals(listOf<RitmeToast>(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN, videos = true)), toasts.shown)
         assertEquals(before, controller.sheetRequest.value)
     }
 
@@ -590,7 +590,7 @@ class RitmeControllerTest {
         inRoom(playing.copy(settings = RoomSettings(guestsCanAdd = false)), memberId = "m2")
         controller.openAddVideo("https://youtu.be/dQw4w9WgXcQ")
         assertNull(controller.sheetRequest.value)
-        assertEquals(listOf<RitmeToast>(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN)), toasts.shown)
+        assertEquals(listOf<RitmeToast>(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN, videos = true)), toasts.shown)
     }
 
     @Test
