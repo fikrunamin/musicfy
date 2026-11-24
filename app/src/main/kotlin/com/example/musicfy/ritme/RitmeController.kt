@@ -40,6 +40,8 @@ data class RitmeSheetRequest(val id: Long, val kind: Kind) {
         data class Entry(val code: String? = null, val startWith: List<MediaMetadata?>? = null, val startWithEntries: List<NewEntry>? = null) : Kind
         /** "Add video"; [text] is a shared link or words to fill in. */
         data class AddVideo(val text: String? = null) : Kind
+        /** The Ritme browser (spec 4.7), opening [url] (a page link, or typed text) when given. */
+        data class Browser(val url: String? = null) : Kind
     }
 }
 
@@ -141,6 +143,18 @@ class RitmeController @Inject constructor(
         val room = state.room
         if (state.inRoom && room != null && !addAllowed(room, state.memberId, videos = true)) return
         request(RitmeSheetRequest.Kind.AddVideo(text))
+    }
+
+    /**
+     * The in-app browser (spec 4.7), opening [url] when given (a page link from "Tambah video" or a
+     * share). The same rule as "Tambah video": in a room only for members who may add (else the
+     * ADD_FORBIDDEN toast); outside one it opens in start mode (its confirmation starts a room).
+     */
+    fun openBrowser(url: String? = null) {
+        val state = session.state.value
+        val room = state.room
+        if (state.inRoom && room != null && !addAllowed(room, state.memberId, videos = true)) return
+        request(RitmeSheetRequest.Kind.Browser(url))
     }
 
     fun consumeSheetRequest(id: Long) {

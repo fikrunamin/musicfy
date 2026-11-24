@@ -160,4 +160,6 @@
     <string name="ritme_browser_note_key">Server kuncinya mungkin butuh login.</string>
     <string name="ritme_browser_refusal_failed">Video ini tidak bisa diperiksa. Coba lagi, atau putar dulu videonya di halaman.</string>
     <string name="ritme_browser_refusal_not_media">Ini bukan file video</string>
+    <string name="ritme_search_web">Cari video di web</string>
+    <string name="ritme_open_in_browser">Buka di browser Ritme</string>
 </resources>

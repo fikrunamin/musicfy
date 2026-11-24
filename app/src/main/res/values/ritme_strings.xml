@@ -174,4 +174,6 @@
     <string name="ritme_browser_note_key">Its key server may need a sign-in.</string>
     <string name="ritme_browser_refusal_failed">This video couldn\'t be checked. Try again, or play it on the page first.</string>
     <string name="ritme_browser_refusal_not_media">This isn\'t a video file</string>
+    <string name="ritme_search_web">Search the web for videos</string>
+    <string name="ritme_open_in_browser">Open in the Ritme browser</string>
 </resources>

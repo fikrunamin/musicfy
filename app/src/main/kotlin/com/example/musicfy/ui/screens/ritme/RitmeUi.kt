@@ -50,6 +50,7 @@ fun RitmeSheetOpener(navController: NavController) {
     if (!RitmeConfig.ENABLED) return
     val ritme = rememberRitme()
     val popup = LocalZoomOutOverlayState.current
+    val playerSheet = LocalPlayerBottomSheetState.current
     val request by ritme.controller.sheetRequest.collectAsState()
     LaunchedEffect(request?.id) {
         val current = request ?: return@LaunchedEffect
@@ -58,6 +59,13 @@ fun RitmeSheetOpener(navController: NavController) {
             RitmeSheetRequest.Kind.Room -> popup.showRitmeRoomSheet(ritme, navController)
             is RitmeSheetRequest.Kind.Entry -> popup.showRitmeEntrySheet(ritme, kind.code, kind.startWith, kind.startWithEntries)
             is RitmeSheetRequest.Kind.AddVideo -> popup.showRitmeAddVideoSheet(ritme, kind.text)
+            is RitmeSheetRequest.Kind.Browser -> {
+                // The browser is a page under the player: an open player steps down first, as for "Add songs".
+                playerSheet?.let { if (it.isExpanded) it.collapseSoft() }
+                navController.navigate(com.example.musicfy.ui.screens.ritme.browser.ritmeBrowserRoute(kind.url)) {
+                    launchSingleTop = true
+                }
+            }
         }
     }
 }
@@ -161,6 +169,11 @@ internal fun PopupSheetState.showRitmeRoomSheet(ritme: RitmeUi, openSearch: () -
                 // The "Add video" sheet takes this one's place (it goes in underneath while this leaves).
                 handle?.dismiss()
                 ritme.controller.openAddVideo()
+            },
+            onSearchWeb = {
+                // The browser opens under this sheet's exit, like "Add video".
+                handle?.dismiss()
+                ritme.controller.openBrowser()
             },
             onLeft = { handle?.dismiss() },
             bottomPadding = 16.dp + navigationBar,

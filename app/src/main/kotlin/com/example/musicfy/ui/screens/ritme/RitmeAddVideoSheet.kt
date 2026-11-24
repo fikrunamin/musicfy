@@ -124,6 +124,9 @@ internal class RitmeAddVideoForm(initialText: String?, val roomMode: Boolean) {
     /** A file's length could not be read: the pinned button tries again ([searchNow]). */
     val canRetry: Boolean get() = (state as? AddVideoState.Problem)?.kind == AddVideoProblem.LENGTH_UNREADABLE
 
+    /** A page link, not a file (spec 4.6): the pinned button opens it in the Ritme browser. */
+    val isPageLink: Boolean get() = (state as? AddVideoState.Problem)?.kind == AddVideoProblem.PAGE
+
     /** What the buttons send; null (and no buttons) without a preview. */
     fun entry(): NewEntry? = RitmeAddVideoModel.entryOf(state, title)
 
@@ -182,6 +185,17 @@ internal fun RitmeAddVideoButtons(ritme: RitmeUi, form: RitmeAddVideoForm, onDon
     if (form.canRetry) {
         // Like the start sheet's button after a failed attempt: the pinned pill says "Try again".
         SheetPillButton(text = stringResource(R.string.ritme_retry), onClick = form::searchNow)
+        return
+    }
+    if (form.isPageLink) {
+        // The page's video may be found by the in-app browser (spec 4.6, 4.7); in start mode too.
+        SheetPillButton(
+            text = stringResource(R.string.ritme_open_in_browser),
+            onClick = {
+                onDone()
+                ritme.controller.openBrowser(form.text.trim())
+            },
+        )
         return
     }
     val entry = form.entry() ?: return

@@ -139,6 +139,7 @@ internal fun RitmeRoomContent(
     ritme: RitmeUi,
     onAddSongs: () -> Unit,
     onAddVideo: () -> Unit,
+    onSearchWeb: () -> Unit,
     onLeft: () -> Unit,
     modifier: Modifier = Modifier,
     bottomPadding: Dp = 16.dp,
@@ -282,6 +283,11 @@ internal fun RitmeRoomContent(
                                 title = { Text(stringResource(R.string.ritme_add_video)) },
                                 onClick = onAddVideo,
                             ),
+                            Material3MenuItemData(
+                                icon = { Icon(painterResource(R.drawable.globe), contentDescription = null) },
+                                title = { Text(stringResource(R.string.ritme_search_web)) },
+                                onClick = onSearchWeb,
+                            ),
                         ),
                     )
                 }
@@ -396,6 +402,11 @@ fun RitmeQueuePage(
                 },
                 // The sheet goes over the player; the queue page stays where it is under it.
                 onAddVideo = { ritme.controller.openAddVideo() },
+                // The queue page closes; the opener lowers the player and opens the browser page.
+                onSearchWeb = {
+                    onClose()
+                    ritme.controller.openBrowser()
+                },
                 onLeft = onClose,
                 // QueueScreen's list padding: 2 dp under the header, and room at the end for the
                 // last rows to clear the button column.

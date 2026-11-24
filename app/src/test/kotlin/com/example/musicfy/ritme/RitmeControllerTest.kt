@@ -613,4 +613,21 @@ class RitmeControllerTest {
     fun theWebOriginIsTheRoomServersOrigin() {
         assertEquals("https://ritme.dubeli.id", controller.webOrigin())
     }
+
+    @Test
+    fun aGuestWhoMayNotAddGetsAToastInsteadOfTheBrowser() {
+        inRoom(playing.copy(settings = RoomSettings(guestsCanAdd = false)), memberId = "m2")
+        controller.openBrowser("https://example.com/film")
+        assertNull(controller.sheetRequest.value)
+        assertEquals(listOf<RitmeToast>(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN, videos = true)), toasts.shown)
+    }
+
+    @Test
+    fun theBrowserOpensInARoomAndInStartMode() {
+        controller.openBrowser("https://example.com/film")
+        assertEquals(RitmeSheetRequest.Kind.Browser("https://example.com/film"), controller.sheetRequest.value?.kind)
+        inRoom(playing)
+        controller.openBrowser()
+        assertEquals(RitmeSheetRequest.Kind.Browser(), controller.sheetRequest.value?.kind)
+    }
 }
