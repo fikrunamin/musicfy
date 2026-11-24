@@ -1,0 +1,98 @@
+package com.example.musicfy.ritme.media
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class PlaylistSnifferTest {
+
+    private fun detect(text: String, type: String? = null) = PlaylistSniffer.detect(text.toByteArray(), type)
+
+    @Test
+    fun theFirstBytesSayWhatAResponseIs() {
+        assertEquals(MediaFormat.HLS, detect("#EXTM3U\n#EXT-X-VERSION:3\n"))
+        assertEquals(MediaFormat.HLS, detect("﻿  #EXTM3U\n"))
+        assertEquals(MediaFormat.DASH, detect("<?xml version=\"1.0\"?>\n<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\">"))
+        assertEquals(MediaFormat.MP4, PlaylistSniffer.detect(mp4Head(0, 1000, 1000), null))
+        assertEquals(MediaFormat.WEBM, PlaylistSniffer.detect(byteArrayOf(0x1A, 0x45, 0xDF.toByte(), 0xA3.toByte(), 1, 2), null))
+        assertEquals(MediaFormat.HTML, detect("<!DOCTYPE html><html><body>Not found</body></html>", "video/mp4"))
+        assertEquals(MediaFormat.HLS, detect("??", "application/vnd.apple.mpegurl; charset=utf-8"))
+        assertEquals(MediaFormat.DASH, detect("??", "application/dash+xml"))
+        assertEquals(MediaFormat.VIDEO, detect("??", "video/quicktime"))
+        assertEquals(MediaFormat.UNKNOWN, detect("G@\u0011", "video/mp2t"))
+        assertEquals(MediaFormat.UNKNOWN, detect("{\"a\":1}", "application/json"))
+    }
+
+    @Test
+    fun aMasterPlaylistListsItsVariantsAbsolute() {
+        val master = """
+            #EXTM3U
+            #EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360
+            360p/index.m3u8
+            #EXT-X-STREAM-INF:BANDWIDTH=2800000,RESOLUTION=1280x720
+            https://cdn2.example.com/720p/index.m3u8
+        """.trimIndent()
+        val info = PlaylistSniffer.parseHls(master, "https://cdn.example.com/v/master.m3u8?token=x")
+        assertTrue(info.master)
+        assertEquals(listOf("https://cdn.example.com/v/360p/index.m3u8", "https://cdn2.example.com/720p/index.m3u8"), info.variants)
+        assertEquals(720, info.maxHeight)
+        assertNull(info.durationMs)
+        assertFalse(info.drm)
+    }
+
+    @Test
+    fun aFinishedMediaPlaylistAddsUpItsSegments() {
+        val vod = "#EXTM3U\n#EXT-X-TARGETDURATION:10\n#EXTINF:10.0,\ns0.ts\n#EXTINF:10,\ns1.ts\n#EXTINF:4.5,\ns2.ts\n#EXT-X-ENDLIST\n"
+        val info = PlaylistSniffer.parseHls(vod, "https://cdn.example.com/v/index.m3u8")
+        assertFalse(info.master)
+        assertTrue(info.ended)
+        assertEquals(24_500L, info.durationMs)
+        assertFalse(PlaylistSniffer.parseHls(vod.replace("#EXT-X-ENDLIST\n", ""), "https://cdn.example.com/v/index.m3u8").ended)
+    }
+
+    @Test
+    fun keysTellClearAesFromDrm() {
+        fun keyed(line: String) = PlaylistSniffer.parseHls("#EXTM3U\n$line\n#EXTINF:4,\ns.ts\n#EXT-X-ENDLIST", "https://cdn.example.com/i.m3u8")
+        keyed("#EXT-X-KEY:METHOD=AES-128,URI=\"https://keys.example.com/k\"").let { assertTrue(it.aes128); assertFalse(it.drm) }
+        assertTrue(keyed("#EXT-X-KEY:METHOD=SAMPLE-AES,URI=\"skd://key\",KEYFORMAT=\"com.apple.streamingkeydelivery\"").drm)
+        assertTrue(keyed("#EXT-X-KEY:METHOD=SAMPLE-AES-CTR,KEYFORMAT=\"urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed\"").drm)
+        assertTrue(keyed("#EXT-X-SESSION-KEY:METHOD=SAMPLE-AES,KEYFORMAT=\"com.microsoft.playready\"").drm)
+        keyed("#EXT-X-KEY:METHOD=NONE").let { assertFalse(it.aes128); assertFalse(it.drm) }
+    }
+
+    @Test
+    fun dashManifestsSayLiveLengthDrmAndHeight() {
+        val static = """<?xml version="1.0"?>
+            <MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" mediaPresentationDuration="PT1H2M3.5S">
+              <Period><AdaptationSet mimeType="video/mp4"><Representation id="1" width="1920" height="1080"/><Representation id="2" height="720"/></AdaptationSet></Period>
+            </MPD>"""
+        assertEquals(DashInfo(live = false, durationMs = 3_723_500, drm = false, maxHeight = 1080), PlaylistSniffer.parseDash(static))
+        val live = static.replace("type=\"static\"", "type=\"dynamic\"")
+        assertEquals(DashInfo(live = true, durationMs = null, drm = false, maxHeight = 1080), PlaylistSniffer.parseDash(live))
+        val protected = static.replace("<Representation id=\"1\"", "<ContentProtection schemeIdUri=\"urn:mpeg:dash:mp4protection:2011\" value=\"cenc\"/><Representation id=\"1\"")
+        assertTrue(PlaylistSniffer.parseDash(protected).drm)
+        assertTrue(PlaylistSniffer.parseDash(static.replace("<Period>", "<Period><dash:ContentProtection/>")).drm)
+    }
+
+    @Test
+    fun isoDurations() {
+        assertEquals(600_000L, PlaylistSniffer.isoDurationMs("PT10M"))
+        assertEquals(86_401_000L, PlaylistSniffer.isoDurationMs("P1DT1S"))
+        assertEquals(500L, PlaylistSniffer.isoDurationMs("pt0.5s"))
+        assertNull(PlaylistSniffer.isoDurationMs("PT"))
+        assertNull(PlaylistSniffer.isoDurationMs("10 minutes"))
+    }
+
+    @Test
+    fun anMp4HeadGivesItsLengthAndItsProtection() {
+        assertEquals(90_500L, PlaylistSniffer.mp4DurationMs(mp4Head(0, 1000, 90_500)))
+        assertEquals(7_200_000L, PlaylistSniffer.mp4DurationMs(mp4Head(1, 90_000, 648_000_000)))
+        assertNull(PlaylistSniffer.mp4DurationMs(mp4Head(0, 1000, 0xFFFFFFFFL)))
+        assertNull(PlaylistSniffer.mp4DurationMs(mp4Head(0, 0, 1000)))
+        assertNull(PlaylistSniffer.mp4DurationMs("#EXTM3U".toByteArray()))
+        assertFalse(PlaylistSniffer.mp4Encrypted(mp4Head(0, 1000, 1000)))
+        assertTrue(PlaylistSniffer.mp4Encrypted(mp4Head(0, 1000, 1000, extraBox = "pssh")))
+    }
+}
