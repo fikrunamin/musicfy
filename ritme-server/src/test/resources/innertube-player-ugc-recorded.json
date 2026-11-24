@@ -1,0 +1,44 @@
+{
+  "playabilityStatus": {
+    "status": "UNPLAYABLE",
+    "reason": "The page needs to be reloaded."
+  },
+  "videoDetails": {
+    "videoId": "nPSvUczm8M0",
+    "title": "nobody wants your AI app...",
+    "lengthSeconds": "627",
+    "channelId": "UCOxWrX5MIdXIeRNaXC3sqIg",
+    "thumbnail": {
+      "thumbnails": [
+        {
+          "url": "https://i.ytimg.com/vi/nPSvUczm8M0/hqdefault.jpg?sqp=-oaymwEbCKgBEF5IVfKriqkDDggBFQAAiEIYAXABwAEG&rs=AOn4CLA0_JXnZAF_50JUPFyoFgF9ATMPBQ",
+          "width": 168,
+          "height": 94
+        },
+        {
+          "url": "https://i.ytimg.com/vi/nPSvUczm8M0/hqdefault.jpg?sqp=-oaymwEbCMQBEG5IVfKriqkDDggBFQAAiEIYAXABwAEG&rs=AOn4CLAO4Hj0cG5TQr0cDxIy0UdDJKoPlQ",
+          "width": 196,
+          "height": 110
+        },
+        {
+          "url": "https://i.ytimg.com/vi/nPSvUczm8M0/hqdefault.jpg?sqp=-oaymwEcCPYBEIoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDtMk8bao_kTWEmpcumON94qarkoQ",
+          "width": 246,
+          "height": 138
+        },
+        {
+          "url": "https://i.ytimg.com/vi/nPSvUczm8M0/hqdefault.jpg?sqp=-oaymwEcCNACELwBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLD9NggmW1GNl3lLbhC0xyc5nx3Z_w",
+          "width": 336,
+          "height": 188
+        },
+        {
+          "url": "https://i.ytimg.com/vi_webp/nPSvUczm8M0/maxresdefault.webp",
+          "width": 1920,
+          "height": 1080
+        }
+      ]
+    },
+    "author": "Lama Dev",
+    "isPrivate": false,
+    "isLiveContent": false
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "responseContext": {},
+  "queueDatas": [
+    {
+      "content": {
+        "playlistPanelVideoRenderer": {
+          "thumbnail": {
+            "thumbnails": [
+              {
+                "url": "https://s.ytimg.com/yts/img/meh_mini-vfl0Ugnu3.png"
+              }
+            ]
+          },
+          "selected": false,
+          "navigationEndpoint": {
+            "clickTrackingParams": "CAEQyCAiEwjk7f3J5Z-YAxVLfZ0JHZSyOVoyA0JGYUjN4ZvnnOqr-pwBmgEFCAwQ-B3KAQQaEvWi",
+            "watchEndpoint": {
+              "videoId": "nPSvUczm8M0",
+              "params": "OAHyAQIIAQ%3D%3D",
+              "watchEndpointMusicSupportedConfigs": {
+                "watchEndpointMusicConfig": {
+                  "hasPersistentPlaylistPanel": true,
+                  "musicVideoType": "MUSIC_VIDEO_TYPE_UGC"
+                }
+              }
+            }
+          },
+          "unplayableText": {
+            "runs": [
+              {
+                "text": "[Video blocked in country]"
+              }
+            ]
+          },
+          "videoId": "nPSvUczm8M0",
+          "trackingParams": "CAEQyCAiEwjk7f3J5Z-YAxVLfZ0JHZSyOVo="
+        }
+      }
+    }
+  ],
+  "trackingParams": "CAAQp9wCIhMI5O39yeWfmAMVS32dCR2UsjlaygEEGhL1og==",
+  "queueContextParams": "WgIgAXgB"
+}

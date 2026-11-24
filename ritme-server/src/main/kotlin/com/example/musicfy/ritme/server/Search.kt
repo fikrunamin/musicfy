@@ -48,6 +48,14 @@ internal fun HttpRequestBuilder.innerTubeHeaders() {
     header(HttpHeaders.Referrer, "${InnerTubeSearchBackend.ORIGIN}/")
 }
 
+/** The WEB client's headers, as youtube.com's web player sends them (video info's player fallback). */
+internal fun HttpRequestBuilder.webClientHeaders() {
+    header(HttpHeaders.UserAgent, InnerTubeSearchBackend.WEB_USER_AGENT)
+    header("X-YouTube-Client-Name", InnerTubeSearchBackend.WEB_CLIENT_ID)
+    header("X-YouTube-Client-Version", InnerTubeSearchBackend.WEB_CLIENT_VERSION)
+    header(HttpHeaders.Origin, InnerTubeSearchBackend.WEB_ORIGIN)
+}
+
 /** `"context": {"client": {WEB_REMIX, hl en, gl US}}`, the first key of every request body. */
 internal fun JsonObjectBuilder.putWebRemixContext() {
     putJsonObject("context") {
@@ -80,6 +88,16 @@ class InnerTubeSearchBackend(private val http: HttpClient) : SearchBackend {
         // Keep in sync with providers/innertube YouTubeClient.WEB_REMIX.
         const val CLIENT_VERSION = "1.20260707.12.00"
         const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
+
+        // The WEB client (youtube.com), for /api/video's `player` fallback (InnerTubePlayerBackend).
+        // Verified from the VPS on 2026-11-24. When the player starts answering 400 ("video player
+        // backend answered 400" in the log), update the version to what youtube.com's web player
+        // sends (ytcfg INNERTUBE_CLIENT_VERSION), or to providers/innertube YouTubeClient.WEB's.
+        const val WEB_CLIENT_NAME = "WEB"
+        const val WEB_CLIENT_ID = "1"
+        const val WEB_CLIENT_VERSION = "2.20260701.00.00"
+        const val WEB_USER_AGENT = USER_AGENT
+        const val WEB_ORIGIN = "https://www.youtube.com"
 
         // providers/innertube YouTube.SearchFilter.FILTER_SONG
         const val SONGS_FILTER = "EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D"

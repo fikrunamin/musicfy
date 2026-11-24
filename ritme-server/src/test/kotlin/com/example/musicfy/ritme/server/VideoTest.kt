@@ -1,11 +1,16 @@
 package com.example.musicfy.ritme.server
 
 import com.example.musicfy.ritme.protocol.RitmeJson
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.request.receiveText
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
@@ -23,6 +28,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.slf4j.LoggerFactory
 import java.io.File
 
 class VideoTest {
@@ -34,6 +40,17 @@ class VideoTest {
     private val searchJson = resource("innertube-search-minimal.json")
     private val id = "dQw4w9WgXcQ"
     private val liveId = "jfKfPfyJRdk"
+    private val ugcQueue = resource("innertube-get-queue-ugc-recorded.json")
+    private val ugcPlayer = resource("innertube-player-ugc-recorded.json")
+    private val ugcId = "nPSvUczm8M0"
+    private val ugcInfo = VideoInfo(
+        ugcId, "nobody wants your AI app...", "Lama Dev", 627_000,
+        "https://i.ytimg.com/vi_webp/nPSvUczm8M0/maxresdefault.webp", live = false,
+    )
+
+    /** A `player` answer whose videoDetails holds the video id, [title] (left out when null) and [extra] fields. */
+    private fun details(videoId: String = ugcId, title: String? = "A video", extra: String = "") =
+        """{"videoDetails":{"videoId":"$videoId"${title?.let { ",\"title\":\"$it\"" }.orEmpty()},"author":"A channel"$extra}}"""
 
     @Test
     fun parsesTitleChannelDurationAndTheLargestYoutubeThumbnail() {
@@ -172,11 +189,15 @@ class VideoTest {
         assertEquals(1, calls)
     }
 
-    private fun depsWith(budget: UpstreamBudget = UpstreamBudget(clock = SystemClock), backend: VideoBackend) = ServerDeps(
+    private fun depsWith(
+        budget: UpstreamBudget = UpstreamBudget(clock = SystemClock),
+        player: VideoDetailsBackend? = null,
+        backend: VideoBackend,
+    ) = ServerDeps(
         config = ServerConfig(0, "https://ritme.test", File("build/no-web")),
         upstreamBudget = budget,
         search = SearchService({ searchJson }, SystemClock, budget = budget),
-        video = VideoInfoService(backend, SystemClock, budget),
+        video = VideoInfoService(backend, SystemClock, budget, player = player),
     )
 
     @Test
@@ -228,5 +249,174 @@ class VideoTest {
     fun endpointReportsBackendFailureAsBadGateway() = testApplication {
         application { ritmeModule(depsWith { error("down") }) }
         assertEquals(HttpStatusCode.BadGateway, client.get("/api/video?id=$id").status)
+    }
+
+    // Non-music (UGC) videos: YouTube Music's get_queue answers an unplayable stub, the player
+    // endpoint's videoDetails has the metadata.
+
+    @Test
+    fun getQueuesUnplayableStubForAUgcVideoIsNotAVideo() {
+        assertNull(InnerTubeVideoParser.parse(ugcQueue, ugcId))
+    }
+
+    @Test
+    fun parsesARecordedPlayerResponsesVideoDetails() {
+        assertEquals(ugcInfo, InnerTubePlayerParser.parse(ugcPlayer, ugcId))
+    }
+
+    @Test
+    fun serviceFallsBackToThePlayerForAUgcVideo() = runBlocking {
+        var playerCalls = 0
+        val service = VideoInfoService({ ugcQueue }, FakeClock(), player = { playerCalls++; ugcPlayer })
+        assertEquals(ugcInfo, service.lookup(ugcId))
+        assertEquals(ugcInfo, service.lookup(ugcId))
+        assertEquals(1, playerCalls) // cached under the same key
+    }
+
+    @Test
+    fun aMusicVideoIsServedByGetQueueAloneAndNeverAsksThePlayer() = runBlocking {
+        var playerCalls = 0
+        val service = VideoInfoService({ video }, FakeClock(), player = { playerCalls++; ugcPlayer })
+        assertEquals(InnerTubeVideoParser.parse(video, id), service.lookup(id))
+        assertEquals(0, playerCalls)
+    }
+
+    @Test
+    fun aUgcVideoIsKeptSixHours() = runBlocking {
+        val clock = FakeClock()
+        var calls = 0
+        val service = VideoInfoService({ calls++; ugcQueue }, clock, player = { ugcPlayer })
+        service.lookup(ugcId)
+        clock.now += VideoInfoService.TTL_MS - 1
+        service.lookup(ugcId)
+        assertEquals(1, calls)
+        clock.now += 1
+        service.lookup(ugcId)
+        assertEquals(2, calls)
+    }
+
+    @Test
+    fun whenBothMissNullIsCachedFiveMinutesAndCostsTwoCallsPerWindow() = runBlocking {
+        val clock = FakeClock()
+        var queueCalls = 0
+        var playerCalls = 0
+        // "{}" is what both backends return for YouTube's HTTP 404.
+        val service = VideoInfoService({ queueCalls++; "{}" }, clock, player = { playerCalls++; "{}" })
+        assertNull(service.lookup("AAAAAAAAAAA"))
+        assertNull(service.lookup("AAAAAAAAAAA"))
+        assertEquals(1 to 1, queueCalls to playerCalls)
+        clock.now += VideoInfoService.SHORT_TTL_MS
+        assertNull(service.lookup("AAAAAAAAAAA"))
+        assertEquals(2 to 2, queueCalls to playerCalls)
+    }
+
+    @Test
+    fun liveVideoDetailsAreLiveWithoutADuration() {
+        listOf(
+            ""","isLive":true,"isLiveContent":true,"lengthSeconds":"0"""",
+            ""","isLive":true,"isLiveContent":true,"lengthSeconds":"627"""",
+            ""","isLiveContent":true,"lengthSeconds":"0"""",
+            ""","isLiveContent":true""",
+            ""","lengthSeconds":"43200"""", // 12 h or longer: taken for live, like get_queue's lengths
+            ""","lengthSeconds":"0"""",
+            ""","lengthSeconds":"soon"""",
+        ).forEach { extra ->
+            val info = InnerTubePlayerParser.parse(details(extra = extra), ugcId)!!
+            assertEquals(extra, 0L, info.durationMs)
+            assertTrue(extra, info.live)
+        }
+    }
+
+    @Test
+    fun aFinishedLiveStreamWithALengthIsAVideo() {
+        val info = InnerTubePlayerParser.parse(details(extra = ""","isLiveContent":true,"lengthSeconds":"3600""""), ugcId)!!
+        assertEquals(VideoInfo(ugcId, "A video", "A channel", 3_600_000, null, live = false), info)
+    }
+
+    @Test
+    fun playerThumbnailsFromOtherHostsAreDropped() {
+        val extra = ""","lengthSeconds":"60","thumbnail":{"thumbnails":[{"url":"https://i.ytimg.com/vi/x/default.jpg"},{"url":"https://evil.example/x.jpg"}]}"""
+        assertNull(InnerTubePlayerParser.parse(details(extra = extra), ugcId)!!.thumbnailUrl)
+    }
+
+    @Test
+    fun playerDetailsOfAnotherVideoOrWithoutATitleMeanNotFound() {
+        assertNull(InnerTubePlayerParser.parse(ugcPlayer, "aaaaaaaaaaa"))
+        assertNull(InnerTubePlayerParser.parse(details(videoId = "aaaaaaaaaaa"), ugcId))
+        assertNull(InnerTubePlayerParser.parse(details(title = null), ugcId))
+        assertNull(InnerTubePlayerParser.parse(details(title = " "), ugcId))
+        assertNull(InnerTubePlayerParser.parse("{}", ugcId))
+        assertNull(InnerTubePlayerParser.parse("""{"playabilityStatus":{"status":"ERROR"}}""", ugcId))
+    }
+
+    @Test
+    fun playerRequestAsksTheWebClientForOneVideo() {
+        val body = RitmeJson.parseToJsonElement(InnerTubePlayerBackend.requestBody(ugcId)).jsonObject
+        assertEquals(ugcId, body.getValue("videoId").jsonPrimitive.content)
+        val client = body.getValue("context").jsonObject.getValue("client").jsonObject
+        assertEquals("WEB", client.getValue("clientName").jsonPrimitive.content)
+        assertEquals(InnerTubeSearchBackend.WEB_CLIENT_VERSION, client.getValue("clientVersion").jsonPrimitive.content)
+    }
+
+    @Test
+    fun playerBackendTurnsYoutubes404And400IntoAnEmptyAnswerAndWarnsOn400WithoutTheId() = testApplication {
+        routing {
+            post("/missing") {
+                call.respondText("""{"error":{"code":404,"status":"NOT_FOUND"}}""", ContentType.Application.Json, HttpStatusCode.NotFound)
+            }
+            post("/bad") { call.respondText("""{"error":{"code":400}}""", ContentType.Application.Json, HttpStatusCode.BadRequest) }
+            post("/down") { call.respondText("", status = HttpStatusCode.InternalServerError) }
+            post("/ok") {
+                val client = call.request.headers["X-YouTube-Client-Name"]
+                val body = call.receiveText()
+                if (client == "1" && body.contains(ugcId)) call.respondText(ugcPlayer, ContentType.Application.Json)
+                else call.respondText("", status = HttpStatusCode.BadRequest)
+            }
+        }
+        val appender = ListAppender<ILoggingEvent>().apply { start() }
+        val logger = LoggerFactory.getLogger(InnerTubePlayerBackend::class.java) as Logger
+        logger.addAppender(appender)
+        try {
+            assertEquals("{}", InnerTubePlayerBackend(client, "/missing").fetch(ugcId))
+            assertTrue(appender.list.isEmpty())
+            assertEquals("{}", InnerTubePlayerBackend(client, "/bad").fetch(ugcId))
+            assertEquals(1, appender.list.size)
+            assertEquals(Level.WARN, appender.list[0].level)
+            assertFalse(appender.list[0].formattedMessage.contains(ugcId))
+            assertEquals(ugcPlayer, InnerTubePlayerBackend(client, "/ok").fetch(ugcId))
+            assertTrue(runCatching { InnerTubePlayerBackend(client, "/down").fetch(ugcId) }.isFailure)
+        } finally {
+            logger.detachAppender(appender)
+        }
+    }
+
+    @Test
+    fun theFallbackSpendsASecondTokenOfTheSharedBudget() = runBlocking {
+        val clock = FakeClock()
+        val two = VideoInfoService({ ugcQueue }, clock, UpstreamBudget(perMinute = 2, clock = clock), player = { ugcPlayer })
+        assertEquals(ugcInfo, two.lookup(ugcId))
+        assertTrue(runCatching { two.lookup(id) }.exceptionOrNull() is UpstreamOverloadedException)
+
+        var playerCalls = 0
+        val one = VideoInfoService({ ugcQueue }, clock, UpstreamBudget(perMinute = 1, clock = clock), player = { playerCalls++; ugcPlayer })
+        assertTrue(runCatching { one.lookup(ugcId) }.exceptionOrNull() is UpstreamOverloadedException)
+        assertEquals(0, playerCalls)
+    }
+
+    @Test
+    fun endpointReturnsAUgcVideoFromThePlayerFallback() = testApplication {
+        application { ritmeModule(depsWith(player = { ugcPlayer }) { ugcQueue }) }
+        val response = client.get("/api/video?id=$ugcId")
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertEquals(ugcInfo, RitmeJson.decodeFromString(VideoInfo.serializer(), response.bodyAsText()))
+    }
+
+    @Test
+    fun endpointAnswers404WhenNeitherGetQueueNorThePlayerHasTheVideo() = testApplication {
+        var calls = 0
+        application { ritmeModule(depsWith(player = { calls++; "{}" }) { calls++; "{}" }) }
+        assertEquals(HttpStatusCode.NotFound, client.get("/api/video?id=AAAAAAAAAAA").status)
+        assertEquals(HttpStatusCode.NotFound, client.get("/api/video?id=AAAAAAAAAAA").status)
+        assertEquals(2, calls) // one each; the miss is cached
     }
 }
