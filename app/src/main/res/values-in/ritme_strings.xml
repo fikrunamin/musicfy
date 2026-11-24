@@ -85,4 +85,17 @@
     <string name="ritme_video_fullscreen">Layar penuh</string>
     <string name="ritme_video_exit_fullscreen">Keluar layar penuh</string>
     <string name="ritme_see_video">Lihat video</string>
+
+    <string name="ritme_add_video">Tambah video</string>
+    <string name="ritme_add_video_hint">Tempel link atau cari video</string>
+    <string name="ritme_add_video_title_optional">Judul (opsional)</string>
+    <string name="ritme_add_video_searching">Mencari…</string>
+    <string name="ritme_add">Tambah</string>
+    <string name="ritme_play_next_button">Putar berikutnya</string>
+    <string name="ritme_start_with_video">Mulai Ritme dengan video ini</string>
+    <string name="ritme_add_video_page">Link ini halaman web, bukan file video.</string>
+    <string name="ritme_add_video_unsafe">Link ini tidak bisa ditambahkan</string>
+    <string name="ritme_add_video_unrecognized">Link ini tidak dikenali</string>
+    <string name="ritme_add_video_not_found">Video tidak ditemukan</string>
+    <string name="ritme_add_video_no_results">Tidak ada video yang cocok</string>
 </resources>

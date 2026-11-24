@@ -37,6 +37,8 @@ data class RitmeSheetRequest(val id: Long, val kind: Kind) {
     sealed interface Kind {
         data object Room : Kind
         data class Entry(val code: String? = null, val startWith: List<MediaMetadata?>? = null, val startWithEntries: List<NewEntry>? = null) : Kind
+        /** "Add video"; [text] is a shared link or words to fill in. */
+        data class AddVideo(val text: String? = null) : Kind
     }
 }
 
@@ -116,6 +118,18 @@ class RitmeController @Inject constructor(
         val ordered = if (stacked) batches.asReversed() else batches
         val sent = ordered.all { session.add(it, playNext) }
         notifier.show(if (sent) RitmeToast.Added(entries.size.coerceAtMost(RitmeEntries.MAX_QUEUE)) else RitmeToast.Reconnecting)
+    }
+
+    /**
+     * The "Add video" sheet (spec 4.6), with [text] (a shared link) filled in. In a room it adds to
+     * the room, so a member who may not add gets the ADD_FORBIDDEN toast instead of the sheet;
+     * outside a room it opens in start mode (Decision 12): its button leads to the start sheet.
+     */
+    fun openAddVideo(text: String? = null) {
+        val state = session.state.value
+        val room = state.room
+        if (state.inRoom && room != null && !addAllowed(room, state.memberId)) return
+        request(RitmeSheetRequest.Kind.AddVideo(text))
     }
 
     fun consumeSheetRequest(id: Long) {

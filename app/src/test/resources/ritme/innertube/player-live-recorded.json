@@ -1,0 +1,24 @@
+{
+  "responseContext": {},
+  "playabilityStatus": {
+    "status": "UNPLAYABLE",
+    "reason": "This live stream recording is not available."
+  },
+  "videoDetails": {
+    "videoId": "jfKfPfyJRdk",
+    "title": "lofi hip hop radio 📚 beats to relax/study to",
+    "lengthSeconds": "121601512",
+    "channelId": "UCSJ4gkVC6NrvII8umztf0Ow",
+    "author": "Lofi Girl",
+    "isLiveContent": true,
+    "thumbnail": {
+      "thumbnails": [
+        {
+          "url": "https://i.ytimg.com/vi/jfKfPfyJRdk/maxresdefault.jpg?v=6911ace0",
+          "width": 1920,
+          "height": 1080
+        }
+      ]
+    }
+  }
+}

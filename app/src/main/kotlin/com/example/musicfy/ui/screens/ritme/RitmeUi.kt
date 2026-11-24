@@ -57,6 +57,7 @@ fun RitmeSheetOpener(navController: NavController) {
         when (val kind = current.kind) {
             RitmeSheetRequest.Kind.Room -> popup.showRitmeRoomSheet(ritme, navController)
             is RitmeSheetRequest.Kind.Entry -> popup.showRitmeEntrySheet(ritme, kind.code, kind.startWith, kind.startWithEntries)
+            is RitmeSheetRequest.Kind.AddVideo -> popup.showRitmeAddVideoSheet(ritme, kind.text)
         }
     }
 }
@@ -114,6 +115,25 @@ fun PopupSheetState.showRitmeEntrySheet(ritme: RitmeUi, code: String?, startWith
     open.handle = handle
 }
 
+/** The "Add video" sheet that is showing: a second share fills its field instead of stacking a copy. */
+private var openAddVideo: RitmeAddVideoForm? = null
+
+fun PopupSheetState.showRitmeAddVideoSheet(ritme: RitmeUi, text: String?) {
+    openAddVideo?.let { open ->
+        if (text != null) open.fill(text)
+        return
+    }
+    val form = RitmeAddVideoForm(text, roomMode = ritme.session.state.value.inRoom)
+    openAddVideo = form
+    var handle: PopupSheetHandle? = null
+    handle = showWithHandle(
+        buttonBar = { RitmeAddVideoButtons(ritme, form, onDone = { handle?.dismiss() }) },
+        onClosed = { if (openAddVideo === form) openAddVideo = null },
+    ) {
+        RitmeAddVideoContent(ritme = ritme, form = form, onRoomGone = { handle?.dismiss() })
+    }
+}
+
 fun PopupSheetState.showRitmeRoomSheet(ritme: RitmeUi, navController: NavController) =
     showRitmeRoomSheet(ritme) { navController.navigate(Screens.Search.route) }
 
@@ -136,6 +156,11 @@ internal fun PopupSheetState.showRitmeRoomSheet(ritme: RitmeUi, openSearch: () -
                 playerSheet?.let { if (it.isExpanded) it.collapseSoft() }
                 // In a room, tapping a search result adds it to the room (RitmeController, PlayQueue).
                 openSearch()
+            },
+            onAddVideo = {
+                // The "Add video" sheet takes this one's place (it goes in underneath while this leaves).
+                handle?.dismiss()
+                ritme.controller.openAddVideo()
             },
             onLeft = { handle?.dismiss() },
             bottomPadding = 16.dp + navigationBar,

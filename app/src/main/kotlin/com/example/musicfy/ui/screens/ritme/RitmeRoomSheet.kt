@@ -102,21 +102,22 @@ import com.example.musicfy.ui.utils.resize
 // Queue rows mirror QueueScreen's QueueSongRow (private there, and bound to the local player's
 // items): a 60 dp row, a 44 dp cover with 8 dp corners, a 14 dp press/highlight shape, the playing
 // row lifted with a 7 % white wash, and 44 dp touch boxes holding 22 dp glyphs at the handle's 50 %.
-private val RowMinHeight = 60.dp
-private val RowArtSize = 44.dp
-private val RowArtShape = RoundedCornerShape(8.dp)
-private val RowHighlightShape = RoundedCornerShape(14.dp)
+// Internal for the "Add video" sheet's rows (RitmeAddVideoSheet), which are these rows.
+internal val RowMinHeight = 60.dp
+internal val RowArtSize = 44.dp
+internal val RowArtShape = RoundedCornerShape(8.dp)
+internal val RowHighlightShape = RoundedCornerShape(14.dp)
 private const val RowArtPx = 144
 private val ActionBoxSize = 44.dp
-private val ActionIconSize = 22.dp
+internal val ActionIconSize = 22.dp
 
 /** A video row's art: 16:9 at the same 44 dp height (SubpageVideoCell's shape, the row's corners). */
-private val RowVideoArtWidth = RowArtSize * 16f / 9f
+internal val RowVideoArtWidth = RowArtSize * 16f / 9f
 
 /** PopupSheet's content side padding (and RitmeQueuePage's), which the rows sit inside. */
 private val SheetSidePadding = 20.dp
 /** QueueSongRow puts the cover's left edge at LyricsHeaderArtX from the screen edge; so do we. */
-private val RowArtStart = LyricsHeaderArtX - SheetSidePadding
+internal val RowArtStart = LyricsHeaderArtX - SheetSidePadding
 /** QueueSectionHeader's space above and below a section title. */
 private val SectionTitleTop = 16.dp
 private val SectionTitleBottom = 8.dp
@@ -137,6 +138,7 @@ private var pushedSheetOpen = false
 internal fun RitmeRoomContent(
     ritme: RitmeUi,
     onAddSongs: () -> Unit,
+    onAddVideo: () -> Unit,
     onLeft: () -> Unit,
     modifier: Modifier = Modifier,
     bottomPadding: Dp = 16.dp,
@@ -275,6 +277,11 @@ internal fun RitmeRoomContent(
                                 title = { Text(stringResource(R.string.ritme_add_songs)) },
                                 onClick = onAddSongs,
                             ),
+                            Material3MenuItemData(
+                                icon = { Icon(painterResource(R.drawable.link), contentDescription = null) },
+                                title = { Text(stringResource(R.string.ritme_add_video)) },
+                                onClick = onAddVideo,
+                            ),
                         ),
                     )
                 }
@@ -387,6 +394,8 @@ fun RitmeQueuePage(
                     playerSheet?.collapseSoft()
                     navController.navigate(Screens.Search.route)
                 },
+                // The sheet goes over the player; the queue page stays where it is under it.
+                onAddVideo = { ritme.controller.openAddVideo() },
                 onLeft = onClose,
                 // QueueScreen's list padding: 2 dp under the header, and room at the end for the
                 // last rows to clear the button column.

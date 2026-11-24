@@ -88,6 +88,8 @@ data class PlayerResponse(
         val musicVideoType: String?,
         val viewCount: String?,
         val thumbnail: Thumbnails,
+        /** True while a live stream is on air (absent otherwise, and absent for some clients). */
+        val isLive: Boolean? = null,
     )
 
     /** The video's subtitle tracks: ones uploaded for it, and YouTube's speech recognition. */

@@ -555,4 +555,28 @@ class RitmeControllerTest {
         controller.openStartWithEntries(listOf(clip))
         assertEquals(RitmeSheetRequest.Kind.Room, controller.sheetRequest.value?.kind)
     }
+
+    @Test
+    fun addVideoIsRefusedUpFrontWhenGuestsCannotAdd() {
+        inRoom(playing.copy(settings = RoomSettings(guestsCanAdd = false)), memberId = "m2")
+        controller.openAddVideo("https://youtu.be/dQw4w9WgXcQ")
+        assertNull(controller.sheetRequest.value)
+        assertEquals(listOf<RitmeToast>(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN)), toasts.shown)
+    }
+
+    @Test
+    fun theHostGetsTheAddVideoSheetWithTheLink() {
+        inRoom(playing.copy(settings = RoomSettings(guestsCanAdd = false)), memberId = "m1")
+        controller.openAddVideo("https://youtu.be/dQw4w9WgXcQ")
+        assertEquals(RitmeSheetRequest.Kind.AddVideo("https://youtu.be/dQw4w9WgXcQ"), controller.sheetRequest.value?.kind)
+        assertTrue(toasts.shown.isEmpty())
+    }
+
+    @Test
+    fun outsideARoomAddVideoOpensInStartMode() {
+        controller.openAddVideo("https://youtu.be/dQw4w9WgXcQ")
+        assertEquals(RitmeSheetRequest.Kind.AddVideo("https://youtu.be/dQw4w9WgXcQ"), controller.sheetRequest.value?.kind)
+        controller.openAddVideo()
+        assertEquals(RitmeSheetRequest.Kind.AddVideo(), controller.sheetRequest.value?.kind)
+    }
 }
