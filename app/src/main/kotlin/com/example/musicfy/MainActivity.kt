@@ -1401,6 +1401,31 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleDeepLinkIntent(intent: Intent, navController: NavHostController, ritmeLinks: Boolean = true) {
+        // "Tambah ke Ritme" from the share sheet (spec 4.6): handled once, never by the deep links
+        // below (they would play the shared link). Every intent comes here twice on a warm start
+        // (onNewIntent and its listener), and again on a recreated activity: RitmeShareRoute.
+        val shareRoute = com.example.musicfy.ritme.RitmeShareRoute.of(
+            action = intent.action,
+            componentClass = intent.component?.className,
+            type = intent.type,
+            text = intent.getStringExtra(Intent.EXTRA_TEXT),
+            consumed = !ritmeLinks,
+            enabled = com.example.musicfy.ritme.RitmeConfig.ENABLED,
+        )
+        if (shareRoute != com.example.musicfy.ritme.RitmeShareRoute.NotAlias) {
+            intent.action = null
+            intent.data = null
+            intent.removeExtra(Intent.EXTRA_TEXT)
+            if (shareRoute is com.example.musicfy.ritme.RitmeShareRoute.Share) {
+                // A room link opens the join form (as the "Musicfy" target does); anything else
+                // fills "Add video"'s field. The text is untrusted and only fills a field.
+                val shared = shareRoute.text
+                if (shared == null || !ritmeController.openJoinLink(shared)) {
+                    ritmeController.openAddVideo(shared?.let { com.example.musicfy.ritme.RitmeLinks.sharedLinkText(it) })
+                }
+            }
+            return
+        }
         if (importSharedAudio(intent)) return
         if (ritmeLinks && com.example.musicfy.ritme.RitmeConfig.ENABLED) {
             // musicfy://ritme/{code}, https://<server>/r/{code}, or shared text holding either: the
@@ -1409,17 +1434,6 @@ class MainActivity : ComponentActivity() {
             if (text != null && ritmeController.openJoinLink(text)) {
                 intent.data = null
                 intent.removeExtra(Intent.EXTRA_TEXT)
-                return
-            }
-            // "Add to Ritme" from the share sheet: the Add video sheet with the link in it (spec 4.6).
-            // Only plain-text SEND; the text is untrusted and only fills the sheet's field.
-            if (intent.component?.className?.endsWith(".RitmeShareAlias") == true) {
-                val shared = if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
-                    intent.getStringExtra(Intent.EXTRA_TEXT)?.let { com.example.musicfy.ritme.RitmeLinks.sharedLinkText(it) }
-                } else null
-                intent.data = null
-                intent.removeExtra(Intent.EXTRA_TEXT)
-                ritmeController.openAddVideo(shared)
                 return
             }
         }

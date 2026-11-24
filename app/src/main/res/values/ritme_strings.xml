@@ -113,5 +113,6 @@
     <string name="ritme_add_video_unrecognized">That isn\'t a link we can use</string>
     <string name="ritme_add_video_not_found">Video not found</string>
     <string name="ritme_add_video_no_results">No videos found</string>
+    <string name="ritme_add_video_length_unreadable">Couldn\'t read the video\'s length, try again</string>
     <string name="ritme_share_target">Add to Ritme</string>
 </resources>

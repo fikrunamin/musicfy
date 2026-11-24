@@ -5,15 +5,9 @@ import com.example.musicfy.ritme.playback.RitmeAddressGuard
 import com.music.innertube.YouTube
 import com.music.innertube.models.SongItem
 import com.music.innertube.models.YouTubeClient
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import java.net.InetAddress
 import java.net.URI
 
@@ -43,42 +37,32 @@ class RitmeVideoLookup : VideoLookup {
     /**
      * Decision 13: a progressive file's length, read on this (the adder's) device by
      * MediaMetadataRetriever, which sends no cookies or headers. At most [PROBE_TIMEOUT_MS]; null on
-     * any failure. Only when every address the host has is public (RitmeAddressGuard): the probe does
-     * not go through the room's guarded OkHttp client, so a host on this device's own network is
-     * never probed (its entry is simply added without a length).
+     * any failure, which "Add video" shows as a problem to try again (never a live entry). Only when
+     * every address the host has is public (RitmeAddressGuard): the probe does not go through the
+     * room's guarded OkHttp client, so a host on this device's own network is never probed (the
+     * room's player would refuse it anyway).
      */
-    override suspend fun probeDurationMs(url: String): Long? {
-        // setDataSource blocks and cannot be interrupted: it runs apart, one probe at a time
-        // ([probeGate], so repeated pastes never pile up blocked IO threads), and is given up waiting
-        // for after the timeout. A caller that gives up (an edit cancels it, or the timeout) cancels
-        // its probe: one still waiting for its turn never starts, one already blocked finishes and
-        // releases the retriever on its own.
-        val probe = probeScope.async {
-            probeGate.withPermit {
-                runCatching {
-                    val host = URI(url).host ?: return@runCatching null
-                    if (!InetAddress.getAllByName(host).all(RitmeAddressGuard::isPublic)) return@runCatching null
-                    ensureActive()
-                    val retriever = MediaMetadataRetriever()
-                    try {
-                        retriever.setDataSource(url, emptyMap())
-                        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?.takeIf { it > 0 }
-                    } finally {
-                        retriever.release()
-                    }
-                }.getOrNull()
+    override suspend fun probeDurationMs(url: String): Long? = probeGate.run {
+        // setDataSource blocks and cannot be interrupted: RitmeProbeGate runs it apart, at most two
+        // at a time, and gives up waiting after the timeout.
+        runCatching {
+            val host = URI(url).host ?: return@runCatching null
+            if (!InetAddress.getAllByName(host).all(RitmeAddressGuard::isPublic)) return@runCatching null
+            ensureActive()
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(url, emptyMap())
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?.takeIf { it > 0 }
+            } finally {
+                retriever.release()
             }
-        }
-        return try {
-            withTimeoutOrNull(PROBE_TIMEOUT_MS) { probe.await() }
-        } finally {
-            probe.cancel()
-        }
+        }.getOrNull()
     }
 
     private companion object {
         const val PROBE_TIMEOUT_MS = 8_000L
-        val probeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        val probeGate = Semaphore(1)
+
+        /** Process-wide: a probe outlives the sheet that asked for it. */
+        val probeGate = RitmeProbeGate(PROBE_TIMEOUT_MS)
     }
 }

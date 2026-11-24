@@ -102,5 +102,6 @@
     <string name="ritme_add_video_unrecognized">Link ini tidak dikenali</string>
     <string name="ritme_add_video_not_found">Video tidak ditemukan</string>
     <string name="ritme_add_video_no_results">Tidak ada video yang cocok</string>
+    <string name="ritme_add_video_length_unreadable">Panjang video tidak terbaca, coba lagi</string>
     <string name="ritme_share_target">Tambah ke Ritme</string>
 </resources>

@@ -1,5 +1,6 @@
 package com.example.musicfy.ui.screens.ritme
 
+import com.example.musicfy.ritme.video.AddVideoProblem
 import com.example.musicfy.ritme.video.AddVideoState
 import com.example.musicfy.ritme.video.RitmeAddVideoModel
 import com.example.musicfy.ritme.video.VideoChoice
@@ -9,6 +10,9 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -73,5 +77,47 @@ class RitmeAddVideoFormTest {
 
         assertEquals(listOf("abc"), lookup.searchCalls)
         assertEquals(AddVideoState.Results(listOf(abc)), form.state)
+    }
+
+    /** Probes answer from [lengths] in turn; null = the length could not be read. */
+    private class ProbeLookup(vararg lengths: Long?) : VideoLookup {
+        private val answers = ArrayDeque(lengths.toList())
+        val probeCalls = mutableListOf<String>()
+
+        override suspend fun info(videoId: String): VideoChoice? = null
+        override suspend fun search(query: String): List<VideoChoice> = emptyList()
+        override suspend fun probeDurationMs(url: String): Long? {
+            probeCalls += url
+            return answers.removeFirst()
+        }
+    }
+
+    @Test
+    fun aFileWhoseLengthCouldNotBeReadOffersATryAgainThatReadsItAgain() = runBlocking {
+        val url = "https://cdn.example.com/v.mp4"
+        val lookup = ProbeLookup(null, 90_000L)
+        val model = RitmeAddVideoModel(lookup)
+        val form = RitmeAddVideoForm(initialText = url, roomMode = true)
+
+        form.resolve(model)
+        assertEquals(AddVideoState.Problem(AddVideoProblem.LENGTH_UNREADABLE), form.state)
+        assertTrue(form.canRetry)
+        // nothing to add from a problem
+        assertNull(form.entry())
+
+        // "Try again" (the pinned button): looked up again at once, without the debounce
+        form.searchNow()
+        form.resolve(model)
+        assertEquals(listOf(url, url), lookup.probeCalls)
+        assertEquals(90_000L, (form.state as AddVideoState.Preview).entry.durationMs)
+        assertFalse(form.canRetry)
+    }
+
+    @Test
+    fun otherProblemsOfferNoTryAgain() = runBlocking {
+        val form = RitmeAddVideoForm(initialText = "https://example.com/watch/123", roomMode = true)
+        form.resolve(RitmeAddVideoModel(ProbeLookup()))
+        assertEquals(AddVideoState.Problem(AddVideoProblem.PAGE), form.state)
+        assertFalse(form.canRetry)
     }
 }

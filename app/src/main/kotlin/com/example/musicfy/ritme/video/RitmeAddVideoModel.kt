@@ -23,7 +23,7 @@ interface VideoLookup {
     /** U3: videos for [query] (YouTube's general search, else YouTube Music's videos); empty on failure. */
     suspend fun search(query: String): List<VideoChoice>
 
-    /** A progressive file's length; null for streams or on failure. */
+    /** A progressive file's length; null when it could not be read (in time). */
     suspend fun probeDurationMs(url: String): Long?
 }
 
@@ -37,7 +37,12 @@ sealed interface AddVideoState {
     data class Problem(val kind: AddVideoProblem) : AddVideoState
 }
 
-enum class AddVideoProblem { PAGE, UNSAFE, UNRECOGNIZED, NOT_FOUND, NO_RESULTS }
+enum class AddVideoProblem {
+    PAGE, UNSAFE, UNRECOGNIZED, NOT_FOUND, NO_RESULTS,
+
+    /** A progressive file whose length could not be read (in time): worth trying again. */
+    LENGTH_UNREADABLE,
+}
 
 /**
  * "Add video" (spec 4.6): pasted text becomes a preview (a link), results (words) or a problem.
@@ -57,8 +62,14 @@ class RitmeAddVideoModel(private val lookup: VideoLookup) {
                 ?.let { preview(it.copy(videoId = link.videoId), music = link.music) }
                 ?: AddVideoState.Problem(AddVideoProblem.NOT_FOUND)
             is VideoLink.Direct -> {
-                // HLS/DASH: no file length to read; 0 = live (Decision 13)
-                val durationMs: Long = if (link.streaming) 0L else lookup.probeDurationMs(link.url) ?: 0L
+                // HLS/DASH: no file length to read; 0 = live (Decision 13). A file whose length
+                // could not be read is never added as live (joiners at 0:00, seeks ignored, "LIVE"
+                // on its row): it is a problem the adder can try again.
+                val durationMs: Long = if (link.streaming) {
+                    0L
+                } else {
+                    lookup.probeDurationMs(link.url) ?: return AddVideoState.Problem(AddVideoProblem.LENGTH_UNREADABLE)
+                }
                 RitmeEntries.toUrlEntry(link.url, link.fileName, link.domain, durationMs)
                     ?.let { AddVideoState.Preview(it, editableTitle = true) }
                     ?: AddVideoState.Problem(AddVideoProblem.UNSAFE)

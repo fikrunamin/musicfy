@@ -110,6 +110,9 @@ internal class RitmeAddVideoForm(initialText: String?, val roomMode: Boolean) {
         searches++
     }
 
+    /** A file's length could not be read: the pinned button tries again ([searchNow]). */
+    val canRetry: Boolean get() = (state as? AddVideoState.Problem)?.kind == AddVideoProblem.LENGTH_UNREADABLE
+
     /** What the buttons send; null (and no buttons) without a preview. */
     fun entry(): NewEntry? = RitmeAddVideoModel.entryOf(state, title)
 
@@ -149,12 +152,14 @@ internal class RitmeAddVideoForm(initialText: String?, val roomMode: Boolean) {
             AddVideoProblem.UNRECOGNIZED -> R.string.ritme_add_video_unrecognized
             AddVideoProblem.NOT_FOUND -> R.string.ritme_add_video_not_found
             AddVideoProblem.NO_RESULTS -> R.string.ritme_add_video_no_results
+            AddVideoProblem.LENGTH_UNREADABLE -> R.string.ritme_add_video_length_unreadable
         }
     }
 }
 
 /**
- * The sheet's pinned buttons, the sheets' pills (SheetPillButton). In a room (also one joined after
+ * The sheet's pinned buttons, the sheets' pills (SheetPillButton). After a file whose length could
+ * not be read: "Try again" alone (RitmeAddVideoForm.canRetry). In a room (also one joined after
  * a start-mode sheet opened): "Add" and "Play next", side by side; outside one: "Start Ritme with
  * this video", which leads to the start sheet (Decision 12), or adds to a room joined since this
  * last composed (RitmeController.startOrAddEntries). Not shown at all without a preview, or while
@@ -164,8 +169,13 @@ internal class RitmeAddVideoForm(initialText: String?, val roomMode: Boolean) {
 @Composable
 internal fun RitmeAddVideoButtons(ritme: RitmeUi, form: RitmeAddVideoForm, onDone: () -> Unit) {
     val session by ritme.session.state.collectAsState()
-    val entry = form.entry() ?: return
     if (!form.canSend(session)) return
+    if (form.canRetry) {
+        // Like the start sheet's button after a failed attempt: the pinned pill says "Try again".
+        SheetPillButton(text = stringResource(R.string.ritme_retry), onClick = form::searchNow)
+        return
+    }
+    val entry = form.entry() ?: return
     if (session.inRoom) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SheetPillButton(
@@ -251,7 +261,8 @@ internal fun RitmeAddVideoContent(ritme: RitmeUi, form: RitmeAddVideoForm, onRoo
                 val isUrl = entry.kind == MediaKind.URL
                 AddVideoRow(
                     title = if (state.editableTitle) RitmeAddVideoModel.entryOf(state, form.title)?.title ?: entry.title else entry.title,
-                    subtitle = if (isUrl) entry.artist else videoSubtitle(entry.artist, (entry.durationMs / 1000).toInt().takeIf { it > 0 }),
+                    // "domain · 1:30" or "domain · LIVE": what the room will do with it (0 = live).
+                    subtitle = videoSubtitle(entry.artist, entry.durationMs.takeIf { it > 0 }?.let { (it / 1000).toInt().coerceAtLeast(1) }),
                     // A URL entry's picture is never loaded (spec 4.7): it has none anyway.
                     thumbnailUrl = if (isUrl) null else entry.thumbnailUrl,
                     isUrl = isUrl,
@@ -319,7 +330,7 @@ internal fun RitmeAddVideoContent(ritme: RitmeUi, form: RitmeAddVideoForm, onRoo
     }
 }
 
-/** "Channel · 3:33", or "Channel · LIVE" for a live stream ([seconds] null). */
+/** "Channel · 3:33" (or "domain · 3:33"), or "Channel · LIVE" for a live stream ([seconds] null). */
 @Composable
 private fun videoSubtitle(channel: String, seconds: Int?): String {
     val length = if (seconds == null) stringResource(R.string.ritme_tag_live) else makeTimeString(seconds * 1000L)

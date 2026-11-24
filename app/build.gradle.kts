@@ -63,7 +63,10 @@ extensions.configure<ApplicationExtension> {
         val ritmeServerUrl = "https://ritme.dubeli.id"
         buildConfigField("String", "RITME_SERVER_URL", "\"$ritmeServerUrl\"")
         // Kill switch: false hides every Ritme entry point and keeps RitmeGate closed.
-        buildConfigField("Boolean", "RITME_ENABLED", "true")
+        val ritmeEnabled = true
+        buildConfigField("Boolean", "RITME_ENABLED", "$ritmeEnabled")
+        // The "Tambah ke Ritme" share target (AndroidManifest.xml) follows the same switch.
+        manifestPlaceholders["ritmeEnabled"] = "$ritmeEnabled"
         // Host for the https://<host>/r/{code} deep link in AndroidManifest.xml.
         manifestPlaceholders["ritmeHost"] = URI(ritmeServerUrl).host
     }

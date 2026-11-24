@@ -214,6 +214,7 @@
         <!-- Ritme (spec 4.6, U5): always offered; outside a room it offers to start one with the video. -->
         <activity-alias
             android:name=".RitmeShareAlias"
+            android:enabled="${ritmeEnabled}"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:roundIcon="@mipmap/ic_launcher_round"

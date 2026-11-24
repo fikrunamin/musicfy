@@ -120,9 +120,13 @@ class RitmeAddVideoModelTest {
     }
 
     @Test
-    fun aFileWhoseLengthCannotBeReadIsAddedWithoutOne() {
-        val state = resolve(FakeLookup(probed = null), "https://cdn.example.com/v.webm") as AddVideoState.Preview
-        assertEquals(0L, state.entry.durationMs)
+    fun aFileWhoseLengthCannotBeReadIsARetryableProblemNeverLive() {
+        // 0 would make it a live entry (Decision 13): joiners at 0:00, seeks ignored, "LIVE" on its row.
+        for (url in listOf("https://cdn.example.com/v.webm", "https://cdn.example.com/v.mp4", "https://cdn.example.com/v.m4v", "https://cdn.example.com/v.mov")) {
+            val lookup = FakeLookup(probed = null)
+            assertEquals(url, AddVideoState.Problem(AddVideoProblem.LENGTH_UNREADABLE), resolve(lookup, url))
+            assertEquals(listOf(url), lookup.probeCalls)
+        }
     }
 
     @Test
@@ -180,13 +184,13 @@ class RitmeAddVideoModelTest {
 
     @Test
     fun anEditedTitleGoesIntoAUrlEntry() {
-        val preview = resolve(FakeLookup(), "https://cdn.example.com/v.mp4") as AddVideoState.Preview
+        val preview = resolve(FakeLookup(probed = 90_000), "https://cdn.example.com/v.mp4") as AddVideoState.Preview
         assertEquals("Holiday", RitmeAddVideoModel.entryOf(preview, "  Holiday ")?.title)
     }
 
     @Test
     fun aBlankedTitleFallsBackToTheDomain() {
-        val preview = resolve(FakeLookup(), "https://cdn.example.com/v.mp4") as AddVideoState.Preview
+        val preview = resolve(FakeLookup(probed = 90_000), "https://cdn.example.com/v.mp4") as AddVideoState.Preview
         assertEquals("cdn.example.com", RitmeAddVideoModel.entryOf(preview, "   ")?.title)
     }
 
