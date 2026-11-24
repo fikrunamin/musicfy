@@ -6,6 +6,7 @@ import type { SessionApi } from '../session/session';
 import { AddVideoPanel } from './add-video';
 import { Button, IconButton, TextField } from './components';
 import { formatMs } from './format';
+import { type Draft, useDraft } from './hooks';
 import { Icon, type IconName } from './icon';
 import { MediaRow, Thumb } from './media';
 import { searchFailureText, t } from './strings';
@@ -21,6 +22,8 @@ interface Props {
   variant?: 'sheet' | 'panel';
   /** Each new value selects the Lagu tab and focuses the song search (desktop "Tambah lagu"). */
   focusRequest?: number;
+  /** Where the typed state is kept, so it survives the move between the inline panel and the dialog. */
+  draft?: Draft;
   /** Injected in tests. */
   fetchImpl?: typeof fetch;
   probe?: typeof probeMedia;
@@ -59,17 +62,20 @@ function tabForKey(key: string, i: number): Tab | null {
  * one tab stop (roving tabindex), arrows wrap, Home/End jump. Only the selected panel's content
  * is mounted, so leaving a tab cancels its lookups as before.
  */
-export function SearchPanel({ session, online, pageIsHttps = true, onClose, variant = 'sheet', focusRequest = 0, fetchImpl, probe }: Props) {
+export function SearchPanel({ session, online, pageIsHttps = true, onClose, variant = 'sheet', focusRequest = 0, draft, fetchImpl, probe }: Props) {
   const inline = variant === 'panel';
-  const [tab, setTab] = useState<Tab>('songs');
+  const [tab, setTab] = useDraft<Tab>(draft, 'tab', 'songs');
   const tabs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
   const search = useRef<HTMLInputElement>(null);
 
   // A focus request selects Lagu first: the song search is mounted only while its tab is selected,
-  // so the focus waits for the render that mounts it.
+  // so the focus waits for the render that mounts it. Only a new request: a panel mounted again (the
+  // theater gave way to a song) does not take focus.
   const focusWanted = useRef(false);
+  const handled = useRef(focusRequest);
   useEffect(() => {
-    if (focusRequest === 0) return;
+    if (focusRequest === handled.current) return;
+    handled.current = focusRequest;
     focusWanted.current = true;
     setTab('songs');
   }, [focusRequest]);
@@ -118,9 +124,9 @@ export function SearchPanel({ session, online, pageIsHttps = true, onClose, vari
         <div key={x.id} id={panelId(x.id)} class="add-tabpanel" role="tabpanel" aria-labelledby={tabId(x.id)} hidden={tab !== x.id}>
           {tab === x.id &&
             (x.id === 'songs' ? (
-              <SongSearch session={session} online={online} inline={inline} inputRef={search} fetchImpl={fetchImpl} />
+              <SongSearch session={session} online={online} inline={inline} inputRef={search} draft={draft} fetchImpl={fetchImpl} />
             ) : (
-              <AddVideoPanel session={session} online={online} pageIsHttps={pageIsHttps} fetchImpl={fetchImpl} probe={probe} />
+              <AddVideoPanel session={session} online={online} pageIsHttps={pageIsHttps} draft={draft} fetchImpl={fetchImpl} probe={probe} />
             ))}
         </div>
       ))}
@@ -143,16 +149,18 @@ function SongSearch({
   online,
   inline,
   inputRef,
+  draft,
   fetchImpl,
 }: {
   session: SessionApi;
   online: boolean;
   inline: boolean;
   inputRef?: RefObject<HTMLInputElement>;
+  draft?: Draft;
   fetchImpl?: typeof fetch;
 }) {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[] | null>(null);
+  const [query, setQuery] = useDraft(draft, 'query', '');
+  const [results, setResults] = useDraft<SearchResult[] | null>(draft, 'results', null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const inflight = useRef<AbortController | null>(null);

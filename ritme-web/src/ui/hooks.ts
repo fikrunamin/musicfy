@@ -48,3 +48,22 @@ export function useMediaQuery(query: string): boolean {
   }, [query]);
   return matches;
 }
+
+/**
+ * The add flow's draft (tab, query, results, link, title, preview), held by the room so it outlives
+ * the panel: the inline panel and the add dialog are different elements, and the theater switches
+ * between them at a track boundary. A pure UI hook.
+ */
+export type Draft = Record<string, unknown>;
+
+/** useState that also writes each value to `draft[key]`, and starts from it when there is one. */
+export function useDraft<T>(draft: Draft | undefined, key: string, init: T): [T, (value: T) => void] {
+  const [value, setValue] = useState<T>(draft && key in draft ? (draft[key] as T) : init);
+  return [
+    value,
+    (v: T) => {
+      if (draft) draft[key] = v;
+      setValue(v);
+    },
+  ];
+}

@@ -11,6 +11,7 @@ import type { SessionApi } from '../session/session';
 import { mediaFormat } from './badges';
 import { Badge, Button, DurationChip, FieldError, IconButton, TextField } from './components';
 import { formatMs } from './format';
+import { type Draft, useDraft } from './hooks';
 import { Icon } from './icon';
 import { Thumb, VideoPlaceholder } from './media';
 import { t, videoInfoFailureText, videoLinkProblemText } from './strings';
@@ -20,6 +21,8 @@ interface Props {
   online: boolean;
   /** http:// media cannot play on an https page (mixed content), so such links are refused. */
   pageIsHttps: boolean;
+  /** Where the link, title and preview are kept across the move between inline panel and dialog. */
+  draft?: Draft;
   /** Injected in tests. */
   fetchImpl?: typeof fetch;
   probe?: typeof probeMedia;
@@ -160,10 +163,10 @@ function DirectCard({ link, probe, title }: { link: DirectVideoLink; probe: Prob
  * might. What is sent is exactly what toVideoEntry/toUrlEntry return; only the shown domain is
  * IDN-decoded.
  */
-export function AddVideoPanel({ session, online, pageIsHttps, fetchImpl, probe }: Props) {
-  const [text, setText] = useState('');
-  const [title, setTitle] = useState('');
-  const [preview, setPreview] = useState<Preview>({ kind: 'idle' });
+export function AddVideoPanel({ session, online, pageIsHttps, draft, fetchImpl, probe }: Props) {
+  const [text, setText] = useDraft(draft, 'text', '');
+  const [title, setTitle] = useDraft(draft, 'title', '');
+  const [preview, setPreview] = useDraft<Preview>(draft, 'preview', { kind: 'idle' });
   const [pasteFailed, setPasteFailed] = useState(false);
   const inflight = useRef<AbortController | null>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -171,6 +174,9 @@ export function AddVideoPanel({ session, online, pageIsHttps, fetchImpl, probe }
     () => () => {
       inflight.current?.abort();
       inflight.current = null;
+      // A lookup cut short here is not waited for when the panel comes back: "Pratinjau" again.
+      const p = draft?.preview as Preview | undefined;
+      if (p?.kind === 'loading' || (p?.kind === 'direct' && !p.probe)) draft!.preview = { kind: 'idle' };
     },
     [],
   );

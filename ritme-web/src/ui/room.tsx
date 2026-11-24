@@ -8,7 +8,7 @@ import type { SessionApi } from '../session/session';
 import { Backdrop } from './backdrop';
 import { isVideoEntry, pageIsHttps } from './badges';
 import { AvatarStack, Button, IconButton, SyncDot, cx } from './components';
-import { DESKTOP_QUERY, useMediaQuery } from './hooks';
+import { DESKTOP_QUERY, type Draft, useMediaQuery } from './hooks';
 import { Icon } from './icon';
 import { type Mode, ModeSwitch } from './listen';
 import { MembersPanel } from './members';
@@ -41,6 +41,9 @@ const showQueue = () => document.getElementById('queue-title')?.scrollIntoView({
  * Theater (desktop with a video entry, handoff K/O): still that tree, laid out by video.css as a
  * wide 16:9 stage under a one-row header, and a 340 px right column (full queue, compact members)
  * that the header toggle folds away. Adding and the full members list open as dialogs there.
+ *
+ * The add flow survives the theater coming and going at a track boundary: what was typed lives in
+ * `draft`, the inline panel's work moves into the dialog, and an open dialog stays until closed.
  */
 export function RoomScreen({ session, state, prefs }: Props) {
   const { room, memberId, unplayable } = state;
@@ -65,12 +68,38 @@ export function RoomScreen({ session, state, prefs }: Props) {
   const main = useRef<HTMLElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
   const crossed = useRef(false);
-  // Crossing the breakpoint, or into or out of the theater, closes any sheet: on desktop its
-  // content is inline, and a phone that was a desktop a moment ago should not find a sheet it never
-  // opened. Focus that was in a part that is gone now (the right column on the way to a phone, the
-  // add panel on the way into the theater) goes to the title, not to <body>.
+  const draft = useRef<Draft>({});
+  /** Opening "Tambah lagu" or closing the dialog starts the next add flow afresh. */
+  const openAdd = (open: boolean) => {
+    draft.current = {};
+    setAdding(open);
+  };
+  // The theater turning on takes the inline add panel away. Work in progress there (focus in it, a
+  // link not yet added, a search not yet run) goes on in the dialog; a finished search left in the
+  // field does not open it. This runs while the panel is still in the page, before it is gone.
+  const wasTheater = useRef(theater);
+  const carryFocus = useRef<string | null>(null);
+  if (wasTheater.current !== theater) {
+    wasTheater.current = theater;
+    const panel = theater && main.current?.querySelector('.add-panel-inline');
+    const focused = document.activeElement;
+    const d = draft.current;
+    if (panel && (panel.contains(focused) || d.text || (d.query && !d.results))) {
+      carryFocus.current = panel.contains(focused) ? focused!.id : null;
+      setAdding(true);
+    }
+  }
   useEffect(() => {
-    setAdding(false);
+    if (carryFocus.current) document.getElementById(carryFocus.current)?.focus();
+    carryFocus.current = null;
+  }, [adding]);
+  // Crossing the breakpoint closes any sheet: on desktop its content is inline, and a phone that
+  // was a desktop a moment ago should not find a sheet it never opened.
+  useEffect(() => setAdding(false), [desktop]);
+  // That, or the theater coming or going, closes the members sheet. Focus that was in a part that
+  // is gone now (the right column on the way to a phone, the add panel on the way into the theater)
+  // goes to the title, not to <body>.
+  useEffect(() => {
     setShowingMembers(false);
     if (!crossed.current) {
       crossed.current = true;
@@ -154,22 +183,23 @@ export function RoomScreen({ session, state, prefs }: Props) {
           </header>
 
           <ModeSwitch mode={mode} onModeChange={changeMode} />
-          <NowPlaying {...shared} mode={mode} onShowQueue={desktop ? undefined : showQueue} />
+          <NowPlaying {...shared} mode={mode} onShowQueue={desktop ? undefined : showQueue} notice={state.notice} />
         </div>
         <div id="room-queue" class="room-col room-queue" hidden={folded}>
           {/* "Tambah lagu" is hidden, not disabled, while the host keeps guests from adding (spec 8). */}
-          <QueueList {...shared} variant={desktop ? 'full' : 'upcoming'} onAdd={mayAdd ? (sheets ? () => setAdding(true) : focusAdd) : undefined} />
+          <QueueList {...shared} variant={desktop ? 'full' : 'upcoming'} onAdd={mayAdd ? (sheets ? () => openAdd(true) : focusAdd) : undefined} />
         </div>
         {desktop && (
           <div id="room-side" class="room-col room-side" hidden={folded}>
-            {mayAdd && !theater && <SearchPanel session={session} online={online} pageIsHttps={https} variant="panel" focusRequest={addFocus} />}
+            {mayAdd && !theater && !adding && <SearchPanel session={session} online={online} pageIsHttps={https} variant="panel" focusRequest={addFocus} draft={draft.current} />}
             <MembersPanel session={session} room={room} memberId={memberId} online={online} variant={theater ? 'compact' : 'panel'} />
           </div>
         )}
       </main>
-      {sheets && adding && mayAdd && (
-        <Sheet labelledBy="add-title" class="add-sheet" onClose={() => setAdding(false)} returnFocus={addReturn}>
-          <SearchPanel session={session} online={online} pageIsHttps={https} onClose={() => setAdding(false)} />
+      {/* Not only with `sheets`: a dialog open when the theater gives way to a song stays until closed. */}
+      {adding && mayAdd && (
+        <Sheet labelledBy="add-title" class="add-sheet" onClose={() => openAdd(false)} returnFocus={addReturn}>
+          <SearchPanel session={session} online={online} pageIsHttps={https} onClose={() => openAdd(false)} draft={draft.current} />
         </Sheet>
       )}
       {/* Leaving and ending the room live in the members sheet, under the share card (handoff G). */}

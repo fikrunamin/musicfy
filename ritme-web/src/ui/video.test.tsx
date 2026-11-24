@@ -231,6 +231,13 @@ describe('the stage error of a direct link', () => {
   });
 });
 
+describe('the YouTube source line', () => {
+  it('says only "YouTube" when the channel is empty', () => {
+    np(playing(ytVideo({ artist: '' })));
+    expect(document.querySelector('.np-src')?.textContent).toBe('YouTube');
+  });
+});
+
 describe('the fullscreen button', () => {
   it('is there for a video in listen mode when the browser can go fullscreen, outside the stage', () => {
     stubFullscreen(true);
@@ -287,6 +294,79 @@ describe('the fullscreen button', () => {
     });
     expect(document.querySelector('.np-full')).toBeNull();
     expect(screen.getByRole('button', { name: 'Layar penuh' })).toBeTruthy();
+  });
+});
+
+describe('fullscreen feedback and focus', () => {
+  const props = (r: RoomState, session: ReturnType<typeof fakeSession>) =>
+    ({ session, room: r, memberId: 'm2', unplayable: {}, online: true, pageIsHttps: true, mode: 'listen' as const });
+
+  it('shows the room notice inside the fullscreen side bar, never over the stage: a locked tap says "Host mengunci kontrol"', async () => {
+    stubFullscreen(true);
+    const session = fakeSession();
+    const r = playing(ytVideo(), locked);
+    // A notice from before fullscreen is not shown again on the way in.
+    const view = render(<NowPlaying {...props(r, session)} notice={{ id: 1, key: 'rateLimited' }} />);
+    await act(async () => void fireEvent.click(screen.getByRole('button', { name: 'Layar penuh' })));
+    const section = document.querySelector('section.now-playing')!;
+    const bar = section.querySelector('.np-fs-status')!;
+    const live = within(bar as HTMLElement).getByRole('status');
+    expect(live.getAttribute('aria-live')).toBe('polite');
+    expect(live.textContent).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: 'Putar' }));
+    expect(session.notify).toHaveBeenCalledWith('forbidden');
+    view.rerender(<NowPlaying {...props(r, session)} notice={{ id: 2, key: 'forbidden' }} />);
+    expect(live.textContent).toBe('Host mengunci kontrol');
+    expect(live.closest('.stage')).toBeNull();
+    expect(live.closest('section.np-full')).toBe(section);
+  });
+
+  it('shows no notice there outside fullscreen (the app toast has it)', () => {
+    np(playing(ytVideo()));
+    expect(document.querySelector('section.now-playing .toast-region')).toBeNull();
+  });
+
+  it('keeps one button in one slot from a YouTube video to a direct link', async () => {
+    stubFullscreen(true);
+    const session = fakeSession();
+    const view = render(<NowPlaying {...props(playing(ytVideo()), session)} />);
+    const button = screen.getByRole('button', { name: 'Layar penuh' });
+    view.rerender(<NowPlaying {...props(playing(direct()), session)} />);
+    expect(screen.getByRole('button', { name: 'Layar penuh' })).toBe(button);
+    await act(async () => void fireEvent.click(button));
+    view.rerender(<NowPlaying {...props(playing(ytVideo()), session)} />);
+    expect(screen.getByRole('button', { name: 'Keluar dari layar penuh' })).toBe(button);
+  });
+
+  it('gives focus to the now-playing title on leaving fullscreen when a song took the video\'s place (the button is gone)', async () => {
+    stubFullscreen(true);
+    const { update } = renderRoom(mixed('v', 1));
+    await act(async () => void fireEvent.click(screen.getByRole('button', { name: 'Layar penuh' })));
+    update(mixed('s', 2));
+    const exit = screen.getByRole('button', { name: 'Keluar dari layar penuh' });
+    exit.focus();
+    await act(async () => void fireEvent.click(exit));
+    expect(screen.queryByRole('button', { name: /layar penuh/i })).toBeNull();
+    expect(document.activeElement).toBe(document.getElementById('now-title'));
+  });
+
+  it('keeps focus on the button when it stays (still a video)', async () => {
+    stubFullscreen(true);
+    renderRoom(mixed('v', 1));
+    const button = screen.getByRole('button', { name: 'Layar penuh' });
+    button.focus();
+    await act(async () => void fireEvent.click(button));
+    await act(async () => void fireEvent.click(button));
+    expect(document.activeElement).toBe(button);
+  });
+
+  it('says so with a toast when the browser refuses fullscreen', async () => {
+    const { request } = stubFullscreen(true);
+    request.mockImplementationOnce(() => Promise.reject(new Error('denied')));
+    const { session } = np(playing(ytVideo()));
+    await act(async () => void fireEvent.click(screen.getByRole('button', { name: 'Layar penuh' })));
+    expect(session.notify).toHaveBeenCalledWith('failed');
+    expect(document.querySelector('.np-full')).toBeNull();
   });
 });
 
@@ -363,14 +443,82 @@ describe('the desktop theater', () => {
     expect(document.querySelector('main.room-collapsed')).toBeNull();
   });
 
-  it('closes the add dialog when the video gives way to a song (the add panel is inline again)', () => {
+  /** The add flow, typed into: the song search with "senja", or the Video tab with a link. */
+  const addRegion = () => screen.getByRole('region', { name: 'Tambah ke antrean' });
+  const addDialog = () => screen.getByRole('dialog', { name: 'Tambah ke antrean' });
+  const LINK = 'https://media.example.com/sawah.mp4';
+
+  it('carries a song search typed in the inline panel into the add dialog when a video turns the theater on, focus and all', () => {
+    const { update } = renderRoom(mixed('s', 1));
+    const input = within(addRegion()).getByRole('searchbox', { name: 'Cari lagu' }) as HTMLInputElement;
+    input.focus();
+    fireEvent.input(input, { target: { value: 'senja' } });
+    update(mixed('v', 2));
+    expect(document.querySelector('main.room-theater')).toBeTruthy();
+    const field = within(addDialog()).getByRole('searchbox', { name: 'Cari lagu' }) as HTMLInputElement;
+    expect(field.value).toBe('senja');
+    expect(document.activeElement).toBe(field);
+  });
+
+  it('carries the Video tab and its link into the dialog even when focus is elsewhere', () => {
+    const { update } = renderRoom(mixed('s', 1));
+    fireEvent.click(within(addRegion()).getByRole('tab', { name: 'Video' }));
+    fireEvent.input(within(addRegion()).getByLabelText('Tempel link video'), { target: { value: LINK } });
+    (document.activeElement as HTMLElement | null)?.blur();
+    update(mixed('v', 2));
+    const dialog = addDialog();
+    expect(within(dialog).getByRole('tab', { name: 'Video' }).getAttribute('aria-selected')).toBe('true');
+    expect((within(dialog).getByLabelText('Tempel link video') as HTMLInputElement).value).toBe(LINK);
+  });
+
+  it('opens no dialog for a finished search left in the panel, which is still there when the song comes back', async () => {
+    const fetchImpl = vi.fn(() => Promise.resolve(new Response(JSON.stringify([]))));
+    vi.stubGlobal('fetch', fetchImpl);
+    const { update } = renderRoom(mixed('s', 1));
+    const input = within(addRegion()).getByRole('searchbox', { name: 'Cari lagu' });
+    fireEvent.input(input, { target: { value: 'senja' } });
+    await act(async () => void fireEvent.submit(input.closest('form')!));
+    expect(fetchImpl).toHaveBeenCalled();
+    await screen.findByText('Tidak ada hasil.');
+    (document.activeElement as HTMLElement | null)?.blur();
+    update(mixed('v', 2));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    update(mixed('s', 3));
+    expect((within(addRegion()).getByRole('searchbox', { name: 'Cari lagu' }) as HTMLInputElement).value).toBe('senja');
+  });
+
+  it('opens no dialog when the inline panel was untouched', () => {
+    const { update } = renderRoom(mixed('s', 1));
+    update(mixed('v', 2));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('keeps the add dialog, its tab and its link when the video gives way to a song, until it is closed', () => {
     const { update } = renderRoom(mixed('v', 1));
     fireEvent.click(screen.getByRole('button', { name: 'Tambah lagu' }));
-    expect(screen.getByRole('dialog')).toBeTruthy();
+    fireEvent.click(within(addDialog()).getByRole('tab', { name: 'Video' }));
+    const link = within(addDialog()).getByLabelText('Tempel link video') as HTMLInputElement;
+    link.focus();
+    fireEvent.input(link, { target: { value: LINK } });
     update(mixed('s', 2));
+    expect(document.querySelector('main.room-theater')).toBeNull();
+    const dialog = addDialog();
+    expect(within(dialog).getByLabelText('Tempel link video')).toBe(link);
+    expect(link.value).toBe(LINK);
+    expect(document.activeElement).toBe(link);
+    // One add flow at a time: the inline panel waits behind the dialog.
+    expect(screen.queryByRole('region', { name: 'Tambah ke antrean' })).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Tutup' }));
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(screen.getByRole('region', { name: 'Tambah ke antrean' })).toBeTruthy();
-    update(mixed('v', 3));
+    expect(addRegion()).toBeTruthy();
+    // The inline panel that comes back does not pull focus to its search.
+    expect(document.activeElement).not.toBe(within(addRegion()).getByRole('searchbox', { name: 'Cari lagu' }));
+  });
+
+  it('still closes the add dialog when the window crosses to a phone (Task 10)', () => {
+    const { cross } = renderRoom(mixed('v', 1));
+    fireEvent.click(screen.getByRole('button', { name: 'Tambah lagu' }));
+    cross(false);
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

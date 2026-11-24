@@ -45,6 +45,42 @@ describe('video.css', () => {
     expect(rule('.room-theater .stage')).toMatch(/border-radius:\s*var\(--r-stage\)/);
   });
 
+  it('puts the tap hint and the room notice in the fullscreen side bar, and keeps the app toast out of the way there', () => {
+    const full = rule('.room .now-playing.np-full');
+    expect(full).toMatch(/grid-template-areas:[^;]*"stage \. hint hint hint \."/);
+    expect(rule('.room .now-playing.np-full .np-hint')).toMatch(/grid-area:\s*hint/);
+    expect(css).not.toMatch(/np-full \.np-hint,/);
+    expect(rule('.np-fs-status .toast-region')).toMatch(/position:\s*static/);
+    expect(rule('main:has(:fullscreen) ~ .toast-region')).toMatch(/display:\s*none/);
+  });
+
+  it('gives a live song the progress row in fullscreen', () => {
+    expect(rule('.room .now-playing.np-full .np-progress,\n.room .now-playing.np-full .np-live')).toMatch(/grid-area:\s*prog/);
+  });
+
+  it('separates the source from "oleh" with one even gap', () => {
+    expect(rule('.np-src::after')).toMatch(/content:\s*' · '/);
+    expect(rule('.np-badges')).toMatch(/column-gap:\s*0/);
+  });
+
+  it('keeps the theater meta clear of the stage when there is no progress row (LIVE)', () => {
+    expect(rule('.room-theater .now-playing:not(:has(.np-progress)) .np-meta')).toMatch(/margin-top:\s*16px/);
+  });
+
+  it('shows the folded state on the column toggle', () => {
+    expect(rule(".room-side-toggle[aria-expanded='false']")).toBeTruthy();
+  });
+
+  it('lets focus follow the visual order of the theater header and the fullscreen bar', () => {
+    expect(rule('.room-theater .room-left')).toMatch(/reading-flow:\s*grid-rows/);
+    expect(rule('.room .now-playing.np-full')).toMatch(/reading-flow:\s*grid-rows/);
+  });
+
+  it('puts the one fullscreen button in the empty fifth slot on YouTube, and on a row of its own after +10 s', () => {
+    expect(rule('.np-controls > .np-slot:nth-child(5):empty')).toMatch(/display:\s*none/);
+    expect(rule('.np-slot:not(:empty) + .np-fs')).toMatch(/margin:\s*8px 0 0 calc\(100% - var\(--target\)\)/);
+  });
+
   it('moves things with grid placement only: no transform, filter or perspective anywhere (sheets live in the room)', () => {
     expect(css).not.toMatch(/(^|[\s;{])(transform|translate|scale|rotate|perspective|filter|backdrop-filter|contain|will-change)\s*:/);
   });

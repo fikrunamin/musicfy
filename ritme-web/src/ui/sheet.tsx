@@ -124,7 +124,9 @@ export function useModal(
         scrollLocks = 0;
         document.body.classList.remove('modal-open');
       }
-      if (opener?.isConnected) opener.focus();
+      // <body> is no opener: a dialog that opened by itself (the add flow moving into the theater's
+      // dialog) gives focus to the fallback.
+      if (opener?.isConnected && opener !== document.body) opener.focus();
       else fallback?.current?.focus();
     };
   }, []);

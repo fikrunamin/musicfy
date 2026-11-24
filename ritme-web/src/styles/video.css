@@ -42,21 +42,25 @@
   font-size: var(--fs-body);
 }
 
+/* One even space either side of the " · " between the source and "oleh": no flex gap on top of it. */
 .np-badges {
   flex-wrap: wrap;
   row-gap: 10px;
+  column-gap: 0;
   margin-top: 6px;
 }
 
 .np-badges .badge {
   height: 28px;
   padding: 0 12px;
+  margin-right: 8px;
   border-radius: var(--r-pill);
   font-size: var(--fs-body);
 }
 
 .np-src::after {
-  content: ' ·';
+  content: ' · ';
+  white-space: pre;
 }
 
 /* YouTube: "Sore Sessions · YouTube", and who added it on a line of its own. */
@@ -69,14 +73,19 @@
 }
 
 /*
- * M: a direct link's fullscreen button goes under +10 s on a row of its own, at the right (the
- * volume control beside it in the handoff is left out: no player API for it).
+ * The fullscreen button always comes last in the tree (one slot, so it keeps focus). I: on YouTube
+ * it takes the place of the empty fifth slot. M: a direct link's goes under +10 s on a row of its
+ * own, at the right (the volume control beside it in the handoff is left out: no player API for it).
  */
 .np-controls {
   flex-wrap: wrap;
 }
 
-.np-controls > .np-fs:nth-child(6) {
+.np-controls > .np-slot:nth-child(5):empty {
+  display: none;
+}
+
+.np-slot:not(:empty) + .np-fs {
   margin: 8px 0 0 calc(100% - var(--target));
 }
 
@@ -94,9 +103,10 @@
   --side: clamp(151px, calc(100vw - 100vh * 16 / 9), 280px);
   display: grid;
   grid-template-columns: minmax(0, 1fr) 8px repeat(3, calc((var(--side) - 16px) / 3)) 8px;
-  grid-template-rows: auto auto auto 1fr auto 12px;
+  grid-template-rows: auto auto auto auto 1fr auto 12px;
   grid-template-areas:
     "stage . status status status ."
+    "stage . hint hint hint ."
     "stage . meta meta meta ."
     "stage . prog prog prog ."
     "stage . c1 c2 c3 ."
@@ -106,6 +116,8 @@
   height: 100%;
   padding: 0;
   background: var(--surface);
+  /* Focus follows the bar top to bottom (the ±10 s buttons come first in the tree, for the phone row). */
+  reading-flow: grid-rows;
 }
 
 .room .now-playing.np-full .stage {
@@ -119,10 +131,36 @@
 }
 
 .room .now-playing.np-full .np-label-row,
-.room .now-playing.np-full .np-hint,
 .room .now-playing.np-full .np-tip,
 .room .now-playing.np-full .np-badges .badge,
 .room .now-playing.np-full .np-by .avatar {
+  display: none;
+}
+
+/*
+ * The room's feedback goes to the side bar too, never onto the video: "Ketuk pemutar untuk mulai"
+ * under the status, and the notice in it (the app toast is outside the fullscreen element, so it
+ * is taken out of the way, also for screen readers).
+ */
+.room .now-playing.np-full .np-hint {
+  grid-area: hint;
+  margin: 0;
+  text-align: start;
+  font-size: var(--fs-meta);
+}
+
+.np-fs-status .toast-region {
+  position: static;
+}
+
+.np-fs-status .toast {
+  padding: 10px 12px;
+  gap: 8px;
+  font-size: var(--fs-meta);
+  box-shadow: none;
+}
+
+main:has(:fullscreen) ~ .toast-region {
   display: none;
 }
 
@@ -162,11 +200,19 @@
   margin: 0;
 }
 
-.room .now-playing.np-full .np-progress {
+.room .now-playing.np-full .np-progress,
+.room .now-playing.np-full .np-live {
   grid-area: prog;
+  margin: 0;
+}
+
+.room .now-playing.np-full .np-progress {
   display: flex;
   align-items: stretch;
-  margin: 0;
+}
+
+.room .now-playing.np-full .np-live {
+  justify-self: start;
 }
 
 .room .now-playing.np-full .np-times {
@@ -219,6 +265,7 @@
     grid-template-areas:
       "stage stage stage stage stage"
       ". status status status ."
+      ". hint hint hint ."
       ". meta meta meta ."
       ". prog prog prog ."
       ". c1 c2 c3 ."
@@ -267,6 +314,8 @@
   align-content: start;
   gap: 16px 12px;
   --stage-base: 276px;
+  /* Focus follows the header row (the mode switch sits between the title and the members). */
+  reading-flow: grid-rows;
 }
 
 /* Narrower windows: the mode switch takes a row of its own under the header (+ 52 + 16). */
@@ -307,6 +356,13 @@
 
 .room-theater .room-side-toggle {
   grid-area: toggle;
+}
+
+/* Folded: the toggle loses its fill, so its state shows as well as its aria-expanded says it. */
+.room-side-toggle[aria-expanded='false'] {
+  background: none;
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--faint);
 }
 
 .room-theater .mode-hint,
@@ -354,6 +410,11 @@
   margin-top: 4px;
 }
 
+/* LIVE: no progress row between the stage and the meta. */
+.room-theater .now-playing:not(:has(.np-progress)) .np-meta {
+  margin-top: 16px;
+}
+
 .room-theater .np-badges {
   margin-top: 2px;
 }
@@ -366,7 +427,7 @@
 
 /* One line on desktop: "Sore Sessions · YouTube · oleh Budi", without the avatar. */
 .room-theater .np-yt .np-src::after {
-  content: ' ·';
+  content: ' · ';
 }
 
 .room-theater .np-yt .np-by {

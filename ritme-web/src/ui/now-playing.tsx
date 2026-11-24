@@ -1,8 +1,9 @@
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { displayHostOf } from '../net/idn';
 import { httpsThumbnail } from '../net/search';
 import { type QueueEntry, type RoomState, currentEntry, isLive, positionAt } from '../protocol';
 import { canControl } from '../session/permissions';
+import type { Notice } from '../session/reducer';
 import type { SessionApi } from '../session/session';
 import { entrySource, isVideoEntry, mediaFormat, memberName, unplayableLabel } from './badges';
 import { Avatar, AvatarStack, Badge, DurationChip, EqBars, IconButton, SyncDot, cx } from './components';
@@ -14,6 +15,7 @@ import { ListenStage, type Mode } from './listen';
 import { Crossfade } from './motion';
 import { VideoPlaceholder } from './media';
 import { t } from './strings';
+import { Toast } from './toast';
 
 interface Props {
   session: SessionApi;
@@ -25,6 +27,8 @@ interface Props {
   mode: Mode;
   /** Mobile: the queue button under the controls scrolls to the queue. */
   onShowQueue?: () => void;
+  /** The room's latest notice: the app toast is outside a fullscreen section, so it shows here then. */
+  notice?: Notice | null;
 }
 
 const LOCKED_HINT_ID = 'controls-locked-hint';
@@ -93,10 +97,21 @@ function StageError({ entry, label, canSkip, skipDisabled, onSkip }: { entry: Qu
   );
 }
 
-export function NowPlaying({ session, room, memberId, unplayable, online, pageIsHttps, mode, onShowQueue }: Props) {
+export function NowPlaying({ session, room, memberId, unplayable, online, pageIsHttps, mode, onShowQueue, notice }: Props) {
   const now = useServerNow(session);
   const section = useRef<HTMLElement>(null);
-  const full = useFullscreen(section);
+  const full = useFullscreen(section, () => session.notify('failed'));
+  /** The notice shown when fullscreen began: only newer ones go to the side bar. */
+  const seen = useRef(notice?.id);
+  if (!full.active) seen.current = notice?.id;
+  // Leaving fullscreen with the button gone (a song took the video's place): focus goes to the title,
+  // not to <body>. The button keeps its slot, so while it is there it keeps focus by itself.
+  const wasFull = useRef(false);
+  useEffect(() => {
+    if (wasFull.current && !full.active && (!document.activeElement || document.activeElement === document.body))
+      (section.current?.querySelector<HTMLElement>('.np-fs') ?? document.getElementById('now-title'))?.focus();
+    wasFull.current = full.active;
+  }, [full.active]);
   const [dragMs, setDragMs] = useState<number | null>(null);
   const [needsTap, setNeedsTap] = useState(false);
   const entry = currentEntry(room);
@@ -134,12 +149,12 @@ export function NowPlaying({ session, room, memberId, unplayable, online, pageIs
     />
   );
   const adder = memberName(room.members, entry?.addedBy ?? '', null);
-  const source = direct ? mediaFormat(entry.url) : entry ? `${entry.artist} · ${t.youtube}` : null;
+  const source = direct ? mediaFormat(entry.url) : entry && [entry.artist, t.youtube].filter(Boolean).join(' · ');
 
   return (
     <section ref={section} class={cx('now-playing', `np-${mode}`, video && 'np-video', full.active && 'np-full')} aria-labelledby="now-title">
       <div class="np-label-row">
-        <h2 id="now-title" class="np-label">
+        <h2 id="now-title" class="np-label" tabIndex={-1}>
           <EqBars playing={playing && entry !== null} />
           {t.nowPlaying}
         </h2>
@@ -224,18 +239,16 @@ export function NowPlaying({ session, room, memberId, unplayable, online, pageIs
               onClick={guarded(() => (playing ? session.pause() : session.play()))}
             />
             <IconButton icon="skip_next" label={t.next} disabled={!online} {...lockedProps} onClick={guarded(() => session.next())} />
-            {fsButton && !direct ? (
-              fsButton
-            ) : (
-              <span class="np-slot">
-                {direct ? (
-                  <IconButton icon="forward_10" label={t.forward10} {...skip} onClick={seekBy(10_000)} />
-                ) : (
-                  onShowQueue && <IconButton icon="queue_music" label={t.queue} onClick={onShowQueue} />
-                )}
-              </span>
-            )}
-            {direct && fsButton}
+            {/* +10 s, or the phone's queue button where there is no fullscreen button to take its place. */}
+            <span class="np-slot">
+              {direct ? (
+                <IconButton icon="forward_10" label={t.forward10} {...skip} onClick={seekBy(10_000)} />
+              ) : (
+                !fsButton && onShowQueue && <IconButton icon="queue_music" label={t.queue} onClick={onShowQueue} />
+              )}
+            </span>
+            {/* One slot, the last, for every kind of entry: the button is never re-created, so it keeps focus. */}
+            {fsButton}
           </div>
         </>
       ) : (
@@ -272,6 +285,7 @@ export function NowPlaying({ session, room, memberId, unplayable, online, pageIs
             <AvatarStack names={room.members.map((m) => m.name)} />
             {t.members(room.members.length)}
           </p>
+          <Toast notice={(notice?.id !== seen.current && notice) || null} />
         </div>
       )}
     </section>
