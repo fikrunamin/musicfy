@@ -4,8 +4,8 @@ import com.example.musicfy.models.MediaMetadata
 import com.example.musicfy.ritme.protocol.MediaKind
 import com.example.musicfy.ritme.protocol.MediaUrlRules
 import com.example.musicfy.ritme.protocol.NewEntry
-import com.example.musicfy.ritme.protocol.StreamType
 import com.example.musicfy.ritme.protocol.QueueEntry
+import com.example.musicfy.ritme.protocol.StreamType
 import com.music.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_UGC
 import java.net.URI
 import java.text.Normalizer
@@ -135,12 +135,10 @@ object RitmeEntries {
     }
 
     /**
-     * A URL entry (spec 4.6): artist = the site's domain, no picture (spec 4.7), the title falls back
-     * to the domain; null when MediaUrlRules refuses the url.
-     *
-     * Limitation (until #3's probe exists): a duration of 0 counts as live, so a play after a pause
-     * seeks the entry to the live edge. A direct .m3u8/.mpd link that is really VOD is added with
-     * durationMs = 0 and therefore restarts from 0 on every play after a pause.
+     * A URL entry (spec 4.6, 4.7): artist = the site ([domain], or the page's og:site_name), no
+     * picture (spec 4.7), the title falls back to [domain]; null when MediaUrlRules refuses the url.
+     * #3's optional fields: [streamType] (UNKNOWN is sent as null) and [referrer] (kept only when it
+     * is a bare origin, MediaUrlRules.checkReferrer). A duration of 0 means live or unknown.
      */
     fun toUrlEntry(
         url: String,

@@ -3555,6 +3555,8 @@ class MusicService :
      * Ritme URL entries (spec 4.4, 4.5): straight from the host a member chose, never through the
      * YouTube resolver, the song caches or the proxy; no cookies; a local address is refused before
      * the socket connects (RitmeUrlHttp). OkHttpDataSource only speaks http(s), so file:/content: never play from a room.
+     * An item's origin-only Referer (ritmeUrlMediaSource) is sent on all of that item's requests,
+     * including redirects and segments on other hosts, and never on other items.
      */
     private val ritmeUrlDataSourceFactory by lazy {
         // Reading the WebView's user agent can load WebView, which must not hold up the player's
@@ -3575,7 +3577,8 @@ class MusicService :
     /**
      * A room URL item's source. An entry that carries a referrer (a host that checks it, spec D8)
      * sends that origin as the Referer on every request of this item only; nothing else changes and
-     * nothing is shared with other items.
+     * nothing is shared with other items. The Referer goes on all of that item's requests, including
+     * redirects and segments on other hosts.
      */
     private fun ritmeUrlMediaSource(mediaItem: androidx.media3.common.MediaItem): androidx.media3.exoplayer.source.MediaSource {
         val referrer = com.example.musicfy.ritme.playback.RitmeItems.referrerOf(mediaItem)
