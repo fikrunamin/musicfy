@@ -211,6 +211,21 @@
             </intent-filter>
         </activity-alias>
 
+        <!-- Ritme (spec 4.6, U5): always offered; outside a room it offers to start one with the video. -->
+        <activity-alias
+            android:name=".RitmeShareAlias"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:label="@string/ritme_share_target"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity-alias>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.FileProvider"

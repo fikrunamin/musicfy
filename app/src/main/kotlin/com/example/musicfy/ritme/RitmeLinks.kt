@@ -73,6 +73,17 @@ object RitmeLinks {
         return "$socket/ritme"
     }
 
+    private val FIRST_HTTP_LINK = Regex("https?://\\S+")
+
+    /**
+     * What the "Add video" field gets from text shared to "Add to Ritme": the first http(s) link if
+     * there is one, else the trimmed text, capped at [com.example.musicfy.ritme.protocol.MediaUrlRules.MAX_URL_LENGTH].
+     * Untrusted: it only fills a text field; nothing is added without a tap.
+     */
+    fun sharedLinkText(shared: String): String =
+        (FIRST_HTTP_LINK.find(shared)?.value ?: shared.trim())
+            .take(com.example.musicfy.ritme.protocol.MediaUrlRules.MAX_URL_LENGTH)
+
     fun shareLink(serverUrl: String, code: String): String = "${serverUrl.trimEnd('/')}/r/$code"
 
     /** Trimmed and 1..32 characters, or null (the server answers INVALID otherwise). */

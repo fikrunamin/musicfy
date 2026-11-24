@@ -1411,6 +1411,17 @@ class MainActivity : ComponentActivity() {
                 intent.removeExtra(Intent.EXTRA_TEXT)
                 return
             }
+            // "Add to Ritme" from the share sheet: the Add video sheet with the link in it (spec 4.6).
+            // Only plain-text SEND; the text is untrusted and only fills the sheet's field.
+            if (intent.component?.className?.endsWith(".RitmeShareAlias") == true) {
+                val shared = if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
+                    intent.getStringExtra(Intent.EXTRA_TEXT)?.let { com.example.musicfy.ritme.RitmeLinks.sharedLinkText(it) }
+                } else null
+                intent.data = null
+                intent.removeExtra(Intent.EXTRA_TEXT)
+                ritmeController.openAddVideo(shared)
+                return
+            }
         }
         val uri = intent.data ?: intent.extras?.getString(Intent.EXTRA_TEXT)?.toUri() ?: return
         intent.data = null

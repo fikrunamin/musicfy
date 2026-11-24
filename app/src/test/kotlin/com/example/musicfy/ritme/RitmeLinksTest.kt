@@ -88,4 +88,18 @@ class RitmeLinksTest {
         assertNull(RitmeLinks.cleanDisplayName("x".repeat(33)))
         assertEquals("x".repeat(32), RitmeLinks.cleanDisplayName("x".repeat(32)))
     }
+
+    @Test
+    fun sharedTextShrinksToItsFirstLink() {
+        assertEquals("https://youtu.be/dQw4w9WgXcQ", RitmeLinks.sharedLinkText("Watch this! https://youtu.be/dQw4w9WgXcQ so good"))
+        assertEquals("lofi beats", RitmeLinks.sharedLinkText("  lofi beats  "))
+    }
+
+    @Test
+    fun sharedTextIsCappedAndTreatedAsPlainText() {
+        val long = "https://example.com/" + "a".repeat(5000)
+        assertEquals(2_048, RitmeLinks.sharedLinkText(long).length)
+        assertEquals(2_048, RitmeLinks.sharedLinkText("x".repeat(9000)).length)
+        assertEquals("", RitmeLinks.sharedLinkText("   "))
+    }
 }
