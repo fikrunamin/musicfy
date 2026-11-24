@@ -97,11 +97,12 @@ class CandidateCollector(private val maxCandidates: Int = MAX_CANDIDATES) {
     @Synchronized
     fun urlChanged(url: String): Boolean {
         val id = youTubeIdOf(url)
+        val oldId = pageYouTubeId
         val changed = url != pageUrl || id != pageYouTubeId
         val pathChanged = pageUrl?.let { withoutQueryAndFragment(it) != withoutQueryAndFragment(url) } ?: false
         pageUrl = url
         pageYouTubeId = id
-        if (pathChanged) {
+        if (pathChanged || id != oldId) {
             mainReport = null
             prunePageTimes()
         }
@@ -271,9 +272,12 @@ class CandidateCollector(private val maxCandidates: Int = MAX_CANDIDATES) {
         }
         if (network.size >= networkCap) {
             val shown = allReports().flatMap { it.videos }
-            val victim = network.values
-                .filter { f -> shown.none { v -> f.url in v.urls && (v.playing || v.durationMs != null) } }
-                .minByOrNull { it.lastSeenMs } ?: return false
+            val unprotected = network.values.filter { f -> shown.none { v -> f.url in v.urls && (v.playing || v.durationMs != null) } }
+            // Files go first; a stream playlist only when no playing blob: (MSE) video depends on one.
+            val msePlaying = shown.any { it.blob && it.urls.isEmpty() && it.playing }
+            val victim = unprotected.filter { it.streamType == StreamType.FILE }.minByOrNull { it.lastSeenMs }
+                ?: (if (msePlaying) null else unprotected.minByOrNull { it.lastSeenMs })
+                ?: return false
             network.remove(victim.url)
         }
         network[url] = Found(url, type, mutableSetOf(via), nowMs, nowMs)

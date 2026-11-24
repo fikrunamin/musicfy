@@ -299,4 +299,23 @@ class CandidateCollectorTest {
         assertTrue(urls.size <= CandidateCollector.MAX_CANDIDATES)
         assertEquals(urls.size, urls.toSet().size)
     }
+
+    @Test
+    fun aPlayingMseVideosPlaylistIsNeverEvictedByFiles() {
+        val c = collector()
+        repeat(29) { c.onRequest("https://cdn.example.com/v/$it.mp4", "GET", emptyMap(), it + 10L) }
+        c.onRequest(hls, "GET", emptyMap(), 1)
+        c.onReport(report(listOf(video(blob = true, playing = true, area = 100))), 50)
+        repeat(5) { c.onRequest("https://cdn.example.com/p/$it.mp4", "GET", emptyMap(), 100L + it) }
+        assertTrue(hls in c.findings().candidates.map { it.url })
+    }
+
+    @Test
+    fun aYouTubeIdChangeDropsTheOldMainFrameReport() {
+        val c = CandidateCollector()
+        c.startPage("https://m.youtube.com/watch?v=dQw4w9WgXcQ")
+        c.onReport(report().copy(title = "A"), 1)
+        assertTrue(c.urlChanged("https://m.youtube.com/watch?v=jfKfPfyJRdk"))
+        assertNull(c.findings().title)
+    }
 }
