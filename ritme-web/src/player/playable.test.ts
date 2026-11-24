@@ -8,6 +8,24 @@ describe('playability', () => {
     expect(playability(entry('a', { kind: 'YOUTUBE_VIDEO' }), true)).toMatchObject({ playable: true, large: true });
   });
 
+  it('follows streamType: HLS without an extension uses hls.js, DASH and .mpd are unsupported, FILE is never HLS', () => {
+    const manifest = entry('a', { kind: 'URL', videoId: '', url: 'https://cdn.example/v/manifest?token=1', streamType: 'HLS' });
+    expect(playability(manifest, true)).toEqual({
+      playable: true,
+      source: { kind: 'video', url: 'https://cdn.example/v/manifest?token=1', hls: true },
+      large: true,
+    });
+    expect(playability({ ...manifest, streamType: 'DASH' }, true)).toEqual({ playable: false, reason: 'unsupported' });
+    expect(playability(entry('a', { kind: 'URL', videoId: '', url: 'https://cdn.example/v/a.mpd' }), true)).toEqual({
+      playable: false,
+      reason: 'unsupported',
+    });
+    const odd = entry('a', { kind: 'URL', videoId: '', url: 'https://cdn.example/odd.m3u8', streamType: 'FILE' });
+    expect(playability(odd, true)).toMatchObject({ source: { hls: false } });
+    expect(playability({ ...manifest, streamType: 'UNKNOWN' }, true)).toMatchObject({ source: { hls: false } });
+    expect(playability({ ...odd, streamType: 'UNKNOWN' }, true)).toMatchObject({ source: { hls: true } });
+  });
+
   it('plays URL entries in <video>, flagging HLS', () => {
     const hls = entry('a', { kind: 'URL', videoId: '', url: 'https://cdn.example/live/index.m3u8?t=1' });
     expect(playability(hls, true)).toEqual({

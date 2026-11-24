@@ -6,6 +6,8 @@
  */
 
 export const MAX_MEDIA_URL_LENGTH = 2048;
+/** Kotlin MediaUrlRules.MAX_REFERRER_LENGTH. */
+export const MAX_REFERRER_LENGTH = 200;
 
 export type MediaUrlRejection =
   | 'TOO_LONG'
@@ -22,7 +24,9 @@ export type MediaUrlRejection =
   /** A numeric host that is not a dotted quad (`2130706433`, `0x7f.0.0.1`, `127.1`, `010.0.0.1`). */
   | 'NON_CANONICAL_IP'
   /** Loopback, private, link-local, CGNAT, unspecified, multicast or reserved addresses, and local names. */
-  | 'LOCAL_HOST';
+  | 'LOCAL_HOST'
+  /** A referrer with a path, a query or no trailing slash: only `scheme://host[:port]/`. */
+  | 'NOT_ORIGIN';
 
 /** Exactly the Kotlin isForbiddenCharacter list (C0, space, DEL, C1, Unicode White_Space, U+FEFF, backslash). */
 const FORBIDDEN_CHARACTER = /[\s\p{Cc}\\]/u;
@@ -187,4 +191,19 @@ function isLocalIpv6(b: number[]): boolean {
   if (b[0] === 0xfe && b[1] >= 0x80) return true;
   // ff00::/8 multicast
   return b[0] === 0xff;
+}
+
+/**
+ * Kotlin MediaUrlRules.checkReferrer: why a URL entry's referrer is refused, or null for a bare
+ * http(s) origin with a trailing slash (`https://host[:port]/`), at most 200 chars, under the same
+ * host rules as checkMediaUrl. The web client never sends one; this keeps the twins in step.
+ */
+export function checkReferrer(referrer: string): MediaUrlRejection | null {
+  if (referrer.length > MAX_REFERRER_LENGTH) return 'TOO_LONG';
+  const rejection = checkMediaUrl(referrer);
+  if (rejection !== null) return rejection;
+  const afterScheme = referrer.slice(referrer.indexOf('://') + 3);
+  const end = afterScheme.search(/[/?]/);
+  const authority = end < 0 ? afterScheme : afterScheme.slice(0, end);
+  return afterScheme.slice(authority.length) === '/' ? null : 'NOT_ORIGIN';
 }

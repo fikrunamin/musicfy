@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { MAX_MEDIA_URL_LENGTH, checkMediaUrl } from './media-url-rules';
+import { MAX_MEDIA_URL_LENGTH, checkMediaUrl, checkReferrer } from './media-url-rules';
 
 const FIXTURE = fileURLToPath(new URL('../../../modules/ritme-protocol/fixtures/rules/media-urls.json', import.meta.url));
 const { cases } = JSON.parse(readFileSync(FIXTURE, 'utf8')) as {
@@ -52,4 +52,23 @@ describe('checkMediaUrl (same fixture as MediaUrlRulesTest.kt)', () => {
       else expect(verdict, `U+${c.toString(16)}`).not.toBe('FORBIDDEN_CHARACTER');
     }
   });
+});
+
+const REFERRERS = fileURLToPath(new URL('../../../modules/ritme-protocol/fixtures/rules/referrers.json', import.meta.url));
+const referrerCases = (
+  JSON.parse(readFileSync(REFERRERS, 'utf8')) as { cases: { referrer: string; reject: string | null; padTo?: number }[] }
+).cases;
+
+describe('checkReferrer (same fixture as ReferrerRulesTest.kt)', () => {
+  it('has the shared cases', () => {
+    expect(referrerCases).toHaveLength(20);
+  });
+
+  for (const c of referrerCases) {
+    const value = c.padTo === undefined ? c.referrer : c.referrer.padEnd(c.padTo, 'a');
+    const label = c.padTo === undefined ? JSON.stringify(c.referrer) : `${JSON.stringify(c.referrer)} padded to ${c.padTo}`;
+    it(`${label} -> ${c.reject ?? 'accepted'}`, () => {
+      expect(checkReferrer(value)).toBe(c.reject);
+    });
+  }
 });
