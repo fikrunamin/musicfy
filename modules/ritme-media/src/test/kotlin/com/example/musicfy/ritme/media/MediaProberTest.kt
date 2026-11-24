@@ -52,6 +52,15 @@ class MediaProberTest {
     }
 
     @Test
+    fun anMkvOrMovFileIsNeverPlayableOnTheWeb() {
+        val http = FakeHttp { url, _ -> bytes(url, ByteArray(64), "video/x-matroska") }
+        val verdict = MediaProber(http, web).probe("https://cdn.example.com/v/film.mkv", null)
+        assertEquals(MediaFormat.VIDEO, verdict.format)
+        assertEquals(false, verdict.webPlayable)
+        assertEquals(null, verdict.refusal)
+    }
+
+    @Test
     fun aMasterPlaylistIsCheckedThroughItsFirstVariant() {
         val http = FakeHttp { url, headers ->
             when (url) {

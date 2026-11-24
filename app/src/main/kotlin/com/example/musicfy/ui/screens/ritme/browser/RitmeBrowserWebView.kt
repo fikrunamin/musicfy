@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.SystemClock
 import android.view.ViewGroup
+import android.webkit.ConsoleMessage
 import android.webkit.GeolocationPermissions
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
@@ -38,7 +39,8 @@ internal interface RitmeWebEvents {
     fun onRequest(url: String, method: String, headers: Map<String, String>)
     fun onPageReport(message: String, mainFrame: Boolean, origin: String)
     fun onProtectedMedia()
-    fun onLocalAddressRefused()
+    /** [reloads]: the refusal is followed by a load of its own (back or blank), whose start must not wipe the message. */
+    fun onLocalAddressRefused(reloads: Boolean = false)
     fun onExternalApp(url: String)
 
     /** The page's renderer process died or was killed: the view is unusable and the browser should close. */
@@ -146,7 +148,7 @@ private class RitmeWebClient(private val events: RitmeWebEvents, private val doc
         val decision = BrowserAddress.navigation(url, false)
         if (decision != Navigation.ALLOW) {
             view.stopLoading()
-            if (decision == Navigation.REFUSE_LOCAL) events.onLocalAddressRefused()
+            if (decision == Navigation.REFUSE_LOCAL) events.onLocalAddressRefused(reloads = true)
             if (view.canGoBack()) view.goBack() else view.loadUrl("about:blank")
             return
         }
@@ -176,6 +178,9 @@ private class RitmeWebClient(private val events: RitmeWebEvents, private val doc
 }
 
 private class RitmeChromeClient(private val events: RitmeWebEvents) : WebChromeClient() {
+
+    // Page console output stays out of logcat.
+    override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean = true
 
     // Pages cannot raise platform dialogs (spam); they are cancelled silently.
     override fun onJsAlert(view: WebView?, url: String?, message: String?, result: JsResult): Boolean {

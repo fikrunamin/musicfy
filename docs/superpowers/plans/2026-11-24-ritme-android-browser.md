@@ -5994,6 +5994,7 @@ Siapkan 2 HP Android dengan build ini dan 1 browser (web Ritme). Satu HP jadi ho
 - [ ] Saat video di halaman diputar, suara room di HP itu mungkin berhenti sebentar. Setelah keluar dari browser, room menyinkronkan ulang sendiri.
 - [ ] Keluar dari browser (Back sampai keluar, atau "Tutup browser"): suara halaman berhenti.
 - [ ] Aplikasi ke background saat browser terbuka: video halaman berhenti, room tetap jalan.
+- [ ] **Audio focus:** putar video di halaman browser saat room sedang memutar; pastikan pemutar room dan video halaman tidak saling merebut suara terus-menerus.
 - [ ] **Web:** entri HLS tanpa ekstensi (`/manifest?token=`) yang ditambahkan dari browser Android diputar web lewat hls.js. Entri DASH tampil "tidak bisa diputar di web" di web, tapi Android memutarnya.
 
 **"Tambah video" (perubahan #3)**
@@ -6001,6 +6002,10 @@ Siapkan 2 HP Android dengan build ini dan 1 browser (web Ritme). Satu HP jadi ho
 - [ ] Tempel link `.m3u8` VOD → pratinjau menunjukkan durasinya (bukan LIVE). Setelah ditambah, jeda lalu putar lanjut dari posisi terakhir.
 - [ ] Tempel link `.m3u8` ber-DRM → "Video berproteksi tidak bisa dibagikan".
 - [ ] Tempel link `.mp4` → tetap seperti #2b (durasi terbaca, atau "Panjang video tidak terbaca, coba lagi").
+
+**Catatan rilis**
+
+- [ ] Deploy server dan web lebih dulu sebelum membagikan APK ini (server lama membuang `streamType`/`referrer` diam-diam).
 
 **Tampilan**
 

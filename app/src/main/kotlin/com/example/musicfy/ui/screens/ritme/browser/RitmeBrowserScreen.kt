@@ -127,6 +127,8 @@ fun RitmeBrowserScreen(navController: NavController, initialText: String?) {
     var progress by remember { mutableIntStateOf(0) }
     var canForward by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<AddressRefusal?>(null) }
+    // A refusal that triggers a load of its own (start link, POST to local): that load keeps the message once.
+    var keepProblemOnce by remember { mutableStateOf(false) }
     // The ⋯ menu and the external-app confirmation: dismissed with the browser, never left behind it.
     val sheets = remember { mutableListOf<PopupSheetHandle?>() }
     // The found list (its exit takes the confirmation along): a new page closes them.
@@ -165,7 +167,7 @@ fun RitmeBrowserScreen(navController: NavController, initialText: String?) {
                 browser.pageStarted(url)
                 foundSheet[0]?.dismiss()
                 foundSheet[0] = null
-                problem = null
+                if (keepProblemOnce) keepProblemOnce = false else problem = null
                 pageUrl = url
                 if (!editing) address = url
             }
@@ -188,8 +190,9 @@ fun RitmeBrowserScreen(navController: NavController, initialText: String?) {
 
             override fun onProtectedMedia() = browser.onProtectedMedia()
 
-            override fun onLocalAddressRefused() {
+            override fun onLocalAddressRefused(reloads: Boolean) {
                 problem = AddressRefusal.LOCAL
+                keepProblemOnce = reloads
             }
 
             override fun onExternalApp(url: String) {
@@ -289,6 +292,7 @@ fun RitmeBrowserScreen(navController: NavController, initialText: String?) {
                             is AddressInput.Open -> view.loadUrl(start.url)
                             is AddressInput.Refused -> {
                                 problem = start.reason
+                                keepProblemOnce = true
                                 view.loadUrl(BrowserAddress.START_URL)
                             }
                             null -> view.loadUrl(BrowserAddress.START_URL)

@@ -139,7 +139,8 @@ class MediaProber(private val http: ProbeHttp, private val webOrigin: String) {
             durationMs = if (format == MediaFormat.MP4) PlaylistSniffer.mp4DurationMs(head.body) else null,
             needsReferrer = needsReferrer,
             // <video> plays a cross-origin file without CORS; only a Referer it cannot send stops it.
-            webPlayable = !needsReferrer && isHttps(url),
+            // MKV/MOV and other containers: browsers do not play them reliably, only MP4 and WebM.
+            webPlayable = format != MediaFormat.VIDEO && !needsReferrer && isHttps(url),
         )
     }
 

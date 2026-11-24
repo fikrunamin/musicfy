@@ -77,6 +77,19 @@ class RitmeBrowserModelTest {
     }
 
     @Test
+    fun aProbeThatThrowsBecomesAFailedVerdict() = runBlocking<Unit> {
+        val model = RitmeBrowserModel(
+            { _, _ -> throw IllegalStateException("boom") },
+            { _, _ -> null },
+            this,
+            clock = { 1_000L },
+        ).also { it.pageStarted(page) }
+        model.request(mp4)
+        model.probeAll().joinAll()
+        assertEquals(Refusal.FAILED, model.verdictOf(mp4)?.refusal)
+    }
+
+    @Test
     fun anAnswerAboutAnOldPageIsIgnored() = runBlocking<Unit> {
         val answer = CompletableDeferred<ProbeVerdict>()
         val model = RitmeBrowserModel({ _, _ -> answer.await() }, { _, _ -> null }, this)

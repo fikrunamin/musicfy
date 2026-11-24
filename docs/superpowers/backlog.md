@@ -108,3 +108,8 @@ video URL. Sampai saat itu, DMG hanya dibuat manual untuk percobaan
   pemutaran dan probe tetap ditolak di level socket.
 - **Fullscreen video di halaman** (`onShowCustomView`) belum didukung di browser Ritme.
 - **Sinkron live lewat PROGRAM-DATE-TIME** dan **PiP** tetap di daftar lanjutan spec §10.
+- **Panjang file lewat MediaMetadataRetriever** tidak lewat klien yang dijaga (DNS dicek sekali,
+  redirect tidak dicek); sekarang juga dipakai untuk temuan browser. Pertimbangkan membaca panjang
+  lewat `RitmeUrlHttp`.
+- **Pill menghitung varian HLS** sebagai video terpisah sebelum daftar dibuka.
+- **Laporan subframe tidak dibuang** saat path SPA berubah (baris "Video YouTube ini" bisa basi).

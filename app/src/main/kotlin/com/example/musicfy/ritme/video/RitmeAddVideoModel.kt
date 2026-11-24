@@ -99,9 +99,14 @@ class RitmeAddVideoModel(private val lookup: VideoLookup) {
         when (verdict?.refusal) {
             Refusal.DRM -> return AddVideoState.Problem(AddVideoProblem.PROTECTED)
             Refusal.NEEDS_LOGIN -> return AddVideoState.Problem(AddVideoProblem.NEEDS_LOGIN)
+            Refusal.NOT_MEDIA -> return AddVideoState.Problem(AddVideoProblem.PAGE)
             else -> Unit
         }
         val checked = verdict?.takeIf { it.refusal == null }
+        // Decision 10: a link that turns out to be a file without a readable length is never live.
+        if (checked != null && checked.streamType == StreamType.FILE && (checked.durationMs ?: 0L) <= 0L) {
+            return AddVideoState.Problem(AddVideoProblem.LENGTH_UNREADABLE)
+        }
         val durationMs = if (checked == null || checked.live) 0L else checked.durationMs ?: 0L
         val streamType = checked?.streamType?.takeUnless { it == StreamType.UNKNOWN } ?: MediaUrlClassifier.streamTypeOf(link.url)
         return urlPreview(RitmeEntries.toUrlEntry(link.url, link.fileName, link.domain, durationMs, streamType))

@@ -240,6 +240,21 @@ class RitmeAddVideoModelTest {
     }
 
     @Test
+    fun aPastedPlaylistThatIsNotMediaIsAProblem() {
+        val url = "https://cdn.example.com/v/master.m3u8"
+        assertEquals(AddVideoState.Problem(AddVideoProblem.PAGE), resolve(FakeLookup(stream = ProbeVerdict.refused(url, Refusal.NOT_MEDIA)), url))
+    }
+
+    @Test
+    fun aStreamLinkThatIsReallyAFileWithoutLengthIsARetryableProblem() {
+        val url = "https://cdn.example.com/v/master.m3u8"
+        val file = ProbeVerdict(url, StreamType.FILE, MediaFormat.MP4)
+        assertEquals(AddVideoState.Problem(AddVideoProblem.LENGTH_UNREADABLE), resolve(FakeLookup(stream = file), url))
+        val withLength = resolve(FakeLookup(stream = file.copy(durationMs = 42_000)), url) as AddVideoState.Preview
+        assertEquals(42_000L, withLength.entry.durationMs)
+    }
+
+    @Test
     fun aProtectedOrSignInOnlyStreamIsAProblem() {
         val url = "https://cdn.example.com/v/master.m3u8"
         assertEquals(AddVideoState.Problem(AddVideoProblem.PROTECTED), resolve(FakeLookup(stream = ProbeVerdict.refused(url, Refusal.DRM)), url))

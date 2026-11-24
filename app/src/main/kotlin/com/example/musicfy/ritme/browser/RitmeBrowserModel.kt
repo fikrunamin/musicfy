@@ -1,5 +1,6 @@
 package com.example.musicfy.ritme.browser
 
+import kotlinx.coroutines.CancellationException
 import com.example.musicfy.ritme.media.SenderBinding
 import com.example.musicfy.ritme.media.Candidate
 import com.example.musicfy.ritme.media.CandidateCollector
@@ -125,7 +126,13 @@ class RitmeBrowserModel(
         val pageUrl = findings.value.pageUrl
         _probes.update { it + (candidate.url to ProbeState.Checking) }
         val job = scope.launch {
-            val verdict = finish(candidate, probe(candidate.url, pageUrl), pageUrl)
+            val verdict = try {
+                finish(candidate, probe(candidate.url, pageUrl), pageUrl)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                ProbeVerdict.refused(candidate.url, Refusal.FAILED)
+            }
             synchronized(lock) {
                 if (generation == page) _probes.update { it + (candidate.url to ProbeState.Done(verdict)) }
             }
