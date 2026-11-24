@@ -119,6 +119,11 @@ private class FakeHost(private val fake: FakePlayer, private val gate: RitmeGate
     override val player: ExoPlayer get() = fake.player
     override var isCasting = false
     val calls = mutableListOf<String>()
+    val video = mutableListOf<Boolean>()
+
+    override fun setRitmeVideoEnabled(enabled: Boolean) {
+        video += enabled
+    }
     var snapshot = LocalQueueSnapshot.EMPTY
     var exitedWith: LocalQueueSnapshot? = null
 
@@ -191,6 +196,25 @@ class RitmePlaybackBridgeTest {
         join(starting)
         timers.advanceBy(1_500)
         assertTrue(fake.playWhenReady)
+    }
+
+    @Test
+    fun theVideoTrackIsOffInARoomWhileNoStageShowsItAndBackOnAfterLeaving() {
+        join(starting)
+        assertEquals(listOf(false), host.video)
+
+        bridge.videoShown() // the cover's stage
+        bridge.videoShown() // the full-screen stage takes over in the same frame
+        bridge.videoHidden()
+        assertEquals(listOf(false, true), host.video)
+        bridge.videoHidden()
+        assertEquals(listOf(false, true, false), host.video)
+
+        session.leave()
+        assertEquals(listOf(false, true, false, true), host.video)
+        bridge.videoShown() // outside a room: nothing
+        assertEquals(listOf(false, true, false, true), host.video)
+        bridge.videoHidden()
     }
 
     @Test

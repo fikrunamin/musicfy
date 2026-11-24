@@ -3804,6 +3804,13 @@ class MusicService :
             return snapshot
         }
 
+        override fun setRitmeVideoEnabled(enabled: Boolean) {
+            val p = this@MusicService.player
+            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, !enabled)
+                .build()
+        }
+
         override fun loadRitmeItem(item: MediaItem, startPositionMs: Long?) {
             val p = this@MusicService.player
             clearStreamFailure()

@@ -97,6 +97,11 @@ class RitmePlaybackBridge internal constructor(
     /** This device is leaving because casting started: that toast already says why, Ended(Left) would repeat it. */
     private var leavingForCast = false
 
+    /** RitmeVideoStages showing the room's video right now (the cover and full screen can overlap for a frame). */
+    private var videoViewers = 0
+    /** What the host was last told, while in a room; null = not told since entering. */
+    private var videoApplied: Boolean? = null
+
     private var tickTimer: RitmeTimer? = null
     private var wakeTimer: RitmeTimer? = null
     private var soonTimer: RitmeTimer? = null
@@ -189,6 +194,8 @@ class RitmePlaybackBridge internal constructor(
         gate.activate()
         snapshot = h.enterRitmeMode()
         inRitme = true
+        videoApplied = null
+        applyVideo() // no stage yet: the room's items start without video decoding
         leavingForCast = false
         resetTracking()
         if (snapshot?.items?.isNotEmpty() == true) notifier.show(RitmeToast.QueueSaved)
@@ -201,6 +208,9 @@ class RitmePlaybackBridge internal constructor(
         // Closed in the same step that took the room away: from here local controls are local again.
         inRitme = false
         gate.deactivate()
+        // The local player decodes video again, as it did before the room (it plays no video itself).
+        host?.setRitmeVideoEnabled(true)
+        videoApplied = null
         host?.exitRitmeMode(snapshot ?: LocalQueueSnapshot.EMPTY)
         snapshot = null
         resetTracking()
@@ -341,6 +351,30 @@ class RitmePlaybackBridge internal constructor(
     /** Pause on this device only; the planner then leaves it alone until the room changes. */
     override fun pauseLocally() {
         host?.player?.pause()
+    }
+
+    /**
+     * A RitmeVideoStage started showing the room's video (spec 4.4): a URL entry decodes its video
+     * track only while at least one stage shows it, so a screen that is off or a collapsed player
+     * costs no video decoding or data. Main thread.
+     */
+    fun videoShown() {
+        videoViewers++
+        applyVideo()
+    }
+
+    /** The matching end of [videoShown]. */
+    fun videoHidden() {
+        videoViewers = (videoViewers - 1).coerceAtLeast(0)
+        applyVideo()
+    }
+
+    private fun applyVideo() {
+        if (!inRitme) return
+        val want = videoViewers > 0
+        if (want == videoApplied) return
+        videoApplied = want
+        host?.setRitmeVideoEnabled(want)
     }
 
     override fun playOrderQueue(): LocalPlayOrder = host?.playOrderQueue() ?: LocalPlayOrder(emptyList(), 0, 0)

@@ -26,16 +26,20 @@ import com.example.musicfy.ui.component.PopupSheetState
 import com.example.musicfy.ui.screens.Screens
 import dagger.hilt.android.EntryPointAccessors
 
-/** The two singletons Ritme's UI talks to. */
+/** The singletons Ritme's UI talks to. [bridge] is null only in tests. */
 @Stable
-class RitmeUi(val session: RitmeSession, val controller: RitmeController)
+class RitmeUi(
+    val session: RitmeSession,
+    val controller: RitmeController,
+    val bridge: com.example.musicfy.ritme.playback.RitmePlaybackBridge? = null,
+)
 
 @Composable
 fun rememberRitme(): RitmeUi {
     val app = LocalContext.current.applicationContext
     return remember(app) {
         val entry = EntryPointAccessors.fromApplication(app, RitmeEntryPoint::class.java)
-        RitmeUi(entry.ritmeSession(), entry.ritmeController())
+        RitmeUi(entry.ritmeSession(), entry.ritmeController(), entry.ritmeBridge())
     }
 }
 

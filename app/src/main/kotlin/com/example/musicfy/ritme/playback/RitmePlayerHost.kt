@@ -26,6 +26,9 @@ interface RitmePlayerHost {
     /** Replaces the player's item with [item] at [startPositionMs] (null: its default position, a live stream's live edge), prepared and paused. */
     fun loadRitmeItem(item: MediaItem, startPositionMs: Long?)
 
+    /** Decode the item's video track (true) or audio only (false); a URL entry's picture is only decoded while shown. */
+    fun setRitmeVideoEnabled(enabled: Boolean)
+
     /** Puts [snapshot] back, paused, and restores the local settings. */
     fun exitRitmeMode(snapshot: LocalQueueSnapshot)
 }

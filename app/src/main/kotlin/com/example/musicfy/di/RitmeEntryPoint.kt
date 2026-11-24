@@ -1,6 +1,7 @@
 package com.example.musicfy.di
 
 import com.example.musicfy.ritme.RitmeController
+import com.example.musicfy.ritme.playback.RitmePlaybackBridge
 import com.example.musicfy.ritme.session.RitmeSession
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -12,4 +13,5 @@ import dagger.hilt.components.SingletonComponent
 interface RitmeEntryPoint {
     fun ritmeSession(): RitmeSession
     fun ritmeController(): RitmeController
+    fun ritmeBridge(): RitmePlaybackBridge
 }
