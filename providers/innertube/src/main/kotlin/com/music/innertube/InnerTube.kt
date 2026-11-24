@@ -225,6 +225,23 @@ class InnerTube {
         }
     }
 
+    /** YouTube's general search as the WEB client (Ritme "Add video", spec U3): no login, www.youtube.com origin. */
+    suspend fun searchWeb(query: String, params: String?) = withRetry {
+        httpClient.post("https://www.youtube.com/youtubei/v1/search") {
+            contentType(ContentType.Application.Json)
+            headers {
+                append("X-Goog-Api-Format-Version", "1")
+                append("X-YouTube-Client-Name", YouTubeClient.WEB.clientId)
+                append("X-YouTube-Client-Version", YouTubeClient.WEB.clientVersion)
+                append("X-Origin", "https://www.youtube.com")
+                append("Referer", "https://www.youtube.com/")
+                visitorData?.let { append("X-Goog-Visitor-Id", it) }
+            }
+            userAgent(YouTubeClient.WEB.userAgent)
+            setBody(SearchBody(context = YouTubeClient.WEB.toContext(locale, visitorData, null), query = query, params = params))
+        }
+    }
+
     suspend fun player(
         client: YouTubeClient,
         videoId: String,

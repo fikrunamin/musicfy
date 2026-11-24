@@ -234,6 +234,12 @@ object YouTube {
         )
     }
 
+    /** Videos for [query] from YouTube's general search (videos only: sp=EgIQAQ%3D%3D). */
+    suspend fun searchWebVideos(query: String): Result<List<com.music.innertube.pages.WebVideoItem>> = runCatching {
+        val root = innerTube.searchWeb(query, params = "EgIQAQ%3D%3D").body<kotlinx.serialization.json.JsonObject>()
+        com.music.innertube.pages.WebVideoSearchPage.parse(root)
+    }
+
     suspend fun search(query: String, filter: SearchFilter): Result<SearchResult> = runCatching {
         val response = innerTube.search(WEB_REMIX, query, filter.value).body<SearchResponse>()
         val musicShelfRenderer = response.contents?.tabbedSearchResultsRenderer?.tabs?.firstOrNull()
