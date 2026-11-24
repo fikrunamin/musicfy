@@ -11,6 +11,7 @@ import com.example.musicfy.ritme.protocol.Playback
 import com.example.musicfy.ritme.protocol.QueueEntry
 import com.example.musicfy.ritme.protocol.RoomSettings
 import com.example.musicfy.ritme.protocol.RoomState
+import com.example.musicfy.ritme.protocol.StreamType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -274,6 +275,34 @@ class RoomLogicTest {
         ok(add(yt.copy(videoId = "Az09_-")))
         ok(add(yt.copy(videoId = "a".repeat(Limits.MAX_VIDEO_ID_LENGTH))))
         ok(add(url))
+    }
+
+    @Test
+    fun urlEntriesKeepTheirStreamTypeAndAnOriginReferrer() {
+        fun add(e: NewEntry) = apply(playingA, HOST, Command.Add(listOf(e)))
+        val url = NewEntry("", "Film", "example.com", null, 60_000, MediaKind.URL, "https://cdn.example/v/manifest?token=a")
+        val added = ok(add(url.copy(streamType = StreamType.HLS, referrer = "https://example.com/"))).queue.last()
+        assertEquals(StreamType.HLS, added.streamType)
+        assertEquals("https://example.com/", added.referrer)
+        // a type from a newer client decodes to UNKNOWN: kept, never refused
+        assertEquals(StreamType.UNKNOWN, ok(add(url.copy(streamType = StreamType.UNKNOWN))).queue.last().streamType)
+        listOf(
+            "https://example.com",
+            "https://example.com/watch?v=1",
+            "http://192.168.1.1/",
+            "https://user:pw@example.com/",
+            "https://example.com/" + "a".repeat(200),
+        ).forEach { assertEquals("referrer $it", ErrorCode.INVALID, rejected(add(url.copy(referrer = it)))) }
+    }
+
+    @Test
+    fun youTubeEntriesCarryNoStreamTypeOrReferrer() {
+        fun add(e: NewEntry) = apply(playingA, HOST, Command.Add(listOf(e)))
+        assertEquals(ErrorCode.INVALID, rejected(add(newEntry().copy(streamType = StreamType.HLS))))
+        assertEquals(ErrorCode.INVALID, rejected(add(newEntry().copy(kind = MediaKind.YOUTUBE_VIDEO, referrer = "https://example.com/"))))
+        val plain = ok(add(newEntry())).queue.last()
+        assertNull(plain.streamType)
+        assertNull(plain.referrer)
     }
 
     @Test

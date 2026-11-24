@@ -316,11 +316,16 @@ object RoomLogic {
      * Every field is bounded so a full queue stays small when it is broadcast: YouTube kinds carry
      * only a videoId, URL entries only a url that passes MediaUrlRules, thumbnails are short https
      * links (for YouTube kinds only from YouTube's image hosts).
+     * URL entries may say how they are served (streamType) and carry the origin their host checks
+     * (referrer, MediaUrlRules.checkReferrer).
      */
     internal fun NewEntry.isValid(): Boolean {
         val source = when (kind) {
-            MediaKind.YOUTUBE_MUSIC, MediaKind.YOUTUBE_VIDEO -> url == null && VIDEO_ID.matches(videoId)
-            MediaKind.URL -> videoId.isEmpty() && url?.let(MediaUrlRules::isAcceptableMediaUrl) == true
+            MediaKind.YOUTUBE_MUSIC, MediaKind.YOUTUBE_VIDEO ->
+                url == null && streamType == null && referrer == null && VIDEO_ID.matches(videoId)
+            // streamType is lenient (an unknown name is UNKNOWN, still accepted); a referrer is a bare origin.
+            MediaKind.URL -> videoId.isEmpty() && url?.let(MediaUrlRules::isAcceptableMediaUrl) == true &&
+                referrer?.let(MediaUrlRules::isAcceptableReferrer) ?: true
             MediaKind.UNKNOWN -> false
         }
         return source &&
@@ -339,5 +344,5 @@ object RoomLogic {
     }
 
     private fun NewEntry.toQueueEntry(entryId: String, addedBy: String) =
-        QueueEntry(entryId, videoId, cleanText(title), cleanText(artist), thumbnailUrl, durationMs, addedBy, kind, url?.trim())
+        QueueEntry(entryId, videoId, cleanText(title), cleanText(artist), thumbnailUrl, durationMs, addedBy, kind, url?.trim(), streamType, referrer)
 }

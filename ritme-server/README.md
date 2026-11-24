@@ -141,6 +141,10 @@ The app's server URL setting must be `https://<RITME_DOMAIN>`.
   (<= 512 chars), for YouTube kinds only from `*.ytimg.com`, `*.googleusercontent.com` or
   `*.ggpht.com`, for `URL` entries under the same host rules as the url. `durationMs` is 0 (live)
   to 24 h.
+  `URL` entries may also carry `streamType` (`HLS`, `DASH`, `FILE`, `UNKNOWN`; a name from a newer
+  client decodes to `UNKNOWN` and is kept) and `referrer`: null or a bare origin
+  `http(s)://host[:port]/` (at most 200 chars, same host rules, `MediaUrlRules.checkReferrer`).
+  YouTube kinds carry neither.
 - Settings: `guestsCanControl` and `guestsCanAdd` (both default `true`). With `guestsCanAdd = false`
   only the host may `Add` (others get `FORBIDDEN`). `SetSettings` replaces all settings, so clients
   send every field, taking the others from the latest snapshot. A host on an older client that does
@@ -187,3 +191,7 @@ who play or display it. YouTube-kind thumbnails are restricted to YouTube's imag
 reason. Clients should only play `URL` entries from people they trust. Local and private hosts
 are refused for URL entries and their thumbnails, so a member cannot point other members' devices
 at their own router or LAN.
+A `URL` entry's `referrer` (an origin only, never a path, query or cookie) tells the room which
+site the video came from; Android members send it as the `Referer` when they play the entry. The
+Android in-app browser that finds such videos checks them from the adding device only (never from
+the server), never unlocks DRM, and refuses videos that need a sign-in.
