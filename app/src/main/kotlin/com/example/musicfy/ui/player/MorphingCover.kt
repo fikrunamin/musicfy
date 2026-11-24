@@ -399,7 +399,12 @@ fun MorphingCover(
         }
     }
 
-    val isDiscStyle = coverStyle.isDisc && !alternateStyle
+    // Ritme watch-together (spec 4.2): the room's current entry is a video and the player holds it.
+    // Its stage takes the cover's place: no disc, no canvas, and no search for "the official music
+    // video" by title, which showed some other video for non-music entries (spec 1.2).
+    val ritmeStage = com.example.musicfy.ui.screens.ritme.video.rememberRitmeStageTarget(trackInfo.mediaId)
+
+    val isDiscStyle = coverStyle.isDisc && !alternateStyle && ritmeStage == null
 
     // Without blur the seam can't soften the edge-to-edge cover's bottom into the backdrop, so the
     // cover fades its own bottom edge out instead - picture, canvas and video alike.
@@ -414,7 +419,7 @@ fun MorphingCover(
     val trackIsVideo = !disableVideoAutoplay &&
         currentMetadata?.id == trackInfo.mediaId &&
         currentMetadata?.isVideoSong == true
-    val playVideoBackground = !alternateStyle && (forceVideoBackground || playVideoPref || trackIsVideo)
+    val playVideoBackground = ritmeStage == null && !alternateStyle && (forceVideoBackground || playVideoPref || trackIsVideo)
     var videoInfo by remember(trackInfo.mediaId) { mutableStateOf<OfficialMusicVideo?>(null) }
     LaunchedEffect(trackInfo.mediaId, trackInfo.title, trackInfo.artist, playVideoBackground, trackIsVideo) {
         val mediaId = trackInfo.mediaId
@@ -451,7 +456,8 @@ fun MorphingCover(
         videoInfo = resolved
     }
 
-    val isVideoActive = !isDiscStyle && playVideoBackground && videoInfo != null
+    // the mini player's thumbnail widens to 16:9 for a room video too
+    val isVideoActive = ritmeStage != null || (!isDiscStyle && playVideoBackground && videoInfo != null)
     val targetMiniArtWidth = if (isVideoActive) (48.dp * 16f / 9f) else 48.dp
     val animatedMiniArtWidth by animateDpAsState(
         targetValue = targetMiniArtWidth,
@@ -969,7 +975,8 @@ fun MorphingCover(
                 )
 
                 var canvasArtwork by remember(trackInfo.mediaId) { mutableStateOf<CanvasArtwork?>(null) }
-                val canvasEnabled = rememberPreference(CanvasThumbnailAnimationKey, defaultValue = true).value && !alternateStyle
+                val canvasEnabled = rememberPreference(CanvasThumbnailAnimationKey, defaultValue = true).value &&
+                    !alternateStyle && ritmeStage == null
                 val canvasWifiOnly by rememberPreference(CanvasWifiOnlyKey, defaultValue = true)
                 LaunchedEffect(trackInfo.mediaId, trackInfo.title, trackInfo.artist, canvasEnabled, canvasWifiOnly) {
                     val mediaId = trackInfo.mediaId
@@ -1033,6 +1040,18 @@ fun MorphingCover(
                                 alpha = (1f - lyricsProgressProvider()).coerceIn(0f, 1f)
                             }
                     )
+                }
+                // Only on the open player: the mini player keeps the (16:9) thumbnail.
+                if (ritmeStage != null && !alternateStyle) {
+                    val stageShown by remember { derivedStateOf { progressProvider() > 0.5f } }
+                    if (stageShown) {
+                        com.example.musicfy.ui.screens.ritme.video.RitmeVideoStage(
+                            target = ritmeStage,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer { alpha = (1f - lyricsProgressProvider()).coerceIn(0f, 1f) },
+                        )
+                    }
                 }
                 }
 

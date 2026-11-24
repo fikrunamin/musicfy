@@ -91,7 +91,7 @@ fun RitmeCornerButton(alphaProvider: () -> Float, modifier: Modifier = Modifier)
 }
 
 /** QueueScreen's QueueSectionHeader "Clear" chip fill: white at 12 %. */
-private val RitmeChipFill = Color.White.copy(alpha = 0.12f)
+internal val RitmeChipFill = Color.White.copy(alpha = 0.12f)
 
 /**
  * Mirrors QueueScreen's QueueSectionHeader "Clear" chip: circle-ended [containerColor] fill,
@@ -99,11 +99,12 @@ private val RitmeChipFill = Color.White.copy(alpha = 0.12f)
  * 6 dp before the text.
  */
 @Composable
-private fun RitmeChip(
+internal fun RitmeChip(
     text: String,
     containerColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    @androidx.annotation.DrawableRes icon: Int = R.drawable.group,
 ) {
     val content = Color.White.copy(alpha = 0.85f)
     Row(
@@ -114,7 +115,7 @@ private fun RitmeChip(
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 5.dp),
     ) {
-        Icon(painterResource(R.drawable.group), contentDescription = null, tint = content, modifier = Modifier.size(16.dp))
+        Icon(painterResource(icon), contentDescription = null, tint = content, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(6.dp))
         Text(text = text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = content, maxLines = 1)
     }

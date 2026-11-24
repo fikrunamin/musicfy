@@ -86,4 +86,7 @@
     <string name="ritme_server_url_invalid">Enter a valid server address, like https://ritme.example.com</string>
     <string name="ritme_settings_note">Changes apply to the next Ritme you start or join.</string>
     <string name="ritme_url_local_address_blocked">This link points to a local address and was blocked</string>
+    <string name="ritme_video_unavailable">Video unavailable, audio keeps playing</string>
+    <string name="ritme_video_cannot_play">This video can\'t play on this device</string>
+    <string name="ritme_video_skip">Skip</string>
 </resources>

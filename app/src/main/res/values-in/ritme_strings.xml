@@ -77,4 +77,7 @@
     <string name="ritme_server_url_invalid">Masukkan alamat server yang valid, misalnya https://ritme.example.com</string>
     <string name="ritme_settings_note">Perubahan berlaku untuk Ritme berikutnya yang kamu mulai atau ikuti.</string>
     <string name="ritme_url_local_address_blocked">Link ini mengarah ke alamat lokal dan diblokir</string>
+    <string name="ritme_video_unavailable">Video tidak tersedia, audio tetap diputar</string>
+    <string name="ritme_video_cannot_play">Video ini tidak bisa diputar di perangkat ini</string>
+    <string name="ritme_video_skip">Lewati</string>
 </resources>
