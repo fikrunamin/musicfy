@@ -17,17 +17,19 @@
   var eme = false;
   var last = '';
   var timer = 0;
+  var timerAt = 0;
+  var MAX_MESSAGE = 60000; // the app discards anything over 64 000 chars whole
 
   function text(value) {
     return typeof value === 'string' && value.trim() ? value.trim().slice(0, MAX_TEXT) : null;
   }
 
-  // An absolute http(s) address without its #fragment, 'blob:' for a blob, else null.
+  // An http(s) address (relative ones resolve against the document's base) without its #fragment, 'blob:' for a blob, else null.
   function address(value) {
     if (typeof value !== 'string' || !value || value.length > MAX_URL) return null;
     var parsed;
     try {
-      parsed = new URL(value, location.href);
+      parsed = new URL(value, document.baseURI || location.href);
     } catch (e) {
       return null;
     }
@@ -109,10 +111,24 @@
     return out;
   }
 
+  // The message as JSON, with trailing srcs and then trailing videos dropped until it fits.
+  function fit(body) {
+    var message = JSON.stringify(body);
+    for (var n = MAX_SRCS - 1; n >= 1 && message.length > MAX_MESSAGE; n--) {
+      for (var i = 0; i < body.videos.length; i++) body.videos[i].srcs = body.videos[i].srcs.slice(0, n);
+      message = JSON.stringify(body);
+    }
+    while (message.length > MAX_MESSAGE && body.videos.length > 0) {
+      body.videos.pop();
+      message = JSON.stringify(body);
+    }
+    return message;
+  }
+
   function report() {
     timer = 0;
     var page = address(location.href);
-    var message = JSON.stringify({
+    var body = {
       v: 1,
       page: page === 'blob:' ? null : page,
       title: text(document.title),
@@ -122,7 +138,8 @@
       ld: linkedData(),
       videos: videos(),
       eme: eme,
-    });
+    };
+    var message = fit(body);
     if (message === last) return;
     last = message;
     try {
@@ -133,7 +150,11 @@
   }
 
   function schedule() {
-    if (!timer) timer = setTimeout(report, DEBOUNCE_MS);
+    // A page may clear timers it did not set: a timer older than twice the debounce is gone.
+    var now = Date.now();
+    if (timer && now - timerAt <= 2 * DEBOUNCE_MS) return;
+    timerAt = now;
+    timer = setTimeout(report, DEBOUNCE_MS);
   }
 
   var WATCHED = { VIDEO: 1, SOURCE: 1, META: 1, SCRIPT: 1 };
@@ -149,7 +170,11 @@
     if (typeof request === 'function') {
       navigator.requestMediaKeySystemAccess = function () {
         eme = true;
-        schedule();
+        try {
+          schedule();
+        } catch (e) {
+          // never throw into the page
+        }
         return request.apply(navigator, arguments);
       };
     }

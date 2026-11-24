@@ -45,8 +45,14 @@ beforeEach(() => {
   document.title = '';
 });
 
+const emeBefore = Object.getOwnPropertyDescriptor(navigator, 'requestMediaKeySystemAccess');
+
 afterEach(() => {
   vi.useRealTimers();
+  // The script wraps navigator.requestMediaKeySystemAccess; put it back so hooks never stack across tests.
+  if (emeBefore) Object.defineProperty(navigator, 'requestMediaKeySystemAccess', emeBefore);
+  else delete (navigator as unknown as Record<string, unknown>).requestMediaKeySystemAccess;
+  document.head.innerHTML = '';
 });
 
 describe('page-media.js', () => {
@@ -148,5 +154,59 @@ describe('page-media.js', () => {
     delete globals.ritmeMedia;
     delete globals.__ritmeMediaInstalled;
     expect(() => new Function(SCRIPT)()).not.toThrow();
+  });
+  it('resolves relative addresses against the document base, not the page address', async () => {
+    document.head.innerHTML = '<base href="https://cdn.example.com/media/">';
+    document.body.innerHTML = '<video src="clip.mp4"></video>';
+    const posted = install();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(reports(posted)[0].videos[0].srcs).toEqual(['https://cdn.example.com/media/clip.mp4']);
+  });
+
+  it('trims an oversize report so the app never has to discard it whole', async () => {
+    const long = (n: number, k: number): string => `https://cdn.example.com/${'p'.repeat(1900)}/${n}-${k}.mp4`;
+    document.body.innerHTML = Array.from({ length: 20 }, (_, n) => {
+      const sources = Array.from({ length: 5 }, (_, k) => `<source src="${long(n, k)}">`).join('');
+      return `<video>${sources}</video>`;
+    }).join('');
+    const posted = install();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(posted).toHaveLength(1);
+    expect(posted[0].length).toBeLessThanOrEqual(60_000);
+    const { videos } = reports(posted)[0];
+    expect(videos.length).toBeGreaterThan(0);
+    expect(videos[0].srcs[0]).toBe(long(0, 0));
+  });
+
+  it('keeps reporting after a page clears every timeout', async () => {
+    const posted = install();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(posted).toHaveLength(1);
+    const first = document.createElement('video');
+    first.setAttribute('src', 'https://cdn.example.com/one.mp4');
+    document.body.appendChild(first);
+    await vi.advanceTimersByTimeAsync(10); // the observer has scheduled a report
+    vi.clearAllTimers(); // the page cleared it
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(posted).toHaveLength(1);
+    const second = document.createElement('video');
+    second.setAttribute('src', 'https://cdn.example.com/two.mp4');
+    document.body.appendChild(second);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(posted).toHaveLength(2);
+    expect(reports(posted)[1].videos.map((v) => v.srcs[0])).toEqual(['https://cdn.example.com/one.mp4', 'https://cdn.example.com/two.mp4']);
+  });
+
+  it('does not throw into the page when scheduling fails inside the DRM hook', async () => {
+    const original = vi.fn(() => Promise.resolve('access'));
+    Object.defineProperty(navigator, 'requestMediaKeySystemAccess', { value: original, configurable: true, writable: true });
+    install();
+    await vi.advanceTimersByTimeAsync(500); // the first report is out: nothing is scheduled now
+    const nav = navigator as unknown as { requestMediaKeySystemAccess: () => Promise<unknown> };
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(() => {
+      throw new Error('no timers');
+    });
+    await expect(nav.requestMediaKeySystemAccess()).resolves.toBe('access');
+    vi.restoreAllMocks();
   });
 });
