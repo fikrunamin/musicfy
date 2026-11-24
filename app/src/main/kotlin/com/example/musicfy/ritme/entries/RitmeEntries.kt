@@ -36,6 +36,9 @@ object RitmeEntries {
     const val MAX_QUEUE = 500
     const val MAX_TEXT = 300
     const val MAX_DURATION_MS = 86_400_000L
+
+    /** Same rule as the server's /api/video (2a Decision 10): a length of 12 h or more is a live stream's age. */
+    const val LIVE_FROM_SECONDS = 12 * 3600
     private const val MAX_THUMBNAIL_LENGTH = 512
 
     /**
@@ -100,6 +103,57 @@ object RitmeEntries {
             thumbnailUrl = safeThumbnail(song.thumbnailUrl),
             durationMs = (song.duration.toLong() * 1000).coerceIn(0, MAX_DURATION_MS),
             kind = MediaKind.YOUTUBE_MUSIC,
+        )
+    }
+
+    /**
+     * A YOUTUBE_VIDEO entry from a video's info ("Add video", spec 4.6), or YOUTUBE_MUSIC for a
+     * music.youtube.com link; null if the server would refuse it. A length that is missing, 0 or at
+     * least [LIVE_FROM_SECONDS] means live (durationMs = 0).
+     */
+    fun toVideoEntry(
+        videoId: String,
+        title: String,
+        channel: String,
+        thumbnailUrl: String?,
+        durationSeconds: Int?,
+        music: Boolean = false,
+    ): NewEntry? {
+        if (!VIDEO_ID.matches(videoId)) return null
+        val cleanTitle = truncate(title.trim())
+        if (!hasVisibleText(cleanTitle)) return null
+        val seconds = durationSeconds?.takeIf { it in 1 until LIVE_FROM_SECONDS }
+        return NewEntry(
+            videoId = videoId,
+            title = cleanTitle,
+            artist = truncate(channel.trim()),
+            thumbnailUrl = safeThumbnail(thumbnailUrl),
+            durationMs = seconds?.times(1000L) ?: 0,
+            kind = if (music) MediaKind.YOUTUBE_MUSIC else MediaKind.YOUTUBE_VIDEO,
+        )
+    }
+
+    /**
+     * A URL entry (spec 4.6): artist = the site's domain, no picture (spec 4.7), the title falls back
+     * to the domain; null when MediaUrlRules refuses the url.
+     *
+     * Limitation (until #3's probe exists): a duration of 0 counts as live, so a play after a pause
+     * seeks the entry to the live edge. A direct .m3u8/.mpd link that is really VOD is added with
+     * durationMs = 0 and therefore restarts from 0 on every play after a pause.
+     */
+    fun toUrlEntry(url: String, title: String, domain: String, durationMs: Long = 0): NewEntry? {
+        if (!MediaUrlRules.isAcceptableMediaUrl(url)) return null
+        val cleanTitle = truncate(title.trim()).takeIf(::hasVisibleText)
+            ?: truncate(domain.trim()).takeIf(::hasVisibleText)
+            ?: return null
+        return NewEntry(
+            videoId = "",
+            title = cleanTitle,
+            artist = truncate(domain.trim()),
+            thumbnailUrl = null,
+            durationMs = durationMs.coerceIn(0, MAX_DURATION_MS),
+            kind = MediaKind.URL,
+            url = url,
         )
     }
 

@@ -285,4 +285,54 @@ class RitmeEntriesTest {
         assertFalse(RitmeEntries.hasShareable(listOf(null, song(localUri = "content://1"), song(id = "bad id!"))))
         assertTrue(RitmeEntries.hasShareable(listOf(song(localUri = "content://1"), song("ok"))))
     }
+
+    @Test
+    fun aYouTubeVideoBecomesAVideoEntry() {
+        assertEquals(
+            NewEntry(
+                videoId = "dQw4w9WgXcQ",
+                title = "Never Gonna",
+                artist = "Rick Astley",
+                thumbnailUrl = "https://i.ytimg.com/vi/dQw4w9WgXcQ/hq720.jpg",
+                durationMs = 213_000,
+                kind = MediaKind.YOUTUBE_VIDEO,
+            ),
+            RitmeEntries.toVideoEntry("dQw4w9WgXcQ", " Never Gonna ", "Rick Astley", "https://i.ytimg.com/vi/dQw4w9WgXcQ/hq720.jpg", 213),
+        )
+        assertEquals(MediaKind.YOUTUBE_MUSIC, RitmeEntries.toVideoEntry("dQw4w9WgXcQ", "T", "A", null, 213, music = true)?.kind)
+    }
+
+    @Test
+    fun aMissingZeroOrTwelveHourLengthIsLive() {
+        assertEquals(0L, RitmeEntries.toVideoEntry("jfKfPfyJRdk", "Lofi", "Lofi Girl", null, null)?.durationMs)
+        assertEquals(0L, RitmeEntries.toVideoEntry("jfKfPfyJRdk", "Lofi", "Lofi Girl", null, 0)?.durationMs)
+        assertEquals(0L, RitmeEntries.toVideoEntry("jfKfPfyJRdk", "Lofi", "Lofi Girl", null, 12 * 3600)?.durationMs)
+        assertEquals((12 * 3600 - 1) * 1000L, RitmeEntries.toVideoEntry("jfKfPfyJRdk", "Lofi", "Lofi Girl", null, 12 * 3600 - 1)?.durationMs)
+    }
+
+    @Test
+    fun videoEntriesTheServerWouldRefuseAreNotMade() {
+        assertNull(RitmeEntries.toVideoEntry("", "T", "A", null, 10))
+        assertNull(RitmeEntries.toVideoEntry("dQw4w9WgXcQ", "\u200B ", "A", null, 10))
+        // a picture from any other host is dropped, not sent
+        assertNull(RitmeEntries.toVideoEntry("dQw4w9WgXcQ", "T", "A", "https://evil.example/p.jpg", 10)?.thumbnailUrl)
+    }
+
+    @Test
+    fun aDirectLinkBecomesAUrlEntryWithoutAPicture() {
+        assertEquals(
+            NewEntry(
+                videoId = "",
+                title = "My Movie.mp4",
+                artist = "cdn.example.com",
+                thumbnailUrl = null,
+                durationMs = 0,
+                kind = MediaKind.URL,
+                url = "https://cdn.example.com/films/My%20Movie.mp4",
+            ),
+            RitmeEntries.toUrlEntry("https://cdn.example.com/films/My%20Movie.mp4", "My Movie.mp4", "cdn.example.com"),
+        )
+        assertEquals("cdn.example.com", RitmeEntries.toUrlEntry("https://cdn.example.com/v.mp4", "  ", "cdn.example.com")?.title)
+        assertNull(RitmeEntries.toUrlEntry("http://10.0.0.1/v.mp4", "T", "10.0.0.1"))
+    }
 }

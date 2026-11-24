@@ -3464,6 +3464,7 @@ Siapkan 2 HP Android dengan build ini dan 1 browser (web Ritme). Satu HP jadi ho
 - [ ] **Share teks berisi link room Ritme ke "Tambah ke Ritme":** tetap membuka form gabung room (perilaku #1).
 - [ ] **Target share "Musicfy" yang lama:** tetap bekerja seperti sebelumnya.
 - [ ] **Tampilan:** semua sheet, baris, tombol, chip, ikon, dan font sama dengan bagian aplikasi lain (tidak ada gaya baru).
+- [ ] **VOD .m3u8:** jeda lalu putar, cek apakah mulai dari awal (keterbatasan sampai #3).
 
 ---
 
