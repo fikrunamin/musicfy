@@ -17,13 +17,13 @@ test.afterEach(async ({ context }) => endRooms(context));
 
 const tap = (page: Page) => page.getByRole('button', { name: 'Ketuk untuk ikut dengar' }).click();
 
-/** A fresh Lagu tab in the desktop add panel: the fixture's searches leave "x" and its results there. */
+/** An empty search field in the desktop add panel: the fixture's searches leave "x" there, and the panel
+ * keeps its draft (query and results) across track changes, so clear the field by hand. */
 async function clearInlineSearch(page: Page) {
-  const panel = page.getByRole('region', { name: 'Tambah ke antrean' });
-  await panel.getByRole('tab', { name: 'Video' }).click();
-  await panel.getByRole('tab', { name: 'Lagu' }).click();
-  await expect(panel.getByLabel('Cari lagu')).toHaveValue('');
-  await expect(panel.locator('.add-results')).toHaveCount(0);
+  const field = page.getByRole('region', { name: 'Tambah ke antrean' }).getByLabel('Cari lagu');
+  await field.fill('');
+  await field.blur();
+  await expect(field).toHaveValue('');
 }
 
 /** The seek bar, its times and previous/play/next sit wholly inside the window, without scrolling. */
