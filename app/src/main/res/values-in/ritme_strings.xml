@@ -62,6 +62,8 @@
     <string name="ritme_make_host">Jadikan host</string>
     <string name="ritme_kick">Keluarkan</string>
     <string name="ritme_unsupported">Belum didukung</string>
+    <string name="ritme_tag_video">Video</string>
+    <string name="ritme_tag_live">LIVE</string>
     <string name="ritme_empty_queue">Belum ada yang diputar. Tambah lagu untuk mulai.</string>
     <string name="ritme_play_now">Putar sekarang</string>
     <string name="ritme_move_up">Naikkan</string>

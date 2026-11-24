@@ -3,6 +3,7 @@ package com.example.musicfy.ui.screens.ritme
 import com.example.musicfy.ritme.entries.RitmeEntries
 import com.example.musicfy.ritme.protocol.Member
 import com.example.musicfy.ritme.protocol.QueueEntry
+import com.example.musicfy.ritme.protocol.isLive
 import com.example.musicfy.ritme.protocol.RoomState
 import com.example.musicfy.ritme.session.MoveTarget
 import com.example.musicfy.ritme.session.RitmePermissions
@@ -65,4 +66,13 @@ internal fun initialOf(name: String): String {
     val trimmed = name.trim()
     if (trimmed.isEmpty()) return "?"
     return trimmed.substring(0, trimmed.offsetByCodePoints(0, 1)).uppercase()
+}
+
+/** The short word in front of a row's subtitle (spec 4.2): videos say "Video", live videos "LIVE". */
+internal enum class EntryTag { NONE, VIDEO, LIVE }
+
+internal fun entryTag(entry: QueueEntry): EntryTag = when {
+    !RitmeEntries.isVideo(entry) -> EntryTag.NONE
+    entry.isLive -> EntryTag.LIVE
+    else -> EntryTag.VIDEO
 }

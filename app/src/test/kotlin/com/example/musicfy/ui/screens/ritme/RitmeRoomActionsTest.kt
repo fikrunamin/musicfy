@@ -136,4 +136,16 @@ class RitmeRoomActionsTest {
         assertEquals("?", initialOf("   "))
         assertEquals("🎵", initialOf("🎵 music"))
     }
+
+    @Test
+    fun videoRowsAreTaggedVideoOrLive() {
+        assertEquals(EntryTag.NONE, entryTag(entry("a")))
+        assertEquals(EntryTag.NONE, entryTag(entry("m", durationMs = 0))) // a song of unknown length is not a live video
+        assertEquals(EntryTag.VIDEO, entryTag(entry("v", kind = MediaKind.YOUTUBE_VIDEO)))
+        assertEquals(EntryTag.LIVE, entryTag(entry("l", kind = MediaKind.YOUTUBE_VIDEO, durationMs = 0)))
+        assertEquals(
+            EntryTag.LIVE,
+            entryTag(entry("u", kind = MediaKind.URL, videoId = "", url = "https://cdn.example.com/live.m3u8", durationMs = 0)),
+        )
+    }
 }

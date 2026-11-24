@@ -406,7 +406,10 @@ fun MorphingCover(
     // A room's link item is never searched by its title nor given a canvas, even in a frame where the
     // stage target is null (a room change) while the player still holds it.
     val ritmeUrlItem = com.example.musicfy.ritme.entries.RitmeEntries.isUrlMediaId(trackInfo.mediaId)
-    val noCoverLookups = ritmeStage != null || ritmeUrlItem
+    // Also off under full screen: in a video-to-video gap the stage target is null while the old item is
+    // still the player's, and a lookup or video surface for it must not start under the overlay.
+    val noCoverLookups = ritmeStage != null || ritmeUrlItem ||
+        com.example.musicfy.ui.screens.ritme.video.RitmeFullscreen.open
 
     val isDiscStyle = coverStyle.isDisc && !alternateStyle && ritmeStage == null
 

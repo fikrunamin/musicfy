@@ -69,6 +69,9 @@
     <string name="ritme_make_host">Make host</string>
     <string name="ritme_kick">Remove from Ritme</string>
     <string name="ritme_unsupported">Not supported yet</string>
+    <string name="ritme_tag_video">Video</string>
+    <string name="ritme_tag_live">LIVE</string>
+    <string name="ritme_tagged" translatable="false">%1$s · %2$s</string>
     <string name="ritme_empty_queue">Nothing is playing. Add a song to start.</string>
     <string name="ritme_play_now">Play now</string>
     <string name="ritme_move_up">Move up</string>

@@ -80,6 +80,7 @@ import coil3.compose.AsyncImage
 import com.example.musicfy.R
 import com.example.musicfy.ritme.entries.RitmeEntries
 import com.example.musicfy.ritme.net.ConnectionStatus
+import com.example.musicfy.ritme.protocol.MediaKind
 import com.example.musicfy.ritme.protocol.Member
 import com.example.musicfy.ritme.protocol.QueueEntry
 import com.example.musicfy.ritme.protocol.RoomState
@@ -108,6 +109,9 @@ private val RowHighlightShape = RoundedCornerShape(14.dp)
 private const val RowArtPx = 144
 private val ActionBoxSize = 44.dp
 private val ActionIconSize = 22.dp
+
+/** A video row's art: 16:9 at the same 44 dp height (SubpageVideoCell's shape, the row's corners). */
+private val RowVideoArtWidth = RowArtSize * 16f / 9f
 
 /** PopupSheet's content side padding (and RitmeQueuePage's), which the rows sit inside. */
 private val SheetSidePadding = 20.dp
@@ -455,7 +459,16 @@ private fun EntryRow(
 ) {
     val ink = LocalContentColor.current
     val playable = RitmeEntries.isPlayable(entry)
-    val artwork = remember(entry.thumbnailUrl) { entry.thumbnailUrl?.resize(RowArtPx, RowArtPx) }
+    val tag = entryTag(entry)
+    val wide = tag != EntryTag.NONE
+    // URL entries' pictures are never loaded (any host could track who looks): a placeholder instead.
+    val artwork = remember(entry.thumbnailUrl, entry.kind) {
+        when {
+            entry.kind == MediaKind.URL -> null
+            wide -> entry.thumbnailUrl
+            else -> entry.thumbnailUrl?.resize(RowArtPx, RowArtPx)
+        }
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -473,7 +486,10 @@ private fun EntryRow(
             )
             .padding(start = RowArtStart),
     ) {
-        Box(modifier = Modifier.size(RowArtSize)) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(width = if (wide) RowVideoArtWidth else RowArtSize, height = RowArtSize),
+        ) {
             AsyncImage(
                 model = artwork,
                 contentDescription = null,
@@ -483,6 +499,14 @@ private fun EntryRow(
                     .clip(RowArtShape)
                     .background(ink.copy(alpha = 0.10f)),
             )
+            if (entry.kind == MediaKind.URL) {
+                Icon(
+                    painter = painterResource(R.drawable.web_link),
+                    contentDescription = null,
+                    tint = ink.copy(alpha = 0.5f),
+                    modifier = Modifier.size(ActionIconSize),
+                )
+            }
             // QueueScreen's NowPlayingIndicator (private there), driven by the room's playback.
             if (isCurrent) {
                 PlayingIndicatorBox(
@@ -503,7 +527,12 @@ private fun EntryRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            val what = if (playable) entry.artist else stringResource(R.string.ritme_unsupported)
+            val what = when {
+                !playable -> stringResource(R.string.ritme_unsupported) // UNKNOWN (or a link this app refuses)
+                tag == EntryTag.VIDEO -> stringResource(R.string.ritme_tagged, stringResource(R.string.ritme_tag_video), entry.artist)
+                tag == EntryTag.LIVE -> stringResource(R.string.ritme_tagged, stringResource(R.string.ritme_tag_live), entry.artist)
+                else -> entry.artist
+            }
             RitmeSecondaryText(stringResource(R.string.ritme_entry_subtitle, what, addedBy), maxLines = 1)
         }
         if (actions.moveUp != null) RowAction(R.drawable.arrow_upward, stringResource(R.string.ritme_move_up), onMoveUp)
