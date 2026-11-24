@@ -153,6 +153,8 @@ internal class RitmeAddVideoForm(initialText: String?, val roomMode: Boolean) {
             AddVideoProblem.NOT_FOUND -> R.string.ritme_add_video_not_found
             AddVideoProblem.NO_RESULTS -> R.string.ritme_add_video_no_results
             AddVideoProblem.LENGTH_UNREADABLE -> R.string.ritme_add_video_length_unreadable
+            AddVideoProblem.PROTECTED -> R.string.ritme_add_video_protected
+            AddVideoProblem.NEEDS_LOGIN -> R.string.ritme_add_video_needs_login
         }
     }
 }
@@ -217,7 +219,7 @@ internal fun RitmeAddVideoButtons(ritme: RitmeUi, form: RitmeAddVideoForm, onDon
 @Composable
 internal fun RitmeAddVideoContent(ritme: RitmeUi, form: RitmeAddVideoForm, onRoomGone: () -> Unit) {
     val session by ritme.session.state.collectAsState()
-    val model = remember { RitmeAddVideoModel(RitmeVideoLookup()) }
+    val model = remember { RitmeAddVideoModel(RitmeVideoLookup(ritme.controller.webOrigin())) }
     val roomGone by rememberUpdatedState(onRoomGone)
     val keyboard = LocalSoftwareKeyboardController.current
 

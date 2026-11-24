@@ -40,6 +40,7 @@ class RitmeAddVideoFormTest {
         }
 
         override suspend fun probeDurationMs(url: String): Long? = null
+        override suspend fun probeStream(url: String): com.example.musicfy.ritme.media.ProbeVerdict? = null
     }
 
     @Test
@@ -90,6 +91,7 @@ class RitmeAddVideoFormTest {
             probeCalls += url
             return answers.removeFirst()
         }
+        override suspend fun probeStream(url: String): com.example.musicfy.ritme.media.ProbeVerdict? = null
     }
 
     @Test

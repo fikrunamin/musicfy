@@ -120,4 +120,6 @@
     <string name="ritme_add_video_no_results">No videos found</string>
     <string name="ritme_add_video_length_unreadable">Couldn\'t read the video\'s length, try again</string>
     <string name="ritme_share_target">Add to Ritme</string>
+    <string name="ritme_add_video_protected">Protected videos can\'t be shared</string>
+    <string name="ritme_add_video_needs_login">This site needs a sign-in, so other members can\'t play it</string>
 </resources>

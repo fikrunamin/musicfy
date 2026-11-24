@@ -608,4 +608,9 @@ class RitmeControllerTest {
         controller.openAddVideo()
         assertEquals(RitmeSheetRequest.Kind.AddVideo(), controller.sheetRequest.value?.kind)
     }
+
+    @Test
+    fun theWebOriginIsTheRoomServersOrigin() {
+        assertEquals("https://ritme.dubeli.id", controller.webOrigin())
+    }
 }

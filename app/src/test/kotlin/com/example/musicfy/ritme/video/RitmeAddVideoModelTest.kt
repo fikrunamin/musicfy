@@ -1,7 +1,11 @@
 package com.example.musicfy.ritme.video
 
 import com.example.musicfy.ritme.entries.RitmeEntries
+import com.example.musicfy.ritme.media.MediaFormat
+import com.example.musicfy.ritme.media.ProbeVerdict
+import com.example.musicfy.ritme.media.Refusal
 import com.example.musicfy.ritme.protocol.MediaKind
+import com.example.musicfy.ritme.protocol.StreamType
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -14,10 +18,12 @@ class RitmeAddVideoModelTest {
         val infos: Map<String, VideoChoice> = emptyMap(),
         val results: List<VideoChoice> = emptyList(),
         val probed: Long? = null,
+        val stream: ProbeVerdict? = null,
     ) : VideoLookup {
         val infoCalls = mutableListOf<String>()
         val searchCalls = mutableListOf<String>()
         val probeCalls = mutableListOf<String>()
+        val streamCalls = mutableListOf<String>()
 
         override suspend fun info(videoId: String): VideoChoice? {
             infoCalls += videoId
@@ -32,6 +38,11 @@ class RitmeAddVideoModelTest {
         override suspend fun probeDurationMs(url: String): Long? {
             probeCalls += url
             return probed
+        }
+
+        override suspend fun probeStream(url: String): ProbeVerdict? {
+            streamCalls += url
+            return stream
         }
     }
 
@@ -203,5 +214,42 @@ class RitmeAddVideoModelTest {
     @Test
     fun onlyAPreviewHasAnEntry() {
         assertNull(RitmeAddVideoModel.entryOf(AddVideoState.Loading, "x"))
+    }
+
+    @Test
+    fun aCheckedFinishedStreamKeepsItsLengthAndType() {
+        val url = "https://cdn.example.com/v/master.m3u8"
+        val lookup = FakeLookup(stream = ProbeVerdict(url, StreamType.HLS, MediaFormat.HLS, durationMs = 1_500_000))
+        val state = resolve(lookup, url) as AddVideoState.Preview
+        assertEquals(1_500_000L, state.entry.durationMs)
+        assertEquals(StreamType.HLS, state.entry.streamType)
+        assertEquals(listOf(url), lookup.streamCalls)
+        assertEquals(StreamType.HLS, RitmeAddVideoModel.entryOf(state, "Film")?.streamType)
+    }
+
+    @Test
+    fun aLiveOrUncheckedStreamIsAddedAsLiveLikeBefore() {
+        val url = "https://cdn.example.com/live/master.m3u8"
+        val live = resolve(FakeLookup(stream = ProbeVerdict(url, StreamType.HLS, MediaFormat.HLS, live = true)), url) as AddVideoState.Preview
+        assertEquals(0L, live.entry.durationMs)
+        val failed = resolve(FakeLookup(stream = ProbeVerdict.refused(url, Refusal.FAILED)), url) as AddVideoState.Preview
+        assertEquals(0L, failed.entry.durationMs)
+        val unchecked = resolve(FakeLookup(stream = null), "https://cdn.example.com/v/manifest.mpd") as AddVideoState.Preview
+        assertEquals(0L, unchecked.entry.durationMs)
+        assertEquals(StreamType.DASH, unchecked.entry.streamType)
+    }
+
+    @Test
+    fun aProtectedOrSignInOnlyStreamIsAProblem() {
+        val url = "https://cdn.example.com/v/master.m3u8"
+        assertEquals(AddVideoState.Problem(AddVideoProblem.PROTECTED), resolve(FakeLookup(stream = ProbeVerdict.refused(url, Refusal.DRM)), url))
+        assertEquals(AddVideoState.Problem(AddVideoProblem.NEEDS_LOGIN), resolve(FakeLookup(stream = ProbeVerdict.refused(url, Refusal.NEEDS_LOGIN)), url))
+    }
+
+    @Test
+    fun aFileIsNeverStreamChecked() {
+        val lookup = FakeLookup(probed = 90_000)
+        resolve(lookup, "https://cdn.example.com/v.mp4")
+        assertTrue(lookup.streamCalls.isEmpty())
     }
 }

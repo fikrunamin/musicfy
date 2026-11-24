@@ -2,6 +2,7 @@ package com.example.musicfy.ritme
 
 import com.example.musicfy.models.MediaMetadata
 import com.example.musicfy.ritme.entries.RitmeEntries
+import com.example.musicfy.ritme.protocol.MediaUrlRules
 import com.example.musicfy.ritme.protocol.NewEntry
 import com.example.musicfy.ritme.protocol.RoomState
 import com.example.musicfy.ritme.session.NoticeKey
@@ -152,6 +153,16 @@ class RitmeController @Inject constructor(
 
     /** The room's link on the server this session was started or joined with, not the current setting. */
     fun shareLink(code: String): String = RitmeLinks.shareLink(session.serverUrl ?: settings.serverUrl, code)
+
+    /**
+     * The Ritme web client's origin (where web members play from), for the probes' CORS check:
+     * the room's server, or the default server when that is a local development address.
+     */
+    fun webOrigin(): String {
+        val origin = MediaUrlRules.referrerOf(session.serverUrl ?: settings.serverUrl)
+            ?: MediaUrlRules.referrerOf(RitmeConfig.DEFAULT_SERVER_URL)
+        return origin?.removeSuffix("/") ?: RitmeConfig.DEFAULT_SERVER_URL.trimEnd('/')
+    }
 
     /** Creates a room from [startWith], or else from the local queue (current song onward, play order). */
     fun startRoom(name: String, startWith: List<MediaMetadata?>? = null, startWithEntries: List<NewEntry>? = null) {

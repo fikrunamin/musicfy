@@ -1,8 +1,12 @@
 package com.example.musicfy.ritme.video
 
 import com.example.musicfy.ritme.entries.RitmeEntries
+import com.example.musicfy.ritme.media.MediaUrlClassifier
+import com.example.musicfy.ritme.media.ProbeVerdict
+import com.example.musicfy.ritme.media.Refusal
 import com.example.musicfy.ritme.protocol.MediaKind
 import com.example.musicfy.ritme.protocol.NewEntry
+import com.example.musicfy.ritme.protocol.StreamType
 
 /** A YouTube video "Add video" can preview: from a link's info or a search result. */
 data class VideoChoice(
@@ -25,6 +29,9 @@ interface VideoLookup {
 
     /** A progressive file's length; null when it could not be read (in time). */
     suspend fun probeDurationMs(url: String): Long?
+
+    /** An HLS/DASH link checked like the browser's finds (spec 4.6, 4.7 step 4); null when it could not be checked. */
+    suspend fun probeStream(url: String): ProbeVerdict?
 }
 
 sealed interface AddVideoState {
@@ -42,6 +49,12 @@ enum class AddVideoProblem {
 
     /** A progressive file whose length could not be read (in time): worth trying again. */
     LENGTH_UNREADABLE,
+
+    /** A stream with DRM keys (U12). */
+    PROTECTED,
+
+    /** A stream whose host refuses it without a sign-in (U12). */
+    NEEDS_LOGIN,
 }
 
 /**
@@ -61,19 +74,7 @@ class RitmeAddVideoModel(private val lookup: VideoLookup) {
             is VideoLink.YouTube -> lookup.info(link.videoId)
                 ?.let { preview(it.copy(videoId = link.videoId), music = link.music) }
                 ?: AddVideoState.Problem(AddVideoProblem.NOT_FOUND)
-            is VideoLink.Direct -> {
-                // HLS/DASH: no file length to read; 0 = live (Decision 13). A file whose length
-                // could not be read is never added as live (joiners at 0:00, seeks ignored, "LIVE"
-                // on its row): it is a problem the adder can try again.
-                val durationMs: Long = if (link.streaming) {
-                    0L
-                } else {
-                    lookup.probeDurationMs(link.url) ?: return AddVideoState.Problem(AddVideoProblem.LENGTH_UNREADABLE)
-                }
-                RitmeEntries.toUrlEntry(link.url, link.fileName, link.domain, durationMs)
-                    ?.let { AddVideoState.Preview(it, editableTitle = true) }
-                    ?: AddVideoState.Problem(AddVideoProblem.UNSAFE)
-            }
+            is VideoLink.Direct -> direct(link)
             is VideoLink.Rejected -> AddVideoState.Problem(
                 when (link.problem) {
                     VideoLink.Problem.PAGE -> AddVideoProblem.PAGE
@@ -83,6 +84,31 @@ class RitmeAddVideoModel(private val lookup: VideoLookup) {
             )
         }
     }
+
+    private suspend fun direct(link: VideoLink.Direct): AddVideoState {
+        if (!link.streaming) {
+            // A file whose length could not be read is never added as live (joiners at 0:00, seeks
+            // ignored, "LIVE" on its row): it is a problem the adder can try again.
+            val durationMs = lookup.probeDurationMs(link.url) ?: return AddVideoState.Problem(AddVideoProblem.LENGTH_UNREADABLE)
+            return urlPreview(RitmeEntries.toUrlEntry(link.url, link.fileName, link.domain, durationMs))
+        }
+        // HLS/DASH (#3): checked like the browser's finds. A finished stream keeps its length, so a
+        // play after a pause resumes instead of jumping to the "live edge"; DRM and sign-in-only
+        // streams are refused (U12). Not checkable: live (0), as in #2b.
+        val verdict = lookup.probeStream(link.url)
+        when (verdict?.refusal) {
+            Refusal.DRM -> return AddVideoState.Problem(AddVideoProblem.PROTECTED)
+            Refusal.NEEDS_LOGIN -> return AddVideoState.Problem(AddVideoProblem.NEEDS_LOGIN)
+            else -> Unit
+        }
+        val checked = verdict?.takeIf { it.refusal == null }
+        val durationMs = if (checked == null || checked.live) 0L else checked.durationMs ?: 0L
+        val streamType = checked?.streamType?.takeUnless { it == StreamType.UNKNOWN } ?: MediaUrlClassifier.streamTypeOf(link.url)
+        return urlPreview(RitmeEntries.toUrlEntry(link.url, link.fileName, link.domain, durationMs, streamType))
+    }
+
+    private fun urlPreview(entry: NewEntry?): AddVideoState =
+        entry?.let { AddVideoState.Preview(it, editableTitle = true) } ?: AddVideoState.Problem(AddVideoProblem.UNSAFE)
 
     /** A search result tapped: its preview. Results already carry everything, so no info call. */
     fun choose(choice: VideoChoice): AddVideoState = preview(choice, music = false)
