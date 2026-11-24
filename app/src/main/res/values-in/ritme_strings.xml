@@ -130,4 +130,34 @@
     <string name="ritme_browser_open_app_body">Halaman ini ingin membuka aplikasi lain. Browser Ritme tetap di sini.</string>
     <string name="ritme_browser_open_app">Buka</string>
     <string name="ritme_browser_crashed">Halaman berhenti bekerja</string>
+    <plurals name="ritme_browser_found">
+        <item quantity="other">%d video ditemukan</item>
+    </plurals>
+    <string name="ritme_browser_blob_pill">Video tidak bisa dibagikan</string>
+    <string name="ritme_browser_found_title">Video di halaman ini</string>
+    <string name="ritme_browser_youtube_row">Video YouTube ini</string>
+    <string name="ritme_browser_blob_only">Video di halaman ini tidak bisa dibagikan</string>
+    <string name="ritme_browser_none">Belum ada video yang ditemukan. Putar dulu videonya di halaman.</string>
+    <string name="ritme_browser_checking">Memeriksa…</string>
+    <string name="ritme_browser_badge_drm">Berproteksi</string>
+    <string name="ritme_browser_badge_login">Butuh login</string>
+    <string name="ritme_browser_badge_failed">Gagal diperiksa</string>
+    <string name="ritme_browser_badge_length">Panjang tidak terbaca</string>
+    <string name="ritme_browser_badge_app_only">Hanya di aplikasi</string>
+    <string name="ritme_browser_badge_not_web">Tidak bisa diputar di web</string>
+    <string name="ritme_browser_confirm_title">Tambahkan video ini?</string>
+    <string name="ritme_browser_title_label">Judul</string>
+    <string name="ritme_browser_source">Sumber: %1$s</string>
+    <string name="ritme_browser_visible_to_room">Link ini akan terlihat oleh semua anggota room.</string>
+    <string name="ritme_browser_note_sensitive">Link ini mungkin berisi kunci akses pribadi.</string>
+    <plurals name="ritme_browser_note_expires">
+        <item quantity="other">Link kedaluwarsa ±%d menit lagi.</item>
+    </plurals>
+    <string name="ritme_browser_note_expired">Link ini sepertinya sudah kedaluwarsa.</string>
+    <string name="ritme_browser_note_ip">Mungkin terkunci ke jaringanmu.</string>
+    <string name="ritme_browser_note_app_only">Hanya bisa diputar di aplikasi Android, tidak di web.</string>
+    <string name="ritme_browser_note_not_web">Tidak bisa diputar di web.</string>
+    <string name="ritme_browser_note_key">Server kuncinya mungkin butuh login.</string>
+    <string name="ritme_browser_refusal_failed">Video ini tidak bisa diperiksa. Coba lagi, atau putar dulu videonya di halaman.</string>
+    <string name="ritme_browser_refusal_not_media">Ini bukan file video</string>
 </resources>

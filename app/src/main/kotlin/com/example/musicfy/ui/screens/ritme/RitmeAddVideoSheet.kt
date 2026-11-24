@@ -71,6 +71,17 @@ import com.example.musicfy.utils.makeTimeString
 import kotlinx.coroutines.delay
 
 /**
+ * Whether video-adding buttons may send ("Tambah video", the browser's confirmation): in room mode
+ * only in that room with add rights; in start mode outside a room, or in a room joined since with
+ * add rights (that room then gets the entry).
+ */
+internal fun canAddVideos(session: RitmeUiState, roomMode: Boolean): Boolean {
+    if (!session.inRoom) return !roomMode
+    val room = session.room ?: return false
+    return RitmePermissions.canAdd(room, session.memberId)
+}
+
+/**
  * What the "Add video" sheet holds, shared by its content and its pinned buttons (the button bar
  * is composed apart from the content, like RitmeEntryForm). [roomMode] is fixed when the sheet
  * opens: in a room it adds to the room, outside one it starts a room (Decision 12); a start-mode
@@ -120,11 +131,7 @@ internal class RitmeAddVideoForm(initialText: String?, val roomMode: Boolean) {
      * Never in a room this device may not add to (the host turned adding off): nothing to tap then.
      * Outside a room only in start mode (a room-mode sheet whose room is gone closes itself).
      */
-    fun canSend(session: RitmeUiState): Boolean {
-        if (!session.inRoom) return !roomMode
-        val room = session.room ?: return false
-        return RitmePermissions.canAdd(room, session.memberId)
-    }
+    fun canSend(session: RitmeUiState): Boolean = canAddVideos(session, roomMode)
 
     suspend fun resolve(model: RitmeAddVideoModel) {
         val key = text to searches
@@ -345,7 +352,7 @@ private fun videoSubtitle(channel: String, seconds: Int?): String {
  * the ripple in the 14 dp highlight shape. No trailing actions.
  */
 @Composable
-private fun AddVideoRow(
+internal fun AddVideoRow(
     title: String,
     subtitle: String,
     thumbnailUrl: String?,

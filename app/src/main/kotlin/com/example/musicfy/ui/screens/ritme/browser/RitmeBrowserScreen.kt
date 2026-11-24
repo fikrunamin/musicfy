@@ -52,6 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -82,6 +83,8 @@ import com.example.musicfy.ui.component.PopupSheetState
 import com.example.musicfy.ui.component.SheetLabel
 import com.example.musicfy.ui.component.SheetPillButton
 import com.example.musicfy.ui.component.SheetTextField
+import com.example.musicfy.ui.player.menu.MenuRowSurface
+import com.example.musicfy.ui.screens.ritme.RitmeChip
 import com.example.musicfy.ui.screens.ritme.RitmeSecondaryText
 import com.example.musicfy.ui.screens.ritme.rememberRitme
 
@@ -289,7 +292,36 @@ fun RitmeBrowserScreen(navController: NavController, initialText: String?) {
                     }
                 },
             )
-            // RITME_FOUND_PILL (Task 14 replaces this line)
+            val findings by browser.findings.collectAsState()
+            val probes by browser.probes.collectAsState()
+            val offers = browser.offers(findings, probes)
+            // The Ritme pill's chip on the floating pill's solid fill (MainActivity's RitmePill above the mini player).
+            if (offers > 0 || findings.blobOnly) {
+                RitmeChip(
+                    text = if (offers > 0) {
+                        pluralStringResource(R.plurals.ritme_browser_found, offers, offers)
+                    } else {
+                        stringResource(R.string.ritme_browser_blob_pill)
+                    },
+                    containerColor = MenuRowSurface,
+                    icon = R.drawable.play,
+                    onClick = {
+                        keyboard?.hide()
+                        sheets += popup.showRitmeFoundSheet(
+                            ritme = ritme,
+                            browser = browser,
+                            roomMode = roomMode,
+                            // Never a URL entry: the existing YOUTUBE_VIDEO path with its preview.
+                            onYouTube = { id -> ritme.controller.openAddVideo("https://www.youtube.com/watch?v=$id") },
+                            // Start mode: the start sheet takes over; the browser's job is done.
+                            onStarted = { navController.navigateUp() },
+                        )
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 16.dp),
+                )
+            }
         }
     }
 }

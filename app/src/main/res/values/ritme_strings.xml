@@ -142,4 +142,36 @@
     <string name="ritme_browser_open_app_body">This page wants to open another app. The Ritme browser stays here.</string>
     <string name="ritme_browser_open_app">Open</string>
     <string name="ritme_browser_crashed">The page stopped working</string>
+    <plurals name="ritme_browser_found">
+        <item quantity="one">%d video found</item>
+        <item quantity="other">%d videos found</item>
+    </plurals>
+    <string name="ritme_browser_blob_pill">Video can\'t be shared</string>
+    <string name="ritme_browser_found_title">Videos on this page</string>
+    <string name="ritme_browser_youtube_row">This YouTube video</string>
+    <string name="ritme_browser_blob_only">The video on this page can\'t be shared</string>
+    <string name="ritme_browser_none">No video found yet. Play the video on the page first.</string>
+    <string name="ritme_browser_checking">Checking…</string>
+    <string name="ritme_browser_badge_drm">Protected</string>
+    <string name="ritme_browser_badge_login">Needs sign-in</string>
+    <string name="ritme_browser_badge_failed">Check failed</string>
+    <string name="ritme_browser_badge_length">Length unknown</string>
+    <string name="ritme_browser_badge_app_only">App only</string>
+    <string name="ritme_browser_badge_not_web">Can\'t play on the web</string>
+    <string name="ritme_browser_confirm_title">Add this video?</string>
+    <string name="ritme_browser_title_label">Title</string>
+    <string name="ritme_browser_source">Source: %1$s</string>
+    <string name="ritme_browser_visible_to_room">Everyone in the room will see this link.</string>
+    <string name="ritme_browser_note_sensitive">This link may contain a private access key.</string>
+    <plurals name="ritme_browser_note_expires">
+        <item quantity="one">The link expires in about %d minute.</item>
+        <item quantity="other">The link expires in about %d minutes.</item>
+    </plurals>
+    <string name="ritme_browser_note_expired">This link seems to have expired already.</string>
+    <string name="ritme_browser_note_ip">It may only work on your network.</string>
+    <string name="ritme_browser_note_app_only">Plays in the Android app only, not on the web.</string>
+    <string name="ritme_browser_note_not_web">Can\'t play on the web.</string>
+    <string name="ritme_browser_note_key">Its key server may need a sign-in.</string>
+    <string name="ritme_browser_refusal_failed">This video couldn\'t be checked. Try again, or play it on the page first.</string>
+    <string name="ritme_browser_refusal_not_media">This isn\'t a video file</string>
 </resources>
