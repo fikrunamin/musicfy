@@ -181,4 +181,14 @@ class PlaylistSnifferTest {
         assertEquals(MediaFormat.HTML, detect("<!DOCTYPE html><html><body>use &lt;MPD or <MPD here</body></html>"))
         assertEquals(MediaFormat.HTML, detect("\uFEFF\n<html><MPD>"))
     }
+
+    @Test
+    fun manyUnterminatedCommentOpenersStayFast() {
+        val text = "<MPD type=\"static\"><Representation height=\"720\"/>" + "<!--".repeat(50_000)
+        val started = System.nanoTime()
+        val info = PlaylistSniffer.parseDash(text)
+        assertTrue((System.nanoTime() - started) / 1_000_000 < 2_000)
+        assertEquals(720, info.maxHeight)
+        assertFalse(info.drm)
+    }
 }

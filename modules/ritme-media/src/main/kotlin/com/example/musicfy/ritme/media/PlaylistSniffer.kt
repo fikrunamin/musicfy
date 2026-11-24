@@ -45,7 +45,6 @@ object PlaylistSniffer {
     private val MPD_TAG = Regex("""<MPD\b[^>]*>""")
     private val TYPE_ATTRIBUTE = Regex("""\stype\s*=\s*["']([^"']*)["']""")
     private val DURATION_ATTRIBUTE = Regex("""\smediaPresentationDuration\s*=\s*["']([^"']*)["']""")
-    private val XML_COMMENT = Regex("""<!--.*?-->""", RegexOption.DOT_MATCHES_ALL)
     private val CONTENT_PROTECTION = Regex("""<(?:[A-Za-z0-9_]+:)?ContentProtection\b""")
     private val HEIGHT_ATTRIBUTE = Regex("""\sheight\s*=\s*["'](\d+)["']""")
     private val ISO_DURATION =
@@ -116,12 +115,28 @@ object PlaylistSniffer {
     }
 
     fun parseDash(text: String): DashInfo {
-        val clean = text.replace(XML_COMMENT, "")
+        val clean = stripXmlComments(text)
         val root = MPD_TAG.find(clean)?.value.orEmpty()
         val live = TYPE_ATTRIBUTE.find(root)?.groupValues?.get(1) == "dynamic"
         val duration = DURATION_ATTRIBUTE.find(root)?.groupValues?.get(1)?.let(::isoDurationMs)
         val maxHeight = HEIGHT_ATTRIBUTE.findAll(clean).mapNotNull { it.groupValues[1].toIntOrNull() }.maxOrNull()
         return DashInfo(live, if (live) null else duration, CONTENT_PROTECTION.containsMatchIn(clean), maxHeight)
+    }
+
+    /** [text] without `<!-- -->` comments, in one pass; an unterminated `<!--` drops the rest. */
+    private fun stripXmlComments(text: String): String {
+        var open = text.indexOf("<!--")
+        if (open < 0) return text
+        val out = StringBuilder(text.length)
+        var from = 0
+        while (open >= 0) {
+            out.append(text, from, open)
+            val close = text.indexOf("-->", open + 4)
+            if (close < 0) return out.toString()
+            from = close + 3
+            open = text.indexOf("<!--", from)
+        }
+        return out.append(text, from, text.length).toString()
     }
 
     /** An ISO 8601 duration (`PT1H2M3.5S`, `P1DT1S`) in ms; null when malformed or zero. */
