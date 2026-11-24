@@ -2,8 +2,10 @@ package com.example.musicfy.ritme.entries
 
 import com.example.musicfy.models.MediaMetadata
 import com.example.musicfy.ritme.protocol.MediaKind
+import com.example.musicfy.ritme.protocol.MediaUrlRules
 import com.example.musicfy.ritme.protocol.NewEntry
 import com.example.musicfy.ritme.protocol.QueueEntry
+import com.music.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_UGC
 import java.net.URI
 import java.text.Normalizer
 
@@ -35,6 +37,16 @@ object RitmeEntries {
     const val MAX_TEXT = 300
     const val MAX_DURATION_MS = 86_400_000L
     private const val MAX_THUMBNAIL_LENGTH = 512
+
+    /**
+     * The player's media id for a URL entry: never a YouTube id, so MusicService sends it down its
+     * own route (no resolver, no song cache) and skips lyrics, history and scrobbling for it.
+     */
+    const val URL_MEDIA_ID_PREFIX = "RITME_URL:"
+
+    fun urlMediaId(entryId: String): String = URL_MEDIA_ID_PREFIX + entryId
+
+    fun isUrlMediaId(mediaId: String?): Boolean = mediaId?.startsWith(URL_MEDIA_ID_PREFIX) == true
 
     private val VIDEO_ID = Regex("^[A-Za-z0-9_-]{1,64}$")
     private val THUMBNAIL_HOST_SUFFIXES = listOf(".ytimg.com", ".googleusercontent.com", ".ggpht.com")
@@ -123,15 +135,28 @@ object RitmeEntries {
     /** True if at least one of [songs] can go into a room (not a local file, nothing the server refuses). */
     fun hasShareable(songs: List<MediaMetadata?>): Boolean = songs.any { toNewEntry(it) != null }
 
-    /** Android plays YouTube kinds by videoId (YOUTUBE_VIDEO audio-only); URL and UNKNOWN are not supported yet. */
-    fun isPlayable(entry: QueueEntry): Boolean =
-        (entry.kind == MediaKind.YOUTUBE_MUSIC || entry.kind == MediaKind.YOUTUBE_VIDEO) && VIDEO_ID.matches(entry.videoId)
+    /**
+     * YouTube kinds play by videoId (YOUTUBE_VIDEO: audio here, picture from the video stage);
+     * URL entries play their url when it passes the server's MediaUrlRules (spec 4.5). UNKNOWN never.
+     */
+    fun isPlayable(entry: QueueEntry): Boolean = when (entry.kind) {
+        MediaKind.YOUTUBE_MUSIC, MediaKind.YOUTUBE_VIDEO -> VIDEO_ID.matches(entry.videoId)
+        MediaKind.URL -> entry.videoId.isEmpty() && entry.url?.let(MediaUrlRules::isAcceptableMediaUrl) == true
+        MediaKind.UNKNOWN -> false
+    }
+
+    /** Entries watched rather than listened to: they get the video stage and 16:9 rows. */
+    fun isVideo(entry: QueueEntry): Boolean = entry.kind == MediaKind.YOUTUBE_VIDEO || entry.kind == MediaKind.URL
 
     fun toMediaMetadata(entry: QueueEntry): MediaMetadata = MediaMetadata(
-        id = entry.videoId,
+        id = if (entry.kind == MediaKind.URL) urlMediaId(entry.entryId) else entry.videoId,
         title = entry.title,
         artists = listOf(MediaMetadata.Artist(id = null, name = entry.artist)),
         duration = (entry.durationMs / 1000).toInt(),
-        thumbnailUrl = entry.thumbnailUrl,
+        // A URL entry's picture could come from any host: it is never loaded (spec 4.7, R8).
+        thumbnailUrl = if (entry.kind == MediaKind.URL) null else entry.thumbnailUrl,
+        // Marks the item as a video (isVideoSong), so the cover never goes looking for "its official
+        // video" by title, which found some other video for non-music entries (spec 1.2).
+        musicVideoType = if (entry.kind == MediaKind.YOUTUBE_VIDEO) MUSIC_VIDEO_TYPE_UGC else null,
     )
 }

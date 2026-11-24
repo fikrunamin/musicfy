@@ -14,6 +14,7 @@ fun entry(
     durationMs: Long = 200_000,
     kind: MediaKind = MediaKind.YOUTUBE_MUSIC,
     videoId: String = "vid$id",
+    url: String? = null,
 ) = QueueEntry(
     entryId = id,
     videoId = videoId,
@@ -23,6 +24,7 @@ fun entry(
     durationMs = durationMs,
     addedBy = addedBy,
     kind = kind,
+    url = url,
 )
 
 fun member(id: String, isHost: Boolean = false, connected: Boolean = true) =

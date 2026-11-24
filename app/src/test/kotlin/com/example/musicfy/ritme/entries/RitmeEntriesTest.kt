@@ -105,11 +105,51 @@ class RitmeEntriesTest {
     }
 
     @Test
-    fun onlyYouTubeKindsArePlayable() {
+    fun youTubeKindsAndSafeUrlEntriesArePlayable() {
         assertTrue(RitmeEntries.isPlayable(entry("a")))
         assertTrue(RitmeEntries.isPlayable(entry("v", kind = MediaKind.YOUTUBE_VIDEO)))
+        assertTrue(RitmeEntries.isPlayable(entry("u", kind = MediaKind.URL, videoId = "", url = "https://cdn.example.com/v.mp4")))
+        // a URL entry needs its url, an empty videoId, and a url the server's rules accept
         assertFalse(RitmeEntries.isPlayable(entry("u", kind = MediaKind.URL, videoId = "")))
+        assertFalse(RitmeEntries.isPlayable(entry("u", kind = MediaKind.URL, videoId = "abc", url = "https://cdn.example.com/v.mp4")))
+        assertFalse(RitmeEntries.isPlayable(entry("u", kind = MediaKind.URL, videoId = "", url = "http://192.168.1.10/v.mp4")))
         assertFalse(RitmeEntries.isPlayable(entry("x", kind = MediaKind.UNKNOWN)))
+    }
+
+    @Test
+    fun videoAndUrlEntriesAreVideos() {
+        assertFalse(RitmeEntries.isVideo(entry("a")))
+        assertTrue(RitmeEntries.isVideo(entry("v", kind = MediaKind.YOUTUBE_VIDEO)))
+        assertTrue(RitmeEntries.isVideo(entry("u", kind = MediaKind.URL, videoId = "", url = "https://cdn.example.com/v.mp4")))
+        assertFalse(RitmeEntries.isVideo(entry("x", kind = MediaKind.UNKNOWN)))
+    }
+
+    @Test
+    fun aVideoEntryIsMarkedAsAVideoSoTheCoverPlaysItsOwnVideo() {
+        // Bug 1 (spec 1.2): without musicVideoType the cover searched for "the official video" by title.
+        val video = RitmeEntries.toMediaMetadata(entry("v", kind = MediaKind.YOUTUBE_VIDEO))
+        assertEquals("vidv", video.id)
+        assertTrue(video.isVideoSong)
+        assertFalse(RitmeEntries.toMediaMetadata(entry("a")).isVideoSong)
+    }
+
+    @Test
+    fun aUrlEntryPlaysUnderItsOwnIdAndNeverLoadsItsPicture() {
+        val link = entry("u1", kind = MediaKind.URL, videoId = "", url = "https://cdn.example.com/v.mp4")
+            .copy(thumbnailUrl = "https://cdn.example.com/t.jpg")
+        val m = RitmeEntries.toMediaMetadata(link)
+        assertEquals("RITME_URL:u1", m.id)
+        assertNull(m.thumbnailUrl)
+        assertFalse(m.isVideoSong)
+        assertEquals("Artist u1", m.artists.single().name)
+    }
+
+    @Test
+    fun urlMediaIdsAreRecognised() {
+        assertEquals("RITME_URL:e9", RitmeEntries.urlMediaId("e9"))
+        assertTrue(RitmeEntries.isUrlMediaId(RitmeEntries.urlMediaId("e9")))
+        assertFalse(RitmeEntries.isUrlMediaId("dQw4w9WgXcQ"))
+        assertFalse(RitmeEntries.isUrlMediaId(null))
     }
 
     @Test
