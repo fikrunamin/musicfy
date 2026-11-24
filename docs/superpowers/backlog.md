@@ -92,3 +92,19 @@ video URL. Sampai saat itu, DMG hanya dibuat manual untuk percobaan
   terlihat dan hanya memunculkan toast. Pertimbangkan menyembunyikan atau meredupkannya untuk tamu.
 - Flaky test `AbuseLimitsTest.anInboundFrameFloodClosesTheSocket`: sudah diperbaiki di main lewat
   #2a (9743293). Pantau saja.
+
+## 2026-11-24: Follow-up browser Ritme (#3)
+
+- **Desktop (JCEF):** pakai `:modules:ritme-media` dan `page-media.js` yang sama (spec §5):
+  `CefResourceRequestHandler.onBeforeResourceLoad` = lapis 1, `onResourceResponse` memberi
+  Content-Type asli, `MediaProber` dengan klien HTTP desktop sendiri.
+- **Hapus data tanpa profil WebView:** di WebView lama (tanpa `MULTI_PROFILE`) baris "Hapus data
+  browser Ritme" disembunyikan. Kalau perlu, hapus cookie per origin yang pernah dibuka browser Ritme.
+- **Request sub-resource ke alamat lokal:** browser tidak memblokir gambar/skrip halaman ke LAN
+  (interception selalu `null`, D9). Pertimbangkan Private Network Access WebView kalau tersedia.
+- **Iframe ke alamat LAN:** browser tidak bisa memblokir navigasi http(s) di dalam iframe ke alamat
+  lokal, karena interception harus selalu `null` (D9); pemutaran tetap dijaga `RitmeAddressGuard`.
+- **Nama domain yang mengarah ke IP privat** (gaya nip.io) lolos pengecekan host di browser;
+  pemutaran dan probe tetap ditolak di level socket.
+- **Fullscreen video di halaman** (`onShowCustomView`) belum didukung di browser Ritme.
+- **Sinkron live lewat PROGRAM-DATE-TIME** dan **PiP** tetap di daftar lanjutan spec §10.
