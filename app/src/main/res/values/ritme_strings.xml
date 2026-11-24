@@ -85,4 +85,5 @@
     <string name="ritme_save">Save</string>
     <string name="ritme_server_url_invalid">Enter a valid server address, like https://ritme.example.com</string>
     <string name="ritme_settings_note">Changes apply to the next Ritme you start or join.</string>
+    <string name="ritme_url_local_address_blocked">This link points to a local address and was blocked</string>
 </resources>

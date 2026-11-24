@@ -2885,6 +2885,14 @@ class MusicService :
         // A Ritme URL entry (spec 8): none of the YouTube recoveries below apply to it. In a room
         // failStream keeps retrying it every few seconds while the planner follows the room.
         if (mediaId != null && com.example.musicfy.ritme.entries.RitmeEntries.isUrlMediaId(mediaId)) {
+            // A link that leads to a local address (spec 4.5) fails the same way every time: say so,
+            // and no retry loop. The entry stays failed until the room moves on or the host skips it.
+            if (com.example.musicfy.ritme.playback.RitmeAddressGuard.isRefusal(error)) {
+                player.pause()
+                clearStreamFailure()
+                com.example.musicfy.ui.component.TopToaster.error(getString(R.string.ritme_url_local_address_blocked))
+                return
+            }
             failStream()
             return
         }
@@ -3533,19 +3541,23 @@ class MusicService :
 
     /**
      * Ritme URL entries (spec 4.4, 4.5): straight from the host a member chose, never through the
-     * YouTube resolver, the song caches or the proxy; no cookies; a connection that lands on a local
-     * address is refused. OkHttpDataSource only speaks http(s), so file:/content: never play from a room.
+     * YouTube resolver, the song caches or the proxy; no cookies; a local address is refused before
+     * the socket connects (RitmeUrlHttp). OkHttpDataSource only speaks http(s), so file:/content: never play from a room.
      */
     private val ritmeUrlSourceFactory by lazy {
-        val client = OkHttpClient.Builder()
-            .proxy(java.net.Proxy.NO_PROXY)
-            .addNetworkInterceptor(com.example.musicfy.ritme.playback.RitmeAddressGuard.interceptor)
-            .build()
-        val userAgent = runCatching {
-            com.example.musicfy.ui.screens.settings.importsync.chromeUserAgent(android.webkit.WebSettings.getDefaultUserAgent(this))
-        }.getOrDefault(com.example.musicfy.ritme.playback.RitmeItems.FALLBACK_USER_AGENT)
-        DefaultMediaSourceFactory(OkHttpDataSource.Factory(client).setUserAgent(userAgent))
+        // Reading the WebView's user agent can load WebView, which must not hold up the player's
+        // thread: requests send the fallback until it's ready.
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                com.example.musicfy.ui.screens.settings.importsync.chromeUserAgent(android.webkit.WebSettings.getDefaultUserAgent(this@MusicService))
+            }.onSuccess { ritmeUserAgent = it }
+        }
+        DefaultMediaSourceFactory(OkHttpDataSource.Factory(com.example.musicfy.ritme.playback.RitmeUrlHttp.client { ritmeUserAgent }))
+            .setLoadErrorHandlingPolicy(com.example.musicfy.ritme.playback.RitmeUrlHttp.loadErrorPolicy)
     }
+
+    @Volatile
+    private var ritmeUserAgent = com.example.musicfy.ritme.playback.RitmeItems.FALLBACK_USER_AGENT
 
     private fun createMediaSourceFactory(): androidx.media3.exoplayer.source.MediaSource.Factory {
         val defaultFactory = DefaultMediaSourceFactory(

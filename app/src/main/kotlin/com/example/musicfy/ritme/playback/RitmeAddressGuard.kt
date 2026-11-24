@@ -3,12 +3,22 @@ package com.example.musicfy.ritme.playback
 import okhttp3.Interceptor
 import java.io.IOException
 import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
+import java.net.SocketAddress
+import javax.net.SocketFactory
+
+/** A room URL led to a local address (or one that could not be checked); retrying cannot help. */
+class RitmeAddressRefusedException(address: InetAddress?) : IOException("Ritme: refused a local address $address")
 
 /**
  * Keeps a room's URL entries off this device's own network (spec 4.5): a member must not be able to
  * make other members' phones reach their router or LAN. MediaUrlRules already refuses local hosts
- * by name; this checks the address a connection actually reached, which also covers DNS rebinding,
- * IP literals (OkHttp does not ask Dns about those) and redirects.
+ * by name; this checks the address a socket is about to connect to, which also covers DNS
+ * rebinding, IP literals (OkHttp does not ask Dns about those) and redirects.
+ *
+ * Two layers, both failing closed: [socketFactory] refuses before the TCP SYN (and so before any TLS
+ * bytes), and [interceptor] checks the connected route again before a request goes out.
  */
 object RitmeAddressGuard {
 
@@ -51,10 +61,54 @@ object RitmeAddressGuard {
         return true
     }
 
-    /** A network interceptor: runs once the connection is up, before the request goes out. */
+    /**
+     * Plain sockets that refuse to connect to anything but a public address. OkHttp creates every
+     * connection's raw socket here (redirect hops and every address of a name included) and layers
+     * TLS over that socket for https, so a refused address sees neither a SYN nor a ClientHello.
+     */
+    val socketFactory: SocketFactory = object : SocketFactory() {
+        override fun createSocket(): Socket = GuardedSocket()
+        override fun createSocket(host: String?, port: Int): Socket = connected(InetSocketAddress(host, port), null)
+        override fun createSocket(host: String?, port: Int, localHost: InetAddress?, localPort: Int): Socket =
+            connected(InetSocketAddress(host, port), InetSocketAddress(localHost, localPort))
+        override fun createSocket(host: InetAddress?, port: Int): Socket = connected(InetSocketAddress(host, port), null)
+        override fun createSocket(address: InetAddress?, port: Int, localAddress: InetAddress?, localPort: Int): Socket =
+            connected(InetSocketAddress(address, port), InetSocketAddress(localAddress, localPort))
+    }
+
+    private fun connected(endpoint: InetSocketAddress, local: InetSocketAddress?): Socket {
+        val socket = GuardedSocket()
+        try {
+            if (local != null) socket.bind(local)
+            socket.connect(endpoint)
+        } catch (e: IOException) {
+            socket.close()
+            throw e
+        }
+        return socket
+    }
+
+    /** Socket.connect(SocketAddress) goes through connect(SocketAddress, Int), so this is the one way out. */
+    private class GuardedSocket : Socket() {
+        override fun connect(endpoint: SocketAddress?, timeout: Int) {
+            val address = (endpoint as? InetSocketAddress)?.address // null when unresolved
+            if (address == null || !RitmeAddressGuard.isPublic(address)) throw RitmeAddressRefusedException(address)
+            super.connect(endpoint, timeout)
+        }
+    }
+
+    /** A network interceptor: runs once the connection is up, before the request goes out. A second check. */
     val interceptor = Interceptor { chain ->
         val address = chain.connection()?.route()?.socketAddress?.address
-        if (address != null && !isPublic(address)) throw IOException("Ritme: refused a local address")
+        if (address == null || !isPublic(address)) throw RitmeAddressRefusedException(address)
         chain.proceed(chain.request())
+    }
+
+    /** Whether [error] (a PlaybackException, say) was caused by this guard: through its causes and suppressed exceptions. */
+    fun isRefusal(error: Throwable?): Boolean {
+        val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Throwable, Boolean>())
+        fun found(t: Throwable?): Boolean =
+            t != null && seen.add(t) && (t is RitmeAddressRefusedException || found(t.cause) || t.suppressed.any(::found))
+        return found(error)
     }
 }
