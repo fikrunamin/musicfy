@@ -1,5 +1,6 @@
 package com.example.musicfy.ritme.browser
 
+import com.example.musicfy.ritme.media.SenderBinding
 import com.example.musicfy.ritme.media.Candidate
 import com.example.musicfy.ritme.media.CandidateCollector
 import com.example.musicfy.ritme.media.CandidateRanking

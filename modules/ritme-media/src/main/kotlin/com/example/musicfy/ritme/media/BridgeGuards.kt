@@ -1,10 +1,10 @@
-package com.example.musicfy.ritme.browser
+package com.example.musicfy.ritme.media
 
 import java.net.URI
 import java.util.Locale
 
 /** Binds what a page says about itself to who really sent it: reports are untrusted. */
-internal object SenderBinding {
+object SenderBinding {
     /** scheme://host:port with default ports filled in, lower-cased; null when [url] is not an http(s) address. */
     fun originOf(url: String): String? {
         val uri = runCatching { URI(url.trim()) }.getOrNull() ?: return null
@@ -27,19 +27,24 @@ internal object SenderBinding {
     }
 }
 
-/** At most [limit] events per [windowMs] per key; the rest are refused. Thread-safe. */
-internal class RateLimiter(
+/** At most [limit] events per [windowMs] per key; the rest are refused. When the table is full a new key evicts stale keys, else the least recently used one. Thread-safe. */
+class RateLimiter(
     private val limit: Int = 10,
     private val windowMs: Long = 1_000L,
     private val maxKeys: Int = 64,
 ) {
     private val recent = HashMap<String, ArrayDeque<Long>>()
 
+    /** Keys currently tracked. */
+    internal val size: Int @Synchronized get() = recent.size
+
     @Synchronized
     fun allow(key: String, nowMs: Long): Boolean {
         if (recent.size >= maxKeys && key !in recent) {
             recent.entries.removeAll { (_, times) -> times.isEmpty() || nowMs - times.last() >= windowMs }
-            if (recent.size >= maxKeys) return false
+            if (recent.size >= maxKeys) {
+                recent.entries.minByOrNull { (_, times) -> times.lastOrNull() ?: Long.MIN_VALUE }?.let { recent.remove(it.key) }
+            }
         }
         val times = recent.getOrPut(key) { ArrayDeque() }
         while (times.isNotEmpty() && nowMs - times.first() >= windowMs) times.removeFirst()

@@ -72,6 +72,7 @@ import com.example.musicfy.ritme.browser.RitmeProbes
 import com.example.musicfy.ritme.media.AddressInput
 import com.example.musicfy.ritme.media.AddressRefusal
 import com.example.musicfy.ritme.media.BrowserAddress
+import com.example.musicfy.ritme.media.ExternalTarget
 import com.example.musicfy.ritme.video.RitmeFileLength
 import com.example.musicfy.ui.component.LocalZoomOutOverlayState
 import com.example.musicfy.ui.component.Material3MenuGroup
@@ -123,11 +124,17 @@ fun RitmeBrowserScreen(navController: NavController, initialText: String?) {
     var progress by remember { mutableIntStateOf(0) }
     var canForward by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<AddressRefusal?>(null) }
+    // The ⋯ menu and the external-app confirmation: dismissed with the browser, never left behind it.
+    val sheets = remember { mutableListOf<PopupSheetHandle?>() }
+    val entry = remember { navController.currentBackStackEntry }
+    fun leave() {
+        if (navController.currentBackStackEntry == entry) navController.navigateUp()
+    }
 
     // Opened to add to a room that has since ended (or was left): nothing left to add to.
     val roomGone = roomMode && !session.inRoom
     LaunchedEffect(roomGone) {
-        if (roomGone) navController.navigateUp()
+        if (roomGone) leave()
     }
 
     fun open(text: String) {
@@ -144,13 +151,14 @@ fun RitmeBrowserScreen(navController: NavController, initialText: String?) {
 
     fun goBack() {
         val view = webView
-        if (view != null && view.canGoBack()) view.goBack() else navController.navigateUp()
+        if (view != null && view.canGoBack()) view.goBack() else leave()
     }
 
     val events = remember {
         object : RitmeWebEvents {
             override fun onPageStarted(url: String) {
                 browser.pageStarted(url)
+                problem = null
                 pageUrl = url
                 if (!editing) address = url
             }
@@ -178,7 +186,13 @@ fun RitmeBrowserScreen(navController: NavController, initialText: String?) {
             }
 
             override fun onExternalApp(url: String) {
-                popup.showRitmeExternalAppSheet(context, url)
+                sheets += popup.showRitmeExternalAppSheet(context, url)
+            }
+
+            override fun onRendererGone() {
+                webView = null
+                Toast.makeText(context, R.string.ritme_browser_crashed, Toast.LENGTH_SHORT).show()
+                leave()
             }
         }
     }
@@ -196,6 +210,8 @@ fun RitmeBrowserScreen(navController: NavController, initialText: String?) {
         onDispose {
             lifecycle.removeObserver(observer)
             stopWatching()
+            sheets.forEach { it?.dismiss() }
+            sheets.clear()
             webView?.let { view ->
                 view.stopLoading()
                 view.onPause()
@@ -229,7 +245,7 @@ fun RitmeBrowserScreen(navController: NavController, initialText: String?) {
             onReload = { webView?.reload() },
             onMenu = {
                 keyboard?.hide()
-                popup.showRitmeBrowserMenu(
+                sheets += popup.showRitmeBrowserMenu(
                     canGoForward = canForward,
                     canClear = ritmeProfileSupported(),
                     onForward = { webView?.goForward() },
@@ -239,7 +255,7 @@ fun RitmeBrowserScreen(navController: NavController, initialText: String?) {
                         webView?.let(::clearRitmeBrowserData)
                         Toast.makeText(context, R.string.ritme_browser_data_cleared, Toast.LENGTH_SHORT).show()
                     },
-                    onClose = { navController.navigateUp() },
+                    onClose = { leave() },
                 )
             },
         )
@@ -336,7 +352,7 @@ private fun PopupSheetState.showRitmeBrowserMenu(
     onOpenElsewhere: () -> Unit,
     onClear: () -> Unit,
     onClose: () -> Unit,
-) {
+): PopupSheetHandle? {
     var handle: PopupSheetHandle? = null
     handle = showWithHandle {
         fun then(action: () -> Unit): () -> Unit = {
@@ -379,10 +395,11 @@ private fun PopupSheetState.showRitmeBrowserMenu(
             )
         }
     }
+    return handle
 }
 
 /** A page asked for another app (`intent:`, `market:`, …) after a tap: ask first (spec 4.7). */
-private fun PopupSheetState.showRitmeExternalAppSheet(context: Context, url: String) {
+private fun PopupSheetState.showRitmeExternalAppSheet(context: Context, url: String): PopupSheetHandle? {
     var handle: PopupSheetHandle? = null
     handle = showWithHandle(
         buttonBar = {
@@ -412,22 +429,15 @@ private fun PopupSheetState.showRitmeExternalAppSheet(context: Context, url: Str
             RitmeSecondaryText(externalTarget(url))
         }
     }
+    return handle
 }
 
 private fun parseExternal(url: String): Intent? = runCatching {
     if (url.startsWith("intent:", ignoreCase = true)) Intent.parseUri(url, Intent.URI_INTENT_SCHEME) else Intent(Intent.ACTION_VIEW, url.toUri())
 }.getOrNull()
 
-/** What the confirmation shows: the scheme and host the app would be asked to open, and the app's package when the link names one. */
-private fun externalTarget(url: String): String {
-    val intent = parseExternal(url) ?: return url.substringBefore('?').take(80)
-    val data = intent.data
-    val target = buildString {
-        append(data?.scheme ?: "?").append("://").append(data?.host.orEmpty())
-        intent.`package`?.let { append("  (").append(it).append(')') }
-    }
-    return target.take(120)
-}
+/** What the confirmation shows: the app's package for an `intent:` link that names one, else the scheme (and host) it opens. */
+private fun externalTarget(url: String): String = ExternalTarget.describe(url)
 
 private val NEVER_EXTERNAL_SCHEMES = setOf("file", "content", "javascript")
 

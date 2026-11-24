@@ -7,6 +7,9 @@ import android.net.Uri
 import android.os.SystemClock
 import android.view.ViewGroup
 import android.webkit.GeolocationPermissions
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.PermissionRequest
 import android.webkit.ServiceWorkerClient
 import android.webkit.ServiceWorkerController
@@ -19,11 +22,11 @@ import android.webkit.WebViewClient
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
-import com.example.musicfy.ritme.browser.RateLimiter
 import com.example.musicfy.ritme.media.BrowserAddress
 import com.example.musicfy.ritme.media.Navigation
 import com.example.musicfy.ritme.media.PageMediaScript
 import com.example.musicfy.ritme.media.PageReports
+import com.example.musicfy.ritme.media.RateLimiter
 import com.example.musicfy.ui.screens.settings.importsync.chromeUserAgent
 import com.example.musicfy.ui.screens.settings.importsync.hideAppIdentity
 
@@ -37,12 +40,15 @@ internal interface RitmeWebEvents {
     fun onProtectedMedia()
     fun onLocalAddressRefused()
     fun onExternalApp(url: String)
+
+    /** The page's renderer process died or was killed: the view is unusable and the browser should close. */
+    fun onRendererGone()
 }
 
-/** The Ritme browser's own WebView profile (U11): its cookies and storage never mix with the app's other web views. */
 /** The page script throttles itself well below this; extra messages from one origin are dropped. */
 private const val MAX_MESSAGES_PER_SECOND = 10
 
+/** The Ritme browser's own WebView profile (U11): its cookies and storage never mix with the app's other web views. */
 internal const val RITME_BROWSER_PROFILE = "ritme-browser"
 
 internal fun ritmeProfileSupported(): Boolean = WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)
@@ -135,7 +141,24 @@ private class RitmeWebClient(private val events: RitmeWebEvents, private val doc
     }
 
     override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
-        url?.let(events::onPageStarted)
+        if (url == null) return
+        // POSTs and self navigations skip shouldOverrideUrlLoading: a local or non-web main frame stops here.
+        val decision = BrowserAddress.navigation(url, false)
+        if (decision != Navigation.ALLOW) {
+            view.stopLoading()
+            if (decision == Navigation.REFUSE_LOCAL) events.onLocalAddressRefused()
+            if (view.canGoBack()) view.goBack() else view.loadUrl("about:blank")
+            return
+        }
+        events.onPageStarted(url)
+    }
+
+    /** A dead renderer takes the app down unless handled: drop the view, leave the browser, keep the music playing. */
+    override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+        (view.parent as? ViewGroup)?.removeView(view)
+        view.destroy()
+        events.onRendererGone()
+        return true
     }
 
     override fun onPageFinished(view: WebView, url: String?) {
@@ -153,6 +176,29 @@ private class RitmeWebClient(private val events: RitmeWebEvents, private val doc
 }
 
 private class RitmeChromeClient(private val events: RitmeWebEvents) : WebChromeClient() {
+
+    // Pages cannot raise platform dialogs (spam); they are cancelled silently.
+    override fun onJsAlert(view: WebView?, url: String?, message: String?, result: JsResult): Boolean {
+        result.cancel()
+        return true
+    }
+
+    override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: JsResult): Boolean {
+        result.cancel()
+        return true
+    }
+
+    override fun onJsPrompt(view: WebView?, url: String?, message: String?, defaultValue: String?, result: JsPromptResult): Boolean {
+        result.cancel()
+        return true
+    }
+
+    override fun onJsBeforeUnload(view: WebView?, url: String?, message: String?, result: JsResult): Boolean {
+        result.cancel()
+        return true
+    }
+
+    // onShowCustomView (page fullscreen) is intentionally not supported.
 
     override fun onProgressChanged(view: WebView, newProgress: Int) {
         events.onProgress(newProgress)

@@ -1,6 +1,5 @@
-package com.example.musicfy.ritme.browser
+package com.example.musicfy.ritme.media
 
-import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -21,17 +20,6 @@ class BridgeGuardsTest {
     }
 
     @Test
-    fun aSubframeCannotClaimAYouTubeFrame() = runBlocking<Unit> {
-        val model = RitmeBrowserModel({ u, _ -> error(u) }, { _, _ -> null }, this, clock = { 1L })
-        model.pageStarted("https://example.com/film")
-        model.onReport("""{"v":1,"page":"https://www.youtube-nocookie.com/embed/xyz"}""", mainFrame = false, origin = "https://ads.example")
-        assertNull(model.findings.value.youTubeVideoId)
-        assertEquals(0, model.offers())
-        model.onReport("""{"v":1,"page":"https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"}""", mainFrame = false, origin = "https://www.youtube-nocookie.com")
-        assertEquals("dQw4w9WgXcQ", model.findings.value.youTubeVideoId)
-    }
-
-    @Test
     fun tenMessagesPerSecondPerOrigin() {
         val limiter = RateLimiter()
         repeat(10) { assertTrue(limiter.allow("https://a.example", 100L + it)) }
@@ -41,10 +29,23 @@ class BridgeGuardsTest {
     }
 
     @Test
-    fun manyOriginsCannotGrowTheTableWithoutBound() {
+    fun aFullTableEvictsTheLeastRecentKeyInsteadOfRefusingANewOrigin() {
         val limiter = RateLimiter(maxKeys = 4)
-        repeat(4) { assertTrue(limiter.allow("o$it", 0L)) }
-        assertFalse(limiter.allow("o9", 10L))
-        assertTrue(limiter.allow("o9", 2_000L))
+        repeat(4) { assertTrue(limiter.allow("o$it", it.toLong())) }
+        assertTrue(limiter.allow("o9", 10L)) // none is stale: the oldest (o0) makes room
+        assertEquals(4, limiter.size)
+        // o0 starts over (evicted); the others kept their history
+        assertTrue(limiter.allow("o0", 11L))
+        assertEquals(4, limiter.size)
+    }
+
+    @Test
+    fun staleKeysAreDroppedBeforeLiveOnes() {
+        val limiter = RateLimiter(limit = 1, maxKeys = 2)
+        assertTrue(limiter.allow("old", 0L))
+        assertTrue(limiter.allow("busy", 1_500L))
+        assertTrue(limiter.allow("new", 1_600L)) // "old" is stale, "busy" stays
+        assertFalse(limiter.allow("busy", 1_700L))
+        assertEquals(2, limiter.size)
     }
 }

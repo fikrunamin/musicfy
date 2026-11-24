@@ -129,4 +129,5 @@
     <string name="ritme_browser_open_app_title">Buka aplikasi lain?</string>
     <string name="ritme_browser_open_app_body">Halaman ini ingin membuka aplikasi lain. Browser Ritme tetap di sini.</string>
     <string name="ritme_browser_open_app">Buka</string>
+    <string name="ritme_browser_crashed">Halaman berhenti bekerja</string>
 </resources>

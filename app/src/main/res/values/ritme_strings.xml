@@ -141,4 +141,5 @@
     <string name="ritme_browser_open_app_title">Open another app?</string>
     <string name="ritme_browser_open_app_body">This page wants to open another app. The Ritme browser stays here.</string>
     <string name="ritme_browser_open_app">Open</string>
+    <string name="ritme_browser_crashed">The page stopped working</string>
 </resources>
