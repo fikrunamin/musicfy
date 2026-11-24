@@ -87,6 +87,13 @@ export const t = {
   skip: 'Lewati',
   waitingForHost: 'Menunggu host melewati video ini',
   queue: 'Antrean',
+  youtube: 'YouTube',
+  back10: 'Mundur 10 detik',
+  forward10: 'Maju 10 detik',
+  fullscreen: 'Layar penuh',
+  exitFullscreen: 'Keluar dari layar penuh',
+  /** The theater header toggle that folds the right column away. */
+  sidePanel: 'Antrean dan anggota',
   synced: 'Tersinkron',
   keepScreenOn: 'Biarkan layar menyala supaya musik tidak berhenti.',
 

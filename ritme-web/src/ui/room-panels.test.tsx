@@ -157,8 +157,11 @@ describe('NowPlaying', () => {
   it('shows a video with a 16:9 thumbnail, and a direct link with the domain it comes from', () => {
     const url = entry('e1', { kind: 'URL', videoId: '', url: 'https://www.xn--bcher-kva.example/a.mp4', artist: 'youtube.com', title: 'Klip' });
     render(<NowPlaying session={fakeSession()} room={room({ queue: [url], currentEntryId: 'e1' })} memberId="m1" unplayable={{}} online pageIsHttps mode="remote" />);
-    expect(document.querySelector('.stage.stage-wide .video-placeholder')?.textContent).toBe('bücher.example');
-    expect(screen.getByText('dari bücher.example · oleh Kamu')).toBeTruthy();
+    expect(document.querySelector('.stage.stage-wide .video-placeholder .vp-domain')?.textContent).toBe('bücher.example');
+    // The domain on its own 🔗 line, the adder in the badge row (handoff M).
+    expect(document.querySelector('.np-source')?.textContent).toBe('dari bücher.example');
+    expect(document.querySelector('.np-badges .np-by')?.textContent).toContain('oleh Kamu');
+    expect(screen.queryByText(/youtube\.com/)).toBeNull();
   });
 
   it('shows LIVE instead of a seek bar for live entries', () => {

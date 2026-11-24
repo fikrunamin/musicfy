@@ -46,10 +46,12 @@ export function MembersPanel({ session, room, memberId, online, variant = 'panel
     if (!document.activeElement || document.activeElement === document.body) heading.current?.focus();
   }, [room.members]);
 
+  // The compact list sits beside the members sheet in the theater: one id each.
+  const titleId = compact ? 'members-compact-title' : 'members-title';
   const body = (
     <div class="members-body">
       <div class="sheet-header members-header">
-        <h2 id="members-title" ref={heading} tabIndex={-1}>
+        <h2 id={titleId} ref={heading} tabIndex={-1}>
           {t.membersTitle}
         </h2>
         <span class="members-count">{t.members(room.members.length)}</span>
@@ -153,7 +155,7 @@ export function MembersPanel({ session, room, memberId, online, variant = 'panel
     );
   }
   return (
-    <section class={cx('members-panel', compact && 'members-compact')} aria-labelledby="members-title">
+    <section class={cx('members-panel', compact && 'members-compact')} aria-labelledby={titleId}>
       {body}
       {dialogs}
     </section>

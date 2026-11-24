@@ -10,13 +10,14 @@ export function shotPath(info: TestInfo, name: string): string {
  * Full-page screenshot once fonts and images settled. The flow runs with motion; for the capture
  * itself the page switches to reduced motion, so endless motion (marquee, equalizer, sync pulse,
  * spinner) rests in its still state and every PNG is deterministic. Motion comes back afterwards.
+ * `fullPage: false` for a fullscreen element, which covers the window, not the page.
  */
-export async function shot(page: Page, info: TestInfo, name: string) {
+export async function shot(page: Page, info: TestInfo, name: string, { fullPage = true }: { fullPage?: boolean } = {}) {
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(700); // crossfades (600 ms) and the sheet (280 ms) finish
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
-  await page.screenshot({ path: shotPath(info, name), fullPage: true });
+  await page.screenshot({ path: shotPath(info, name), fullPage });
   await page.emulateMedia({ reducedMotion: null });
 }
 

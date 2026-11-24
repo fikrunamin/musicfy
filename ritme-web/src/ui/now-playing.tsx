@@ -1,12 +1,13 @@
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { displayHostOf } from '../net/idn';
 import { httpsThumbnail } from '../net/search';
 import { type QueueEntry, type RoomState, currentEntry, isLive, positionAt } from '../protocol';
 import { canControl } from '../session/permissions';
 import type { SessionApi } from '../session/session';
-import { entrySource, isVideoEntry, memberName, unplayableLabel } from './badges';
-import { Badge, EqBars, IconButton, cx } from './components';
+import { entrySource, isVideoEntry, mediaFormat, memberName, unplayableLabel } from './badges';
+import { Avatar, AvatarStack, Badge, DurationChip, EqBars, IconButton, SyncDot, cx } from './components';
 import { formatMs } from './format';
+import { canFullscreen, useFullscreen } from './fullscreen';
 import { useServerNow } from './hooks';
 import { Icon } from './icon';
 import { ListenStage, type Mode } from './listen';
@@ -36,8 +37,27 @@ function CoverLayer({ entry, gated, entering }: { entry: QueueEntry | null; gate
     return <div class={cx('stage-empty', fade)}>{!gated && <Icon name="album" size={56} />}</div>;
   }
   const src = httpsThumbnail(entry.thumbnailUrl);
-  if (src) return <img class={cx('stage-cover', fade)} src={src} alt="" referrerpolicy="no-referrer" />;
-  if (entry.kind === 'URL') return <VideoPlaceholder domain={displayHostOf(entry.url) ?? entry.artist} class={fade || undefined} />;
+  // Remote mode (no gate, never a player): a video's thumbnail carries its badge and length (I/M remote).
+  const live = isLive(entry);
+  const decor = !gated && isVideoEntry(entry);
+  const badge = decor && <Badge kind={live ? 'live' : 'video'} />;
+  const length = decor && !live ? formatMs(entry.durationMs) : null;
+  if (src) {
+    const cover = <img class={cx('stage-cover', !decor && fade)} src={src} alt="" referrerpolicy="no-referrer" />;
+    if (!decor) return cover;
+    return (
+      <div class={cx('stage-thumb', fade)}>
+        {cover}
+        <span class="vp-badge">{badge}</span>
+        {length && (
+          <span class="vp-duration">
+            <DurationChip>{length}</DurationChip>
+          </span>
+        )}
+      </div>
+    );
+  }
+  if (entry.kind === 'URL') return <VideoPlaceholder domain={displayHostOf(entry.url) ?? entry.artist} badge={badge} duration={length} class={fade || undefined} />;
   return (
     <div class={cx('stage-empty', fade)}>
       <Icon name={isVideoEntry(entry) ? 'smart_display' : 'music_note'} size={56} />
@@ -75,6 +95,8 @@ function StageError({ entry, label, canSkip, skipDisabled, onSkip }: { entry: Qu
 
 export function NowPlaying({ session, room, memberId, unplayable, online, pageIsHttps, mode, onShowQueue }: Props) {
   const now = useServerNow(session);
+  const section = useRef<HTMLElement>(null);
+  const full = useFullscreen(section);
   const [dragMs, setDragMs] = useState<number | null>(null);
   const [needsTap, setNeedsTap] = useState(false);
   const entry = currentEntry(room);
@@ -89,14 +111,33 @@ export function NowPlaying({ session, room, memberId, unplayable, online, pageIs
   const lockedProps = locked ? { 'aria-disabled': 'true' as const, 'aria-describedby': LOCKED_HINT_ID } : {};
 
   const live = entry !== null && isLive(entry);
-  const wide = entry !== null && (isVideoEntry(entry) || live);
+  const video = entry !== null && isVideoEntry(entry);
+  const direct = entry?.kind === 'URL';
+  const wide = video || live;
   const label = entry ? unplayableLabel(entry, unplayable, pageIsHttps) : null;
   const playing = room.playback.isPlaying;
   const cover = <Cover entry={entry} gated={mode === 'listen'} />;
   const stageArt = entry ? httpsThumbnail(entry.thumbnailUrl) : null;
+  /** ±10 s (direct links, handoff M): from where the room is now, within the video. */
+  const seekBy = (deltaMs: number) =>
+    guarded(() => !live && session.seek(Math.min(Math.max(0, positionAt(room, session.serverNow()) + deltaMs), entry!.durationMs)));
+  const skip = { disabled: !online || live, ...lockedProps };
+  // Outside the video, never on it (J/N). Kept while fullscreen, so a song that follows can leave it.
+  const fsButton = (full.active || (video && mode === 'listen' && canFullscreen())) && (
+    <IconButton
+      icon={full.active ? 'fullscreen_exit' : 'fullscreen'}
+      label={full.active ? t.exitFullscreen : t.fullscreen}
+      variant="filled"
+      class="np-fs"
+      disabled={!full.active && label !== null}
+      onClick={full.toggle}
+    />
+  );
+  const adder = memberName(room.members, entry?.addedBy ?? '', null);
+  const source = direct ? mediaFormat(entry.url) : entry ? `${entry.artist} · ${t.youtube}` : null;
 
   return (
-    <section class={cx('now-playing', `np-${mode}`)} aria-labelledby="now-title">
+    <section ref={section} class={cx('now-playing', `np-${mode}`, video && 'np-video', full.active && 'np-full')} aria-labelledby="now-title">
       <div class="np-label-row">
         <h2 id="now-title" class="np-label">
           <EqBars playing={playing && entry !== null} />
@@ -137,20 +178,41 @@ export function NowPlaying({ session, room, memberId, unplayable, online, pageIs
         <>
           <div class="np-meta">
             <p class="np-title">{entry.title}</p>
-            <p class="np-sub">
-              {[entrySource(entry), t.addedBy(memberName(room.members, entry.addedBy, memberId))].filter(Boolean).join(' · ')}
-            </p>
+            {video ? (
+              <>
+                {direct && (
+                  <p class="np-source">
+                    <Icon name="link" size={18} />
+                    {entrySource(entry)}
+                  </p>
+                )}
+                {/* Handoff I/M: the badge, the source (channel on YouTube, or the format), who added it. */}
+                <p class={cx('np-badges', !direct && 'np-yt')}>
+                  <Badge kind={live ? 'live' : 'video'} />
+                  {source && <span class="np-src">{source}</span>}
+                  <span class="np-by">
+                    <Avatar name={adder} size="xs" />
+                    {t.addedBy(memberName(room.members, entry.addedBy, memberId))}
+                  </span>
+                </p>
+              </>
+            ) : (
+              <p class="np-sub">
+                {[entrySource(entry), t.addedBy(memberName(room.members, entry.addedBy, memberId))].filter(Boolean).join(' · ')}
+              </p>
+            )}
             {label && <p class="np-warning">{label}</p>}
           </div>
 
+          {/* A live song says LIVE where the seek bar was; a live video says it in its badge row. */}
           {live ? (
-            <Badge kind="live" class="np-live" />
+            !video && <Badge kind="live" class="np-live" />
           ) : (
             <Progress session={session} room={room} entry={entry} now={now} dragMs={dragMs} setDragMs={setDragMs} control={control} />
           )}
 
           <div class="np-controls">
-            <span class="np-slot" />
+            <span class="np-slot">{direct && <IconButton icon="replay_10" label={t.back10} {...skip} onClick={seekBy(-10_000)} />}</span>
             <IconButton icon="skip_previous" label={t.previous} disabled={!online} {...lockedProps} onClick={guarded(() => session.previous())} />
             <IconButton
               icon={playing ? 'pause' : 'play_arrow'}
@@ -162,23 +224,55 @@ export function NowPlaying({ session, room, memberId, unplayable, online, pageIs
               onClick={guarded(() => (playing ? session.pause() : session.play()))}
             />
             <IconButton icon="skip_next" label={t.next} disabled={!online} {...lockedProps} onClick={guarded(() => session.next())} />
-            <span class="np-slot">{onShowQueue && <IconButton icon="queue_music" label={t.queue} onClick={onShowQueue} />}</span>
+            {fsButton && !direct ? (
+              fsButton
+            ) : (
+              <span class="np-slot">
+                {direct ? (
+                  <IconButton icon="forward_10" label={t.forward10} {...skip} onClick={seekBy(10_000)} />
+                ) : (
+                  onShowQueue && <IconButton icon="queue_music" label={t.queue} onClick={onShowQueue} />
+                )}
+              </span>
+            )}
+            {direct && fsButton}
           </div>
         </>
       ) : (
         room.queue.length > 0 && <p class="np-empty">{t.nothingPlaying}</p>
       )}
 
-      {mode === 'listen' && (
+      {mode === 'listen' ? (
         <p class="np-tip">
           <Icon name="light_mode" size={18} />
           {t.keepScreenOn}
         </p>
+      ) : (
+        // The theater puts the remote hint here, under the controls (Z14e90); hidden elsewhere.
+        video && (
+          <p class="np-tip np-remote-tip">
+            <Icon name="settings_remote" size={18} />
+            {t.modeHint}
+          </p>
+        )
       )}
       {locked && (
         <p id={LOCKED_HINT_ID} class="visually-hidden">
           {t.controlsLocked}
         </p>
+      )}
+      {/* Fullscreen side bar (J/N): sync status and members, beside the video, after it in the tree. */}
+      {full.active && (
+        <div class="np-fs-status">
+          <p class="room-status">
+            <SyncDot state={online ? 'online' : 'reconnecting'} />
+            {online ? t.synced : t.reconnecting}
+          </p>
+          <p class="room-status">
+            <AvatarStack names={room.members.map((m) => m.name)} />
+            {t.members(room.members.length)}
+          </p>
+        </div>
       )}
     </section>
   );

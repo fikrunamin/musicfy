@@ -25,6 +25,20 @@ export function entrySource(entry: QueueEntry): string {
   return host === null ? entry.artist : t.fromDomain(host);
 }
 
+/**
+ * The format of a direct link, read from its path (handoff M: "MP4", "HLS · m3u8"); null when the
+ * path does not say. The query string never counts: `?file=a.mp4` is not an mp4.
+ */
+export function mediaFormat(url: string | null): string | null {
+  let ext: string | undefined;
+  try {
+    ext = /\.(mp4|webm|m4v|mov|m3u8)$/i.exec(new URL(url ?? '').pathname)?.[1].toLowerCase();
+  } catch {
+    return null;
+  }
+  return !ext ? null : ext === 'm3u8' ? 'HLS · m3u8' : ext.toUpperCase();
+}
+
 export function memberName(members: { id: string; name: string }[], id: string, me: string | null): string {
   if (id === me) return t.you;
   return members.find((m) => m.id === id)?.name ?? '—';

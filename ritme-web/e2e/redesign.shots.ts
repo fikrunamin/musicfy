@@ -1,5 +1,6 @@
 import { type Page, type WebSocketRoute, expect, test } from '@playwright/test';
-import { addSong, closeSheet, endRooms, isolate, openRoom, showAdd, showMembers } from './fixtures';
+import { VIDEO, addSong, closeSheet, endRooms, isolate, openRoom, showAdd, showMembers } from './fixtures';
+import { SAMPLE_WEBM } from './sample-video';
 import { SHOT_SONGS, shot, withArtwork } from './shots';
 
 /**
@@ -282,4 +283,142 @@ test('H reconnecting, lost @status', async ({ context }, info) => {
   await expect(b.getByRole('heading', { level: 1 })).toHaveText('Terputus dari Ritme', { timeout: 40_000 });
   await expect(b.getByRole('button', { name: 'Coba lagi' })).toBeVisible();
   await shot(b, info, 'H-lost');
+});
+
+/** Adds a link from the Video tab of "Tambah ke antrean" (the panel, the sheet, or the theater's dialog). */
+async function addVideoLink(page: Page, url: string, title: string) {
+  await showAdd(page);
+  await page.getByRole('tab', { name: 'Video', exact: true }).click();
+  await page.getByLabel('Tempel link video').fill(url);
+  await page.getByRole('button', { name: 'Pratinjau' }).click();
+  // A direct link takes its title from the field; a YouTube link from the video info.
+  const field = page.getByLabel('Judul (opsional)');
+  await expect(field.or(page.getByRole('button', { name: `Tambah: ${title}` })).first()).toBeVisible({ timeout: 15_000 });
+  if ((await field.count()) > 0) await field.fill(title);
+  await page.getByRole('button', { name: `Tambah: ${title}` }).click();
+  await closeSheet(page);
+}
+
+/** The fake YouTube frame the player is showing, as a handle (to prove it is the same element later). */
+async function youtubeFrame(page: Page) {
+  await expect(page.locator('.player [data-testid="fake-yt"]')).toHaveCount(1);
+  return (await page.locator('.player [data-testid="fake-yt"]').elementHandle())!;
+}
+
+const sameFrame = (frame: Awaited<ReturnType<typeof youtubeFrame>>) =>
+  frame.evaluate((el) => el.isConnected && el === document.querySelector('main > .room-left > section.now-playing > .stage > .player [data-testid="fake-yt"]'));
+
+const YOUTUBE_LINK = `https://youtu.be/${VIDEO.videoId}`;
+
+test('I video: listen and remote, K desktop theater, J fullscreen @video', async ({ context }, info) => {
+  const desktop = info.project.name.startsWith('desktop');
+  const { a, b } = await openRoom(context);
+  // A song first, listened to: the theater must then take over the same player.
+  await addSong(a, 'x', SHOT_SONGS[0].title);
+  await tap(a);
+  const frame = await youtubeFrame(a);
+  await addVideoLink(a, YOUTUBE_LINK, VIDEO.title);
+  await addSong(a, 'x', SHOT_SONGS[1].title);
+  await a.getByRole('button', { name: `Aksi: ${VIDEO.title}` }).click();
+  await a.getByRole('button', { name: `Putar sekarang: ${VIDEO.title}` }).click();
+  await expect(a.locator('section.now-playing .np-title')).toHaveText(VIDEO.title);
+  await expect(a.locator('.stage.stage-wide')).toHaveCount(1);
+  expect(await sameFrame(frame)).toBe(true);
+
+  if (desktop) {
+    // K: the theater, from the same tree; the transport fits under the 16:9 stage.
+    await expect(a.locator('main.room-theater')).toHaveCount(1);
+    await expect(a.getByRole('button', { name: 'Antrean dan anggota' })).toHaveAttribute('aria-expanded', 'true');
+    await expectTransportOnScreen(a);
+    await shot(a, info, 'K-desktop-theater');
+    await a.getByRole('button', { name: 'Antrean dan anggota' }).click();
+    await expect(a.locator('main.room-collapsed')).toHaveCount(1);
+    expect(await sameFrame(frame)).toBe(true);
+    await shot(a, info, 'K-desktop-theater-folded');
+    await a.getByRole('button', { name: 'Antrean dan anggota' }).click();
+    await a.setViewportSize({ width: 1366, height: 650 });
+    await expectTransportOnScreen(a);
+    const stage = await a.locator('.stage').boundingBox();
+    expect(Math.min(stage!.width, stage!.height)).toBeGreaterThanOrEqual(200);
+    await a.setViewportSize({ width: 1440, height: 900 });
+  }
+
+  await tap(b);
+  const guestFrame = await youtubeFrame(b);
+  await shot(b, info, 'I-video-listen');
+
+  // J: fullscreen takes the now-playing section itself; the side bar sits beside the video.
+  if (!desktop) await b.setViewportSize({ width: 844, height: 390 });
+  const fullscreen = b.getByRole('button', { name: 'Layar penuh' });
+  if ((await fullscreen.count()) === 0) {
+    info.annotations.push({ type: 'J-fullscreen', description: 'skipped: document.fullscreenEnabled is false in this browser' });
+  } else {
+    await fullscreen.click();
+    const entered = await b
+      .waitForFunction(() => document.fullscreenElement?.matches('main > .room-left > section.now-playing') === true, null, { timeout: 3_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    if (!entered) {
+      info.annotations.push({ type: 'J-fullscreen', description: 'skipped: headless Chromium refused requestFullscreen' });
+    } else {
+      expect(await sameFrame(guestFrame)).toBe(true);
+      await expect(b.locator('.np-fs-status')).toContainText('Tersinkron');
+      // Beside the video, never over it.
+      const video = (await b.locator('.np-full .stage').boundingBox())!;
+      const bar = (await b.locator('.np-fs-status').boundingBox())!;
+      expect(bar.x).toBeGreaterThanOrEqual(video.x + video.width - 1);
+      await shot(b, info, 'J-fullscreen', { fullPage: false });
+      await b.getByRole('button', { name: 'Keluar dari layar penuh' }).click();
+      await expect.poll(() => b.evaluate(() => document.fullscreenElement === null)).toBe(true);
+      expect(await sameFrame(guestFrame)).toBe(true);
+    }
+  }
+  if (!desktop) await b.setViewportSize({ width: 390, height: 844 });
+
+  await b.getByRole('button', { name: 'Mode remote' }).click();
+  await expect(b.locator('.stage .vp-badge')).toContainText('Video');
+  await shot(b, info, 'I-video-remote');
+
+  if (desktop) {
+    // Back to a song: three columns again, still the same player.
+    await a.getByRole('button', { name: 'Berikutnya', exact: true }).click();
+    await expect(a.locator('section.now-playing .np-title')).toHaveText(SHOT_SONGS[1].title);
+    await expect(a.locator('main.room-theater')).toHaveCount(0);
+    expect(await sameFrame(frame)).toBe(true);
+  }
+});
+
+test('M direct link: listen, remote; O stage error @video', async ({ context }, info) => {
+  // A media host that serves a real (tiny) WebM, and one whose file is gone.
+  await context.route('https://media.example.com/**', (route) => route.fulfill({ contentType: 'video/webm', body: SAMPLE_WEBM }));
+  await context.route('https://files.example.net/**', (route) => route.fulfill({ status: 404, body: '' }));
+  const { a, b } = await openRoom(context);
+  await addVideoLink(a, 'https://media.example.com/klip/sawah-terasering.webm', 'sawah-terasering-jatiluwih_drone-4k_final-v2_export.webm');
+  await addVideoLink(a, 'https://files.example.net/klip-konser_final.webm', 'klip-konser_final.webm');
+  await addSong(a, 'x', SHOT_SONGS[1].title);
+
+  await tap(b);
+  const video = b.locator('.player video');
+  await expect(video).toBeVisible();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(0);
+  await expect(b.locator('.np-source')).toHaveText('dari media.example.com');
+  await expect(b.locator('.np-badges .np-src')).toHaveText('WEBM');
+  await shot(b, info, 'M-direct-listen');
+
+  // ±10 s seeks the room (the host sees the position move).
+  await b.getByRole('button', { name: 'Maju 10 detik' }).click();
+
+  await b.getByRole('button', { name: 'Mode remote' }).click();
+  await expect(b.locator('.stage .video-placeholder')).toContainText('media.example.com');
+  await shot(b, info, 'M-direct-remote');
+  await b.getByRole('button', { name: 'Mode dengar' }).click();
+  await tap(b);
+
+  // O: the next link cannot play here; the stage says so, with Lewati for members with control.
+  await a.getByRole('button', { name: 'Berikutnya', exact: true }).click();
+  await expect(b.locator('.stage-error')).toContainText('Video ini tidak bisa diputar di web', { timeout: 15_000 });
+  await expect(b.locator('.stage-error').getByRole('button', { name: 'Lewati' })).toBeVisible();
+  await shot(b, info, 'O-direct-error');
 });

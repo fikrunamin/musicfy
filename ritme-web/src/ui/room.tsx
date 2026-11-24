@@ -37,6 +37,10 @@ const showQueue = () => document.getElementById('queue-title')?.scrollIntoView({
  * classes and the content around the stage differ, so Preact never re-creates the player's
  * container: the iframe and its controller survive a resize. The column wrappers are
  * `display: contents` on a phone, so the phone layout is the plain column it was.
+ *
+ * Theater (desktop with a video entry, handoff K/O): still that tree, laid out by video.css as a
+ * wide 16:9 stage under a one-row header, and a 340 px right column (full queue, compact members)
+ * that the header toggle folds away. Adding and the full members list open as dialogs there.
  */
 export function RoomScreen({ session, state, prefs }: Props) {
   const { room, memberId, unplayable } = state;
@@ -53,12 +57,18 @@ export function RoomScreen({ session, state, prefs }: Props) {
   const [adding, setAdding] = useState(false);
   const [showingMembers, setShowingMembers] = useState(false);
   const desktop = useMediaQuery(DESKTOP_QUERY);
+  const theater = desktop && entry !== null && isVideoEntry(entry);
+  /** Phone, or the theater: add and members open as sheets (dialogs on desktop). */
+  const sheets = !desktop || theater;
+  const [sideOpen, setSideOpen] = useState(true);
+  const folded = theater && !sideOpen;
   const main = useRef<HTMLElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
   const crossed = useRef(false);
-  // Crossing the breakpoint closes any sheet: on desktop its content is inline, and a phone that
-  // was a desktop a moment ago should not find a sheet it never opened. Focus that was in a part
-  // that is gone now (the right column on the way to a phone) goes to the title, not to <body>.
+  // Crossing the breakpoint, or into or out of the theater, closes any sheet: on desktop its
+  // content is inline, and a phone that was a desktop a moment ago should not find a sheet it never
+  // opened. Focus that was in a part that is gone now (the right column on the way to a phone, the
+  // add panel on the way into the theater) goes to the title, not to <body>.
   useEffect(() => {
     setAdding(false);
     setShowingMembers(false);
@@ -68,7 +78,7 @@ export function RoomScreen({ session, state, prefs }: Props) {
     }
     const focused = document.activeElement;
     if (!focused || focused === document.body || !focused.isConnected) title.current?.focus();
-  }, [desktop]);
+  }, [desktop, theater]);
   /**
    * Where focus goes when the sheet closes and the "Tambah lagu" that opened it is gone: the one
    * shown now (the empty state's and the queue header's are different buttons), else the title.
@@ -97,7 +107,7 @@ export function RoomScreen({ session, state, prefs }: Props) {
   return (
     <>
       <Backdrop url={entry?.thumbnailUrl ?? null} video={entry !== null && isVideoEntry(entry)} />
-      <main ref={main} class={cx('room', desktop && 'room-desktop')}>
+      <main ref={main} class={cx('room', desktop && 'room-desktop', theater && 'room-theater', folded && 'room-collapsed')}>
         {!online && (
           <p class="reconnect-banner" role="status">
             <Icon name="sync" size={18} />
@@ -117,7 +127,7 @@ export function RoomScreen({ session, state, prefs }: Props) {
                 <span>{desktop ? t.statusWithMembers(online ? t.synced : t.reconnecting, room.members.length) : online ? t.synced : t.reconnecting}</span>
               </p>
             </div>
-            {!desktop && (
+            {sheets && (
               <button type="button" class="room-members" onClick={() => setShowingMembers(true)}>
                 <AvatarStack names={room.members.map((m) => m.name)} />
                 <span class="visually-hidden">{t.members(room.members.length)}</span>
@@ -130,29 +140,40 @@ export function RoomScreen({ session, state, prefs }: Props) {
             ) : (
               <IconButton icon="ios_share" label={t.share} variant="filled" onClick={onShare} />
             )}
+            {theater && (
+              <IconButton
+                icon="dock_to_left"
+                label={t.sidePanel}
+                variant="filled"
+                class="room-side-toggle"
+                aria-expanded={sideOpen}
+                aria-controls="room-queue room-side"
+                onClick={() => setSideOpen(!sideOpen)}
+              />
+            )}
           </header>
 
           <ModeSwitch mode={mode} onModeChange={changeMode} />
           <NowPlaying {...shared} mode={mode} onShowQueue={desktop ? undefined : showQueue} />
         </div>
-        <div class="room-col room-queue">
+        <div id="room-queue" class="room-col room-queue" hidden={folded}>
           {/* "Tambah lagu" is hidden, not disabled, while the host keeps guests from adding (spec 8). */}
-          <QueueList {...shared} variant={desktop ? 'full' : 'upcoming'} onAdd={mayAdd ? (desktop ? focusAdd : () => setAdding(true)) : undefined} />
+          <QueueList {...shared} variant={desktop ? 'full' : 'upcoming'} onAdd={mayAdd ? (sheets ? () => setAdding(true) : focusAdd) : undefined} />
         </div>
         {desktop && (
-          <div class="room-col room-side">
-            {mayAdd && <SearchPanel session={session} online={online} pageIsHttps={https} variant="panel" focusRequest={addFocus} />}
-            <MembersPanel session={session} room={room} memberId={memberId} online={online} variant="panel" />
+          <div id="room-side" class="room-col room-side" hidden={folded}>
+            {mayAdd && !theater && <SearchPanel session={session} online={online} pageIsHttps={https} variant="panel" focusRequest={addFocus} />}
+            <MembersPanel session={session} room={room} memberId={memberId} online={online} variant={theater ? 'compact' : 'panel'} />
           </div>
         )}
       </main>
-      {!desktop && adding && mayAdd && (
+      {sheets && adding && mayAdd && (
         <Sheet labelledBy="add-title" class="add-sheet" onClose={() => setAdding(false)} returnFocus={addReturn}>
           <SearchPanel session={session} online={online} pageIsHttps={https} onClose={() => setAdding(false)} />
         </Sheet>
       )}
       {/* Leaving and ending the room live in the members sheet, under the share card (handoff G). */}
-      {!desktop && showingMembers && (
+      {sheets && showingMembers && (
         <Sheet labelledBy="members-title" class="members-sheet" onClose={() => setShowingMembers(false)} returnFocus={title}>
           <MembersPanel session={session} room={room} memberId={memberId} online={online} variant="sheet" onClose={() => setShowingMembers(false)} />
         </Sheet>
