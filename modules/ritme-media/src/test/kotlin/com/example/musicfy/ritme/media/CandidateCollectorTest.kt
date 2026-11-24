@@ -226,18 +226,26 @@ class CandidateCollectorTest {
     }
 
     @Test
-    fun aSpaNavigationDropsTheOldDocumentsMainFrameAndRequests() {
+    fun aSpaNavigationToANewPathDropsTheOldMainFrameReport() {
         val c = collector()
-        c.onRequest(hls, "GET", emptyMap(), 1)
         c.onReport(report(eme = true).copy(title = "A", frameUrl = "https://example.com/a"), 2)
         assertEquals("A", c.findings().title)
         assertTrue(c.findings().eme)
         assertTrue(c.urlChanged("https://example.com/b"))
         assertNull(c.findings().title)
-        assertTrue(c.findings().candidates.isEmpty())
         c.onReport(report().copy(title = "B", frameUrl = "https://example.com/b"), 3)
         assertEquals("B", c.findings().title)
         assertFalse(c.findings().eme)
+    }
+
+    @Test
+    fun aQueryOrFragmentChangeKeepsNetworkFindsAndTheReport() {
+        val c = collector()
+        c.onRequest(hls, "GET", emptyMap(), 1)
+        c.onReport(report(), 2)
+        assertTrue(c.urlChanged("$page?t=30"))
+        assertEquals(listOf(hls), c.findings().candidates.map { it.url })
+        assertEquals("Film | Example", c.findings().title)
     }
 
     @Test

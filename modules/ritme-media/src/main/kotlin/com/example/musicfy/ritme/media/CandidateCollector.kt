@@ -89,20 +89,20 @@ class CandidateCollector(private val maxCandidates: Int = MAX_CANDIDATES) {
     }
 
     /**
-     * Same document, new address (history.pushState): YouTube moves between videos like this. When it
-     * really changed, the old page's main-frame report, requests and flags no longer apply.
+     * Same document, new address (history.pushState / replaceState / fragment): YouTube moves between
+     * videos like this. Requests, the stream flag and DRM stay (players rewrite `?t=` as they play; a
+     * manifest may be fetched before the pushState). Only when the path itself changes is the old
+     * main-frame report dropped as stale; a query or fragment change keeps it.
      */
     @Synchronized
     fun urlChanged(url: String): Boolean {
         val id = youTubeIdOf(url)
         val changed = url != pageUrl || id != pageYouTubeId
+        val pathChanged = pageUrl?.let { withoutQueryAndFragment(it) != withoutQueryAndFragment(url) } ?: false
         pageUrl = url
         pageYouTubeId = id
-        if (changed) {
+        if (pathChanged) {
             mainReport = null
-            network.clear()
-            streamSeen = false
-            protectedMedia = false
             prunePageTimes()
         }
         return changed
@@ -285,6 +285,8 @@ class CandidateCollector(private val maxCandidates: Int = MAX_CANDIDATES) {
         const val MAX_FRAMES = 20
         private const val OTHER_FRAME = "frame"
         private val VIDEO_ORDER = compareBy<PageVideo>({ it.playing }, { it.area })
+
+        private fun withoutQueryAndFragment(url: String) = url.substringBefore('#').substringBefore('?')
 
         private fun youTubeIdOf(url: String): String? = YouTubeLinks.parse(url)?.takeUnless { it.music }?.videoId
     }
