@@ -558,7 +558,11 @@ object YTPlayerUtils {
         WEB,
     )
 
-    suspend fun resolveVideoStreamUrl(videoId: String): Result<String> = runCatching {
+    /**
+     * A video-only stream for [videoId]. Without a [policy] the closest to 720p in any codec (the
+     * cover's video background, unchanged); with one, [VideoFormatChooser]'s choice (Ritme's stage).
+     */
+    suspend fun resolveVideoStreamUrl(videoId: String, policy: VideoFormatPolicy? = null): Result<String> = runCatching {
         val signatureTimestamp = getSignatureTimestampOrNull(videoId)
 
         for (client in VIDEO_BACKGROUND_CLIENTS) {
@@ -574,10 +578,14 @@ object YTPlayerUtils {
                 continue
             }
 
-            val format = response.streamingData?.adaptiveFormats
-                ?.filter { !it.isAudio && it.height != null }
-                ?.minByOrNull { kotlin.math.abs((it.height ?: 0) - 720) }
-                ?: response.streamingData?.formats?.firstOrNull { !it.isAudio }
+            val format = if (policy != null) {
+                VideoFormatChooser.choose(response.streamingData?.adaptiveFormats, response.streamingData?.formats, policy)
+            } else {
+                response.streamingData?.adaptiveFormats
+                    ?.filter { !it.isAudio && it.height != null }
+                    ?.minByOrNull { kotlin.math.abs((it.height ?: 0) - 720) }
+                    ?: response.streamingData?.formats?.firstOrNull { !it.isAudio }
+            }
 
             if (format == null) {
                 ResolverLog.tag(logTag).d("resolveVideoStreamUrl: client ${client.clientName} had no video format")
