@@ -403,6 +403,10 @@ fun MorphingCover(
     // Its stage takes the cover's place: no disc, no canvas, and no search for "the official music
     // video" by title, which showed some other video for non-music entries (spec 1.2).
     val ritmeStage = com.example.musicfy.ui.screens.ritme.video.rememberRitmeStageTarget(trackInfo.mediaId)
+    // A room's link item is never searched by its title nor given a canvas, even in a frame where the
+    // stage target is null (a room change) while the player still holds it.
+    val ritmeUrlItem = com.example.musicfy.ritme.entries.RitmeEntries.isUrlMediaId(trackInfo.mediaId)
+    val noCoverLookups = ritmeStage != null || ritmeUrlItem
 
     val isDiscStyle = coverStyle.isDisc && !alternateStyle && ritmeStage == null
 
@@ -419,7 +423,7 @@ fun MorphingCover(
     val trackIsVideo = !disableVideoAutoplay &&
         currentMetadata?.id == trackInfo.mediaId &&
         currentMetadata?.isVideoSong == true
-    val playVideoBackground = ritmeStage == null && !alternateStyle && (forceVideoBackground || playVideoPref || trackIsVideo)
+    val playVideoBackground = !noCoverLookups && !alternateStyle && (forceVideoBackground || playVideoPref || trackIsVideo)
     var videoInfo by remember(trackInfo.mediaId) { mutableStateOf<OfficialMusicVideo?>(null) }
     LaunchedEffect(trackInfo.mediaId, trackInfo.title, trackInfo.artist, playVideoBackground, trackIsVideo) {
         val mediaId = trackInfo.mediaId
@@ -976,7 +980,7 @@ fun MorphingCover(
 
                 var canvasArtwork by remember(trackInfo.mediaId) { mutableStateOf<CanvasArtwork?>(null) }
                 val canvasEnabled = rememberPreference(CanvasThumbnailAnimationKey, defaultValue = true).value &&
-                    !alternateStyle && ritmeStage == null
+                    !alternateStyle && !noCoverLookups
                 val canvasWifiOnly by rememberPreference(CanvasWifiOnlyKey, defaultValue = true)
                 LaunchedEffect(trackInfo.mediaId, trackInfo.title, trackInfo.artist, canvasEnabled, canvasWifiOnly) {
                     val mediaId = trackInfo.mediaId
@@ -1043,7 +1047,8 @@ fun MorphingCover(
                 }
                 // Only on the open player: the mini player keeps the (16:9) thumbnail.
                 if (ritmeStage != null && !alternateStyle) {
-                    val stageShown by remember { derivedStateOf { progressProvider() > 0.5f } }
+                    // not under fully open lyrics either: no decoding, screen-on or video track for a hidden stage
+                    val stageShown by remember { derivedStateOf { progressProvider() > 0.5f && lyricsProgressProvider() < 0.999f } }
                     if (stageShown) {
                         com.example.musicfy.ui.screens.ritme.video.RitmeVideoStage(
                             target = ritmeStage,

@@ -19,6 +19,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
@@ -117,17 +119,15 @@ private fun BoxScope.UrlVideo(player: ExoPlayer) {
     }
     VideoSurface(player)
     val error = rememberPlayerError(player) ?: return
-    if (RitmeAddressGuard.isRefusal(error)) {
-        // MusicService has paused it and said so (spec 4.5); the link fails the same way every time,
-        // so this is not a playback hiccup to skip past: the note only says why there is no picture.
-        StageNote(stringResource(R.string.ritme_url_local_address_blocked))
-        return
-    }
     val state by ritme.session.state.collectAsState()
     val room = state.room
     val canSkip = room != null && RitmePermissions.canControl(room, state.memberId)
-    StageNote(stringResource(R.string.ritme_video_cannot_play)) {
-        // The room does not wait for anyone (spec 8): whoever may control it can move it on.
+    // A refused link (spec 4.5): MusicService has paused it and said so; it fails the same way every
+    // time, so the note says why rather than "can't play".
+    val note = if (RitmeAddressGuard.isRefusal(error)) R.string.ritme_url_local_address_blocked else R.string.ritme_video_cannot_play
+    StageNote(stringResource(note)) {
+        // The room does not wait for anyone (spec 8): whoever may control it can move it on. Hidden,
+        // not disabled, for the others.
         if (canSkip) {
             RitmeChip(
                 text = stringResource(R.string.ritme_video_skip),
@@ -169,7 +169,10 @@ private fun BoxScope.FollowedVideo(target: RitmeStageTarget.YouTube, audio: ExoP
     val context = LocalContext.current
     var streamUrl by remember(target.videoId) { mutableStateOf<String?>(null) }
     var unavailable by remember(target.videoId) { mutableStateOf(false) }
-    LaunchedEffect(target.videoId) {
+    // Fresh resolves after the follower failed on a stream (an expired or IP-bound URL); the
+    // failed URL is dropped from the cache, so this and any later stage ask YouTube again.
+    var retries by remember(target.videoId) { mutableIntStateOf(0) }
+    LaunchedEffect(target.videoId, retries) {
         val url = RitmeVideoStreams.resolve(context, target.videoId)
         if (url == null) unavailable = true else streamUrl = url
     }
@@ -181,6 +184,10 @@ private fun BoxScope.FollowedVideo(target: RitmeStageTarget.YouTube, audio: ExoP
     }
     val follower = remember(url) {
         ExoPlayer.Builder(context).build().apply {
+            // picture only: a muxed fallback format must not open a second audio decoder
+            trackSelectionParameters = trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                .build()
             setMediaItem(MediaItem.fromUri(url))
             volume = 0f
             repeatMode = Player.REPEAT_MODE_OFF
@@ -198,7 +205,13 @@ private fun BoxScope.FollowedVideo(target: RitmeStageTarget.YouTube, audio: ExoP
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                broken = true
+                RitmeVideoStreams.invalidate(target.videoId, url)
+                if (RitmeVideoStreams.canRetry(retries)) {
+                    retries++
+                    streamUrl = null // releases this follower; the next URL gets a new one
+                } else {
+                    broken = true
+                }
             }
         }
         follower.addListener(listener)

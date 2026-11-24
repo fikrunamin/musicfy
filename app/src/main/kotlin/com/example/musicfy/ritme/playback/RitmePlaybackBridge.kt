@@ -101,6 +101,8 @@ class RitmePlaybackBridge internal constructor(
     private var videoViewers = 0
     /** What the host was last told, while in a room; null = not told since entering. */
     private var videoApplied: Boolean? = null
+    /** The pending switch-off after the last stage went ([VIDEO_OFF_DELAY_MS]); a new stage cancels it. */
+    private var videoOffTimer: RitmeTimer? = null
 
     private var tickTimer: RitmeTimer? = null
     private var wakeTimer: RitmeTimer? = null
@@ -242,6 +244,8 @@ class RitmePlaybackBridge internal constructor(
         wakeTimer = null
         soonTimer?.cancel()
         soonTimer = null
+        videoOffTimer?.cancel()
+        videoOffTimer = null
     }
 
     private fun resetTracking() {
@@ -369,17 +373,44 @@ class RitmePlaybackBridge internal constructor(
         applyVideo()
     }
 
+    /**
+     * On at once when a stage shows the video; off only [VIDEO_OFF_DELAY_MS] after the last one went,
+     * unless a stage came back meanwhile (a hand-over between the cover and full screen). Entering a
+     * room turns it off at once: no stage exists yet.
+     */
     private fun applyVideo() {
         if (!inRitme) return
-        val want = videoViewers > 0
-        if (want == videoApplied) return
-        videoApplied = want
-        host?.setRitmeVideoEnabled(want)
+        if (videoViewers > 0) {
+            videoOffTimer?.cancel()
+            videoOffTimer = null
+            setVideo(true)
+        } else if (videoApplied == null) {
+            setVideo(false)
+        } else if (videoApplied == true && videoOffTimer == null) {
+            videoOffTimer = timers.schedule(VIDEO_OFF_DELAY_MS) {
+                videoOffTimer = null
+                if (inRitme && videoViewers == 0) setVideo(false)
+            }
+        }
+    }
+
+    private fun setVideo(enabled: Boolean) {
+        if (enabled == videoApplied) return
+        videoApplied = enabled
+        host?.setRitmeVideoEnabled(enabled)
     }
 
     override fun playOrderQueue(): LocalPlayOrder = host?.playOrderQueue() ?: LocalPlayOrder(emptyList(), 0, 0)
 
-    private companion object {
-        const val TICK_MS = 1_000L
+    internal companion object {
+        private const val TICK_MS = 1_000L
+
+        /**
+         * How long the video track stays on after the last stage went. Compose forgets the old stage
+         * before it remembers the new one (in one apply, or a frame apart), so a hand-over between
+         * the cover and full screen must not switch the decoder off and on again (a black or frozen
+         * picture until the next key frame).
+         */
+        const val VIDEO_OFF_DELAY_MS = 300L
     }
 }

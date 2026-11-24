@@ -19,7 +19,10 @@ import kotlinx.coroutines.withContext
 object RitmeVideoStreams {
 
     fun maxHeight(context: Context): Int =
-        if (context.getSystemService<ConnectivityManager>()?.isActiveNetworkMetered == true) 480 else 720
+        if (context.getSystemService<ConnectivityManager>()?.isActiveNetworkMetered == true) METERED_HEIGHT else UNMETERED_HEIGHT
+
+    private const val METERED_HEIGHT = 480
+    private const val UNMETERED_HEIGHT = 720
 
     /** avc → vp9 → av1, keeping those with a hardware decoder; AVC alone when none can be read. */
     val hardwareCodecs: List<VideoCodec> by lazy {
@@ -43,15 +46,38 @@ object RitmeVideoStreams {
         }
 
     /** The video-only stream URL, or null when no client gives one (the audio plays on regardless). */
-    suspend fun resolve(context: Context, videoId: String): String? {
-        val maxHeight = maxHeight(context)
+    suspend fun resolve(context: Context, videoId: String): String? =
+        resolve(videoId, maxHeight(context)) { id, height ->
+            withContext(Dispatchers.IO) {
+                YTPlayerUtils.resolveVideoStreamUrl(id, VideoFormatPolicy(height, hardwareCodecs)).getOrNull()
+            }
+        }
+
+    /** [resolve] with the network part passed in: a cached URL, else [fetch]'s, which is then cached. */
+    internal suspend fun resolve(videoId: String, maxHeight: Int, fetch: suspend (String, Int) -> String?): String? {
         // its own key: the cover's video background caches its own (any codec, near 720p) choice
-        val key = "ritme:$videoId:$maxHeight"
+        val key = key(videoId, maxHeight)
         YouTubeVideoUrlCache.get(key)?.let { return it.streamUrl }
-        val url = withContext(Dispatchers.IO) {
-            YTPlayerUtils.resolveVideoStreamUrl(videoId, VideoFormatPolicy(maxHeight, hardwareCodecs)).getOrNull()
-        } ?: return null
+        val url = fetch(videoId, maxHeight) ?: return null
         YouTubeVideoUrlCache.put(key, OfficialMusicVideo(videoId, url))
         return url
     }
+
+    /** The follower failed on [url] (expired after ~6 h, or bound to an earlier IP): the next resolve asks again. */
+    fun invalidate(videoId: String, url: String) {
+        // by URL, not by today's height: the network may have turned metered since it was resolved;
+        // a null entry reads as a miss in [resolve]
+        for (height in HEIGHTS) {
+            val key = key(videoId, height)
+            if (YouTubeVideoUrlCache.get(key)?.streamUrl == url) YouTubeVideoUrlCache.put(key, null)
+        }
+    }
+
+    /** One fresh resolve after the follower fails on a stream, then the stage says the video is unavailable. */
+    fun canRetry(retriesUsed: Int): Boolean = retriesUsed < MAX_RETRIES
+
+    private const val MAX_RETRIES = 1
+    private val HEIGHTS = listOf(METERED_HEIGHT, UNMETERED_HEIGHT)
+
+    internal fun key(videoId: String, maxHeight: Int): String = "ritme:$videoId:$maxHeight"
 }

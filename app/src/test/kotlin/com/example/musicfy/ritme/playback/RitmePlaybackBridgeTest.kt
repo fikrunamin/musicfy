@@ -13,6 +13,7 @@ import com.example.musicfy.ritme.RitmeToast
 import com.example.musicfy.ritme.net.ConnectionEvent
 import com.example.musicfy.ritme.net.ConnectionStatus
 import com.example.musicfy.ritme.net.EndReason
+import com.example.musicfy.ritme.playback.RitmePlaybackBridge.Companion.VIDEO_OFF_DELAY_MS
 import com.example.musicfy.ritme.protocol.Command
 import com.example.musicfy.ritme.protocol.ErrorCode
 import com.example.musicfy.ritme.protocol.Playback
@@ -208,6 +209,7 @@ class RitmePlaybackBridgeTest {
         bridge.videoHidden()
         assertEquals(listOf(false, true), host.video)
         bridge.videoHidden()
+        timers.advanceBy(VIDEO_OFF_DELAY_MS)
         assertEquals(listOf(false, true, false), host.video)
 
         session.leave()
@@ -215,6 +217,45 @@ class RitmePlaybackBridgeTest {
         bridge.videoShown() // outside a room: nothing
         assertEquals(listOf(false, true, false, true), host.video)
         bridge.videoHidden()
+    }
+
+    @Test
+    fun aStageHandoffInOneApplyNeverTurnsTheVideoTrackOff() {
+        join(starting)
+        bridge.videoShown() // the cover's stage
+        assertEquals(listOf(false, true), host.video)
+
+        // Compose forgets the old stage before it remembers the new one, in the same apply
+        bridge.videoHidden()
+        bridge.videoShown()
+        timers.advanceBy(VIDEO_OFF_DELAY_MS * 2)
+
+        assertEquals(listOf(false, true), host.video)
+    }
+
+    @Test
+    fun theLastStageGoingTurnsTheVideoTrackOffOnceTheHandoffWindowPassed() {
+        join(starting)
+        bridge.videoShown()
+        bridge.videoHidden()
+        assertEquals(listOf(false, true), host.video) // not yet: a new stage may be about to mount
+
+        timers.advanceBy(VIDEO_OFF_DELAY_MS - 1)
+        assertEquals(listOf(false, true), host.video)
+        timers.advanceBy(1)
+        assertEquals(listOf(false, true, false), host.video)
+    }
+
+    @Test
+    fun leavingWithAVideoOffPendingTurnsItBackOnAtOnceAndNothingFiresLater() {
+        join(starting)
+        bridge.videoShown()
+        bridge.videoHidden()
+
+        session.leave()
+        assertEquals(listOf(false, true, true), host.video)
+        timers.advanceBy(VIDEO_OFF_DELAY_MS * 2)
+        assertEquals(listOf(false, true, true), host.video)
     }
 
     @Test
