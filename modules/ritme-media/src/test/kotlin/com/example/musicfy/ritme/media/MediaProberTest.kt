@@ -151,4 +151,36 @@ class MediaProberTest {
         assertTrue(verdict.variants.all { it.startsWith("https://cdn.example.com/") })
         assertNull(verdict.refusal)
     }
+
+    @Test
+    fun anUnacceptableUrlIsRefusedWithoutAnyRequest() {
+        val http = FakeHttp { url, _ -> bytes(url, mp4Head(0, 1000, 90_500)) }
+        val verdict = MediaProber(http, web).probe("http://192.168.1.1/a.mp4", "https://example.com/film")
+        assertEquals(Refusal.FAILED, verdict.refusal)
+        assertTrue(http.calls.isEmpty())
+    }
+
+    @Test
+    fun aServerErrorOrNoAnswerIsNotRetriedWithAReferer() {
+        val unavailable = FakeHttp { url, _ -> status(url, 503) }
+        assertEquals(Refusal.FAILED, MediaProber(unavailable, web).probe(mp4, "https://example.com/film").refusal)
+        assertEquals(1, unavailable.calls.size)
+        val silent = FakeHttp { _, _ -> null }
+        assertEquals(Refusal.FAILED, MediaProber(silent, web).probe(mp4, "https://example.com/film").refusal)
+        assertEquals(1, silent.calls.size)
+    }
+
+    @Test
+    fun anOversizedBodyIsClampedWhateverTheClientDoes() {
+        val big = ByteArray(MediaProber.HEAD_BYTES * 3)
+        val http = ProbeHttp { url, _, _ -> ProbeResponse(200, "text/html", big, url, null) }
+        // would be handed to the sniffer whole without the clamp; the verdict must still be a clean refusal
+        assertEquals(Refusal.NOT_MEDIA, MediaProber(http, web).probe(mp4, null).refusal)
+    }
+
+    @Test
+    fun aClientThatThrowsAtRuntimeNeverEscapesProbe() {
+        val http = ProbeHttp { _, _, _ -> throw IllegalStateException("boom") }
+        assertEquals(Refusal.FAILED, MediaProber(http, web).probe(mp4, "https://example.com/film").refusal)
+    }
 }

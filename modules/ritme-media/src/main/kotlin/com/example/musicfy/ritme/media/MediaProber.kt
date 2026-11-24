@@ -68,11 +68,13 @@ data class ProbeVerdict(
 class MediaProber(private val http: ProbeHttp, private val webOrigin: String) {
 
     fun probe(url: String, pageUrl: String?): ProbeVerdict {
+        if (!MediaUrlRules.isAcceptableMediaUrl(url)) return ProbeVerdict.refused(url, Refusal.FAILED)
         val plain = fetch(url, RANGE, HEAD_BYTES)
         var response = plain
         var extra = emptyMap<String, String>()
         val referrer = pageUrl?.let(MediaUrlRules::referrerOf)
-        if (plain?.ok != true && referrer != null) {
+        // a Referer can only turn a refusal (4xx) into an answer: not a 5xx, not a missing answer
+        if (plain != null && plain.status in 400..499 && referrer != null) {
             val withReferrer = fetch(url, RANGE + (REFERER to referrer), HEAD_BYTES)
             if (withReferrer?.ok == true) {
                 response = withReferrer
@@ -156,11 +158,14 @@ class MediaProber(private val http: ProbeHttp, private val webOrigin: String) {
     }
 
     private fun fetch(url: String, headers: Map<String, String>, maxBytes: Int): ProbeResponse? = try {
-        http.get(url, headers, maxBytes)
+        http.get(url, headers, maxBytes).let {
+            // whatever the client does, never trust it to have cut the body
+            if (it.body.size > maxBytes) ProbeResponse(it.status, it.contentType, it.body.copyOf(minOf(it.body.size, maxBytes)), it.finalUrl, it.allowOrigin) else it
+        }
     } catch (_: IOException) {
         null
-    } catch (_: IllegalArgumentException) {
-        // a url the HTTP client cannot even build a request for
+    } catch (_: RuntimeException) {
+        // includes a url the HTTP client cannot even build a request for: nothing escapes probe
         null
     }
 
