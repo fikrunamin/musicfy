@@ -41,9 +41,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -71,7 +73,8 @@ import kotlinx.coroutines.delay
 /**
  * What the "Add video" sheet holds, shared by its content and its pinned buttons (the button bar
  * is composed apart from the content, like RitmeEntryForm). [roomMode] is fixed when the sheet
- * opens: in a room it adds to the room, outside one it starts a room (Decision 12). Main thread only.
+ * opens: in a room it adds to the room, outside one it starts a room (Decision 12); a start-mode
+ * sheet whose device joins a room meanwhile adds to that room instead. Main thread only.
  */
 @Stable
 internal class RitmeAddVideoForm(initialText: String?, val roomMode: Boolean) {
@@ -86,8 +89,9 @@ internal class RitmeAddVideoForm(initialText: String?, val roomMode: Boolean) {
 
     // A shared link is looked up at once; typing waits for a pause ([DEBOUNCE_MS]).
     private var immediate = initialText != null
-    // The text (and search) last looked up, so coming back into composition does not redo it (and
-    // replace a chosen result's preview with the results again).
+    // The text (and search) whose answer is on screen, so coming back into composition does not
+    // redo it (and replace a chosen result's preview with the results again). Null while a lookup
+    // runs: one cancelled mid-flight (an edit undone) leaves "Searching…" up, so it must run again.
     private var resolved: Pair<String, Int>? = null
 
     fun show(next: AddVideoState) {
@@ -109,11 +113,14 @@ internal class RitmeAddVideoForm(initialText: String?, val roomMode: Boolean) {
     /** What the buttons send; null (and no buttons) without a preview. */
     fun entry(): NewEntry? = RitmeAddVideoModel.entryOf(state, title)
 
-    /** Never in a room this device may not add to (the host turned adding off): nothing to tap then. */
+    /**
+     * Never in a room this device may not add to (the host turned adding off): nothing to tap then.
+     * Outside a room only in start mode (a room-mode sheet whose room is gone closes itself).
+     */
     fun canSend(session: RitmeUiState): Boolean {
-        if (!roomMode) return true
+        if (!session.inRoom) return !roomMode
         val room = session.room ?: return false
-        return session.inRoom && RitmePermissions.canAdd(room, session.memberId)
+        return RitmePermissions.canAdd(room, session.memberId)
     }
 
     suspend fun resolve(model: RitmeAddVideoModel) {
@@ -122,6 +129,7 @@ internal class RitmeAddVideoForm(initialText: String?, val roomMode: Boolean) {
         if (!immediate) delay(DEBOUNCE_MS)
         immediate = false
         val query = text
+        resolved = null
         if (query.isBlank()) {
             show(AddVideoState.Empty)
         } else {
@@ -146,17 +154,19 @@ internal class RitmeAddVideoForm(initialText: String?, val roomMode: Boolean) {
 }
 
 /**
- * The sheet's pinned buttons, the sheets' pills (SheetPillButton). In a room: "Add" and "Play next",
- * side by side; outside one: "Start Ritme with this video", which leads to the start sheet (Decision
- * 12). Not shown at all without a preview, or while adding is locked: a disabled pill would still
- * take taps (the AppSwitch lesson) and nothing must look tappable.
+ * The sheet's pinned buttons, the sheets' pills (SheetPillButton). In a room (also one joined after
+ * a start-mode sheet opened): "Add" and "Play next", side by side; outside one: "Start Ritme with
+ * this video", which leads to the start sheet (Decision 12), or adds to a room joined since this
+ * last composed (RitmeController.startOrAddEntries). Not shown at all without a preview, or while
+ * adding is locked: a disabled pill would still take taps (the AppSwitch lesson) and nothing must
+ * look tappable.
  */
 @Composable
 internal fun RitmeAddVideoButtons(ritme: RitmeUi, form: RitmeAddVideoForm, onDone: () -> Unit) {
     val session by ritme.session.state.collectAsState()
     val entry = form.entry() ?: return
     if (!form.canSend(session)) return
-    if (form.roomMode) {
+    if (session.inRoom) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SheetPillButton(
                 text = stringResource(R.string.ritme_add),
@@ -181,7 +191,7 @@ internal fun RitmeAddVideoButtons(ritme: RitmeUi, form: RitmeAddVideoForm, onDon
             onClick = {
                 // The start sheet goes in underneath this one while it leaves (PopupSheetState).
                 onDone()
-                ritme.controller.openStartWithEntries(listOf(entry))
+                ritme.controller.startOrAddEntries(listOf(entry))
             },
         )
     }
@@ -245,6 +255,7 @@ internal fun RitmeAddVideoContent(ritme: RitmeUi, form: RitmeAddVideoForm, onRoo
                     // A URL entry's picture is never loaded (spec 4.7): it has none anyway.
                     thumbnailUrl = if (isUrl) null else entry.thumbnailUrl,
                     isUrl = isUrl,
+                    onClickLabel = null,
                     onClick = null,
                 )
                 if (state.editableTitle) {
@@ -263,17 +274,28 @@ internal fun RitmeAddVideoContent(ritme: RitmeUi, form: RitmeAddVideoForm, onRoo
             }
             is AddVideoState.Results -> {
                 Spacer(Modifier.height(12.dp))
-                state.items.forEach { choice ->
-                    AddVideoRow(
-                        title = choice.title,
-                        subtitle = videoSubtitle(choice.channel, choice.durationSeconds.takeUnless { choice.live }),
-                        thumbnailUrl = choice.thumbnailUrl,
-                        isUrl = false,
-                        onClick = {
-                            keyboard?.hide()
-                            form.show(model.choose(choice))
-                        },
-                    )
+                val count = pluralStringResource(R.plurals.ritme_add_video_results, state.items.size, state.items.size)
+                val chooseLabel = stringResource(R.string.ritme_add_video_choose)
+                // Replaces "Searching…": its polite live region says how many were found (not every row).
+                Column(
+                    Modifier.semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = count
+                    },
+                ) {
+                    state.items.forEach { choice ->
+                        AddVideoRow(
+                            title = choice.title,
+                            subtitle = videoSubtitle(choice.channel, choice.durationSeconds.takeUnless { choice.live }),
+                            thumbnailUrl = choice.thumbnailUrl,
+                            isUrl = false,
+                            onClickLabel = chooseLabel,
+                            onClick = {
+                                keyboard?.hide()
+                                form.show(model.choose(choice))
+                            },
+                        )
+                    }
                 }
             }
             is AddVideoState.Problem -> {
@@ -286,7 +308,7 @@ internal fun RitmeAddVideoContent(ritme: RitmeUi, form: RitmeAddVideoForm, onRoo
             }
         }
         // The host turned adding off while this was open: the buttons are gone, and this says why.
-        if (form.roomMode && session.inRoom && !form.canSend(session)) {
+        if (session.inRoom && !form.canSend(session)) {
             Spacer(Modifier.height(12.dp))
             RitmeSecondaryText(
                 text = stringResource(R.string.ritme_toast_add_locked),
@@ -310,7 +332,14 @@ private fun videoSubtitle(channel: String, seconds: Int?): String {
  * the ripple in the 14 dp highlight shape. No trailing actions.
  */
 @Composable
-private fun AddVideoRow(title: String, subtitle: String, thumbnailUrl: String?, isUrl: Boolean, onClick: (() -> Unit)?) {
+private fun AddVideoRow(
+    title: String,
+    subtitle: String,
+    thumbnailUrl: String?,
+    isUrl: Boolean,
+    onClickLabel: String?,
+    onClick: (() -> Unit)?,
+) {
     val ink = LocalContentColor.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -324,6 +353,7 @@ private fun AddVideoRow(title: String, subtitle: String, thumbnailUrl: String?, 
                         interactionSource = remember { MutableInteractionSource() },
                         indication = ripple(color = ink),
                         role = Role.Button,
+                        onClickLabel = onClickLabel,
                         onClick = onClick,
                     )
                 } else {

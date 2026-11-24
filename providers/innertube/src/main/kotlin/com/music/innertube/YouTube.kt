@@ -16,6 +16,7 @@ import com.music.innertube.models.MusicCarouselShelfRenderer
 import com.music.innertube.models.MusicShelfRenderer
 import com.music.innertube.models.SectionListRenderer
 import com.music.innertube.models.PlaylistItem
+import com.music.innertube.models.PlaylistPanelVideoRenderer
 import com.music.innertube.models.SearchSuggestions
 import com.music.innertube.models.Run
 import com.music.innertube.models.SongItem
@@ -1350,6 +1351,16 @@ object YouTube {
             }
         }
         RelatedPage(songs, albums, artists, playlists)
+    }
+
+    /**
+     * get_queue's video renderers as YouTube sends them, for Ritme's "Add video", which reads them
+     * itself (its own picture size, RitmeVideoInfo.fromQueue) instead of taking [queue]'s songs.
+     */
+    suspend fun queueRenderers(videoIds: List<String>): Result<List<PlaylistPanelVideoRenderer>> = runCatching {
+        assert(videoIds.size <= MAX_GET_QUEUE_SIZE)
+        innerTube.getQueue(WEB_REMIX, videoIds, null).body<GetQueueResponse>().queueDatas
+            .mapNotNull { it.content.playlistPanelVideoRenderer }
     }
 
     suspend fun queue(videoIds: List<String>? = null, playlistId: String? = null): Result<List<SongItem>> = runCatching {

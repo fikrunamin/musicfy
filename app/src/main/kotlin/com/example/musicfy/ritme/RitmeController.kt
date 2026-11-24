@@ -105,6 +105,16 @@ class RitmeController @Inject constructor(
     }
 
     /**
+     * "Add video"'s start-mode button: the start sheet with [entries]. Start mode is fixed when that
+     * sheet opens, so if this device has joined a room since, they are added to the room instead
+     * (same permission check and toasts as its "Add" button), never dropped for the room sheet.
+     */
+    fun startOrAddEntries(entries: List<NewEntry>) {
+        if (session.state.value.inRoom) return addEntries(entries, playNext = false)
+        openStartWithEntries(entries)
+    }
+
+    /**
      * Entries from "Add video" (spec 4.6): only ever from its buttons, never automatically. The same
      * permission check, batching, play-next stacking and toasts as songs.
      */

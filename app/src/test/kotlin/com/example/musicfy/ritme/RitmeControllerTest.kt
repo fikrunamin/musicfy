@@ -557,6 +557,35 @@ class RitmeControllerTest {
     }
 
     @Test
+    fun startWithVideoOutsideARoomOpensTheStartSheet() {
+        controller.startOrAddEntries(listOf(clip))
+        assertEquals(RitmeSheetRequest.Kind.Entry(startWithEntries = listOf(clip)), controller.sheetRequest.value?.kind)
+        assertTrue(toasts.shown.isEmpty())
+    }
+
+    @Test
+    fun startWithVideoAfterJoiningARoomAddsItThereInsteadOfDroppingIt() {
+        // The "Add video" sheet opened in start mode, then this device joined a room.
+        inRoom(playing)
+        val before = controller.sheetRequest.value
+        controller.startOrAddEntries(listOf(clip))
+        assertEquals(listOf<Command>(Command.Add(listOf(clip), playNext = false)), commands)
+        assertEquals(listOf<RitmeToast>(RitmeToast.Added(1)), toasts.shown)
+        // no room sheet in its place
+        assertEquals(before, controller.sheetRequest.value)
+    }
+
+    @Test
+    fun startWithVideoInARoomWhereGuestsCannotAddIsRefused() {
+        inRoom(playing.copy(settings = RoomSettings(guestsCanAdd = false)), memberId = "m2")
+        val before = controller.sheetRequest.value
+        controller.startOrAddEntries(listOf(clip))
+        assertTrue(commands.isEmpty())
+        assertEquals(listOf<RitmeToast>(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN)), toasts.shown)
+        assertEquals(before, controller.sheetRequest.value)
+    }
+
+    @Test
     fun addVideoIsRefusedUpFrontWhenGuestsCannotAdd() {
         inRoom(playing.copy(settings = RoomSettings(guestsCanAdd = false)), memberId = "m2")
         controller.openAddVideo("https://youtu.be/dQw4w9WgXcQ")

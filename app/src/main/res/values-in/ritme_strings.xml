@@ -90,6 +90,10 @@
     <string name="ritme_add_video_hint">Tempel link atau cari video</string>
     <string name="ritme_add_video_title_optional">Judul (opsional)</string>
     <string name="ritme_add_video_searching">Mencari…</string>
+    <string name="ritme_add_video_choose">Pilih</string>
+    <plurals name="ritme_add_video_results">
+        <item quantity="other">%d video ditemukan</item>
+    </plurals>
     <string name="ritme_add">Tambah</string>
     <string name="ritme_play_next_button">Putar berikutnya</string>
     <string name="ritme_start_with_video">Mulai Ritme dengan video ini</string>

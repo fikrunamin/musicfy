@@ -100,6 +100,11 @@
     <string name="ritme_add_video_hint">Paste a link or search videos</string>
     <string name="ritme_add_video_title_optional">Title (optional)</string>
     <string name="ritme_add_video_searching">Searching…</string>
+    <string name="ritme_add_video_choose">Choose</string>
+    <plurals name="ritme_add_video_results">
+        <item quantity="one">%d video found</item>
+        <item quantity="other">%d videos found</item>
+    </plurals>
     <string name="ritme_add">Add</string>
     <string name="ritme_play_next_button">Play next</string>
     <string name="ritme_start_with_video">Start Ritme with this video</string>

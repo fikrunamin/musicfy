@@ -116,19 +116,19 @@ fun PopupSheetState.showRitmeEntrySheet(ritme: RitmeUi, code: String?, startWith
 }
 
 /** The "Add video" sheet that is showing: a second share fills its field instead of stacking a copy. */
-private var openAddVideo: RitmeAddVideoForm? = null
+private var openAddVideoForm: RitmeAddVideoForm? = null
 
 fun PopupSheetState.showRitmeAddVideoSheet(ritme: RitmeUi, text: String?) {
-    openAddVideo?.let { open ->
+    openAddVideoForm?.let { open ->
         if (text != null) open.fill(text)
         return
     }
     val form = RitmeAddVideoForm(text, roomMode = ritme.session.state.value.inRoom)
-    openAddVideo = form
+    openAddVideoForm = form
     var handle: PopupSheetHandle? = null
     handle = showWithHandle(
         buttonBar = { RitmeAddVideoButtons(ritme, form, onDone = { handle?.dismiss() }) },
-        onClosed = { if (openAddVideo === form) openAddVideo = null },
+        onClosed = { if (openAddVideoForm === form) openAddVideoForm = null },
     ) {
         RitmeAddVideoContent(ritme = ritme, form = form, onRoomGone = { handle?.dismiss() })
     }

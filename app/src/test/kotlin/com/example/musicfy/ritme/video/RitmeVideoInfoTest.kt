@@ -1,6 +1,8 @@
 package com.example.musicfy.ritme.video
 
+import com.music.innertube.models.PlaylistPanelVideoRenderer
 import com.music.innertube.models.SongItem
+import com.music.innertube.models.Thumbnail
 import com.music.innertube.models.response.GetQueueResponse
 import com.music.innertube.models.response.PlayerResponse
 import com.music.innertube.pages.NextPage
@@ -28,10 +30,12 @@ class RitmeVideoInfoTest {
     private fun resource(name: String): String =
         requireNotNull(javaClass.getResourceAsStream("/ritme/innertube/$name")) { name }.bufferedReader().use { it.readText() }
 
-    /** What YouTube.queue makes of a get_queue answer. */
-    private fun queue(name: String): List<SongItem> =
-        json.decodeFromString<GetQueueResponse>(resource(name)).queueDatas
-            .mapNotNull { it.content.playlistPanelVideoRenderer?.let(NextPage::fromPlaylistPanelVideoRenderer) }
+    /** What YouTube.queueRenderers makes of a get_queue answer. */
+    private fun queue(name: String): List<PlaylistPanelVideoRenderer> =
+        json.decodeFromString<GetQueueResponse>(resource(name)).queueDatas.mapNotNull { it.content.playlistPanelVideoRenderer }
+
+    /** What YouTube.queue makes of a get_queue answer (songs, as YouTube Music's search gives). */
+    private fun songs(name: String): List<SongItem> = queue(name).mapNotNull(NextPage::fromPlaylistPanelVideoRenderer)
 
     private fun player(name: String): PlayerResponse = json.decodeFromString<PlayerResponse>(resource(name))
 
@@ -60,7 +64,34 @@ class RitmeVideoInfoTest {
         assertEquals("Lama Dev", choice.channel)
         assertEquals(627, choice.durationSeconds)
         assertEquals(false, choice.live)
-        assertEquals("https://i.ytimg.com/vi_webp/nPSvUczm8M0/maxresdefault.webp", choice.thumbnailUrl)
+        // the first picture at least 320 wide (336 × 188), not maxres 1920 × 1080
+        assertEquals(
+            "https://i.ytimg.com/vi/nPSvUczm8M0/hqdefault.jpg?sqp=-oaymwEcCNACELwBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLD9NggmW1GNl3lLbhC0xyc5nx3Z_w",
+            choice.thumbnailUrl,
+        )
+    }
+
+    @Test
+    fun getQueuesPictureIsTheSmallestThatFillsARowNotTheLargest() {
+        // recorded: 400 × 225, 800 × 450, 853 × 479
+        val choice = RitmeVideoInfo.fromQueue(queue("get-queue-video-recorded.json"), "dQw4w9WgXcQ")!!
+        assertEquals("Never Gonna Give You Up", choice.title)
+        assertEquals(
+            "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3lrEQLVd7aUH6RTaLjc4JkVVNINHQ",
+            choice.thumbnailUrl,
+        )
+    }
+
+    @Test
+    fun thePictureIsTheFirstAtLeast320WideElseTheLargest() {
+        fun pic(width: Int?) = Thumbnail("https://i.ytimg.com/$width.jpg", width, width?.let { it * 9 / 16 })
+        assertEquals("https://i.ytimg.com/320.jpg", RitmeVideoInfo.thumbnail(listOf(pic(120), pic(320), pic(480), pic(1920))))
+        assertEquals("https://i.ytimg.com/336.jpg", RitmeVideoInfo.thumbnail(listOf(pic(168), pic(196), pic(336), pic(1920))))
+        // none wide enough: the largest there is
+        assertEquals("https://i.ytimg.com/246.jpg", RitmeVideoInfo.thumbnail(listOf(pic(168), pic(246), pic(196))))
+        // no widths at all (get_queue's stub): the last, as before
+        assertEquals("https://i.ytimg.com/null.jpg", RitmeVideoInfo.thumbnail(listOf(pic(null))))
+        assertNull(RitmeVideoInfo.thumbnail(emptyList()))
     }
 
     @Test
@@ -136,7 +167,7 @@ class RitmeVideoInfoTest {
 
     @Test
     fun theSearchFallsBackToYouTubeMusicWhenWebSearchFailsOrFindsNothing() = runBlocking {
-        val song = queue("get-queue-video.json")
+        val song = songs("get-queue-video.json")
         val fromWeb = WebVideoItem("nPSvUczm8M0", "nobody wants your AI app...", "Lama Dev", 627, null, live = false)
         assertEquals(listOf("nPSvUczm8M0"), RitmeVideoInfo.search({ Result.success(listOf(fromWeb)) }, { Result.success(song) }).map { it.videoId })
         assertEquals(listOf("dQw4w9WgXcQ"), RitmeVideoInfo.search({ Result.success(emptyList()) }, { Result.success(song) }).map { it.videoId })
