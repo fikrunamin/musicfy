@@ -154,6 +154,41 @@ test('F add sheet: results, no results @add', async ({ context }, info) => {
   await shot(a, info, 'F-add-empty');
 });
 
+test('L/P add video: empty, error, YouTube and direct previews @addvideo', async ({ context }, info) => {
+  // The direct link is the sample WebM (12:00) served under an .mp4 name, so its format line reads MP4.
+  await context.route('https://media.example.com/**', (route) => route.fulfill({ contentType: 'video/webm', body: SAMPLE_WEBM }));
+  const { a } = await openRoom(context);
+  await addSong(a, 'x', SHOT_SONGS[0].title); // something playing behind the sheet, as in LWN2X
+  await showAdd(a);
+  await a.getByRole('tab', { name: 'Video', exact: true }).click();
+  const field = a.getByLabel('Tempel link video');
+  const preview = a.getByRole('button', { name: 'Pratinjau' });
+  await expect(field).toBeVisible();
+  await shot(a, info, 'L-add-video-empty');
+
+  // Not an http(s) link at all (Chromium parses "https://" + text with spaces, so spaces would read as a web page).
+  await field.fill('ftp://contoh.com/halaman-ku');
+  await preview.click();
+  await expect(a.locator('.field-error')).toHaveText('Link tidak dikenali');
+  await expect(field).toHaveAttribute('aria-invalid', 'true');
+  await shot(a, info, 'L-add-video-error');
+
+  await field.fill(`https://youtu.be/${VIDEO.videoId}`);
+  await preview.click();
+  await expect(a.locator('.avp-card .avp-title')).toHaveText(VIDEO.title);
+  // The thumbnail is lazy: in the desktop column it may sit below the fold until scrolled to.
+  await a.locator('.avp-art img').scrollIntoViewIfNeeded();
+  await expect(a.locator('.avp-art img')).toHaveJSProperty('complete', true);
+  await shot(a, info, 'L-add-video-preview');
+
+  await field.fill('https://media.example.com/klip/sawah-pagi.mp4');
+  await preview.click();
+  // Enabled once the probe has read the length.
+  await expect(a.getByRole('button', { name: 'Tambah: sawah-pagi.mp4' })).toBeEnabled({ timeout: 15_000 });
+  await expect(a.getByText(/^MP4 · \d+:\d\d$/)).toBeVisible();
+  await shot(a, info, 'P-add-direct-preview');
+});
+
 test('G members sheet: host and guest @members', async ({ context }, info) => {
   const { a, b } = await openRoom(context);
   await addSong(a, 'x', SHOT_SONGS[0].title); // something playing behind the sheet, as in J5QAxI

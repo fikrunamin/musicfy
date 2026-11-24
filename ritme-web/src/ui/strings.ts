@@ -117,6 +117,10 @@ export const t = {
   preview: 'Pratinjau',
   loadingPreview: 'Memuat…',
   titleOptional: 'Judul (opsional)',
+  titlePlaceholder: 'Kosongkan untuk pakai nama file',
+  videoLinkHint: 'Tempel link dari YouTube atau link video lain yang bisa diputar di browser.',
+  /** Not in the handoff: reading the clipboard was refused (permission or a dismissed prompt). */
+  pasteFailed: 'Papan klip tidak bisa dibaca. Tempel link langsung di kolom ini.',
   unknownDuration: 'Durasi tidak diketahui',
   videoBadge: 'Video',
   fromDomain: (domain: string) => `dari ${domain}`,

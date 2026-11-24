@@ -1,59 +1,9 @@
 /*
  * The pre-redesign rules, kept only until each screen task replaces them (deleted in the final
- * task). Old variable names point at the new tokens.
+ * task). The Video tab (Task 13) was the last user of the old layout classes.
  */
 :root {
-  --fg: var(--text);
-  --line: var(--faint);
-  --radius: var(--r-input);
   --focus: var(--text);
-}
-
-.screen {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 16px;
-}
-
-.stack {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.center {
-  text-align: center;
-  align-items: center;
-}
-
-.muted {
-  color: var(--muted);
-}
-
-.small {
-  font-size: 14px;
-}
-
-/* Fields not yet moved to TextField (.input). */
-:where(input[type='text'], input[type='search'], input:not([type])):not(.input) {
-  font: inherit;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--bg);
-  color: var(--fg);
-  min-height: 48px;
-  width: 100%;
 }
 
 ::placeholder {
@@ -61,82 +11,9 @@
   opacity: 1;
 }
 
-.btn-small {
-  min-height: 44px;
-  min-width: 44px;
-  padding: 4px 14px;
-  font-size: 14px;
-}
-
 :focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
-}
-
-.error {
-  color: var(--danger);
-  margin: 0;
-}
-
-.now-row,
-.queue-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 12px;
-}
-
-.queue {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.queue-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex: 1;
-}
-
-.title {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.queue-actions {
-  display: flex;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-/* Narrow screens: keep the title readable, actions drop onto their own line. */
-@media (max-width: 400px) {
-  .queue-text {
-    flex: 1 1 0;
-    min-width: 120px;
-  }
-
-  .queue-actions {
-    flex-basis: 100%;
-    justify-content: flex-end;
-  }
-}
-
-.queue-text .badge {
-  margin-left: 0;
-  margin-top: 2px;
-}
-
-.search-form {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
 }
 
 .visually-hidden {
@@ -147,4 +24,3 @@
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
-

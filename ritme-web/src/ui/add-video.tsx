@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { displayDomain } from '../net/idn';
 import { type ProbeOutcome, probeMedia } from '../net/media-probe';
@@ -7,8 +8,11 @@ import { type VideoInfo, fetchVideoInfo, toUrlEntry, toVideoEntry, urlEntryTitle
 import { type DirectVideoLink, classifyVideoLink } from '../net/video-link';
 import type { NewEntry } from '../protocol';
 import type { SessionApi } from '../session/session';
+import { mediaFormat } from './badges';
+import { Badge, Button, DurationChip, FieldError, IconButton, TextField } from './components';
 import { formatMs } from './format';
-import { Thumb } from './media';
+import { Icon } from './icon';
+import { Thumb, VideoPlaceholder } from './media';
 import { t, videoInfoFailureText, videoLinkProblemText } from './strings';
 
 interface Props {
@@ -29,6 +33,8 @@ type Preview =
   /** probe is null while the hidden <video> is still loading the metadata. */
   | { kind: 'direct'; link: DirectVideoLink; probe: ProbeOutcome | null };
 
+const ERROR_ID = 'video-link-error';
+
 function directDuration(probe: ProbeOutcome | null): string {
   if (probe === null) return t.loadingPreview;
   if (probe.kind !== 'ready') return t.unknownDuration;
@@ -40,74 +46,18 @@ function canReadClipboard(): boolean {
   return typeof navigator !== 'undefined' && typeof navigator.clipboard?.readText === 'function';
 }
 
-/** A clipboard outline in the text colour (the handoff's paste button is an icon only). */
-function PasteIcon() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="8" y="2" width="8" height="4" rx="1" />
-      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-    </svg>
-  );
-}
-
-interface PreviewRowProps {
-  thumbnailUrl: string | null;
-  /** 16:9 for videos; a song (music.youtube.com) keeps the square thumbnail it gets in the queue. */
-  wide: boolean;
-  title: string;
-  meta: string[];
-  enabled: boolean;
-  onAdd: (playNext: boolean) => void;
-}
-
-/** One preview, laid out exactly like a search result row, with the thumbnail its queue row will have. */
-function PreviewRow({ thumbnailUrl, wide, title, meta, enabled, onAdd }: PreviewRowProps) {
-  return (
-    <ul class="queue">
-      <li class="queue-row">
-        <Thumb url={thumbnailUrl} wide={wide} />
-        <div class="queue-text">
-          <span class="title">{title}</span>
-          <span class="muted small">{meta.filter(Boolean).join(' · ')}</span>
-        </div>
-        <div class="queue-actions">
-          <button type="button" class="btn btn-small" disabled={!enabled} aria-label={`${t.playNext}: ${title}`} onClick={() => onAdd(true)}>
-            {t.playNext}
-          </button>
-          <button
-            type="button"
-            class="btn btn-small btn-primary"
-            disabled={!enabled}
-            aria-label={`${t.addToQueue}: ${title}`}
-            onClick={() => onAdd(false)}
-          >
-            {t.addToQueue}
-          </button>
-        </div>
-      </li>
-    </ul>
-  );
-}
-
-/** What the youtube preview row shows under its title. */
+/** What the youtube preview shows after "YouTube ·" (and announces after the title). */
 function youtubeMeta(preview: { info: VideoInfo; entry: NewEntry }): string[] {
-  return [preview.entry.artist, preview.info.live ? t.live : formatMs(preview.entry.durationMs)];
+  return [preview.entry.artist, preview.info.live ? t.live : formatMs(preview.entry.durationMs)].filter(Boolean);
 }
 
-/** What the direct preview row shows under its title. */
+/** What the direct preview announces after its title: the source, then the length. */
 function directMeta(link: DirectVideoLink, probe: ProbeOutcome | null): string[] {
   return [t.fromDomain(displayDomain(link.domain)), directDuration(probe)];
 }
+
+/** The name a direct link is shown and added under: the typed title, else the file name. */
+const directTitle = (link: DirectVideoLink, title: string) => urlEntryTitle(link, title) ?? link.fileName;
 
 /**
  * The text of the one polite live region: "loading", then the preview (and, for a link this
@@ -122,28 +72,99 @@ function announcement(preview: Preview): string {
     case 'loading':
       return t.loadingPreview;
     case 'youtube':
-      return [preview.entry.title, ...youtubeMeta(preview)].filter(Boolean).join(' · ');
+      return [preview.entry.title, ...youtubeMeta(preview)].join(' · ');
     case 'direct': {
       if (preview.probe === null) return t.loadingPreview;
-      const title = urlEntryTitle(preview.link, '') ?? preview.link.fileName;
-      const row = [title, ...directMeta(preview.link, preview.probe)].filter(Boolean).join(' · ');
+      const row = [directTitle(preview.link, ''), ...directMeta(preview.link, preview.probe)].filter(Boolean).join(' · ');
       return preview.probe.kind === 'unplayable' ? `${row}. ${t.videoUnplayableWeb}` : row;
     }
   }
 }
 
+/** The surface2 r24 card (handoff L/P): the 16:9 art (decorative), the title, then its lines. */
+function PreviewCard({ art, title, children }: { art: ComponentChildren; title: string; children: ComponentChildren }) {
+  return (
+    <div class="avp-card">
+      <div class="avp-art" aria-hidden="true">
+        {art}
+      </div>
+      <p class="avp-title">{title}</p>
+      {children}
+    </div>
+  );
+}
+
+function YouTubeCard({ preview }: { preview: { info: VideoInfo; entry: NewEntry } }) {
+  const { entry, info } = preview;
+  // A song (music.youtube.com) keeps the square thumbnail it gets in the queue, and no Video badge.
+  const wide = entry.kind !== 'YOUTUBE_MUSIC';
+  return (
+    <PreviewCard
+      title={entry.title}
+      art={
+        <>
+          <Thumb url={entry.thumbnailUrl} wide={wide} />
+          {wide && (
+            <span class="vp-badge">
+              <Badge kind={info.live ? 'live' : 'video'} />
+            </span>
+          )}
+          {!info.live && (
+            <span class="vp-duration">
+              <DurationChip>{formatMs(entry.durationMs)}</DurationChip>
+            </span>
+          )}
+        </>
+      }
+    >
+      <p class="avp-meta avp-one">
+        <span>{t.youtube} · </span>
+        <span>{youtubeMeta(preview).join(' · ')}</span>
+      </p>
+    </PreviewCard>
+  );
+}
+
+function DirectCard({ link, probe, title }: { link: DirectVideoLink; probe: ProbeOutcome | null; title: string }) {
+  const domain = displayDomain(link.domain);
+  const live = probe?.kind === 'ready' && probe.live;
+  const badge = () => <Badge kind={live ? 'live' : 'video'} />;
+  const length = probe?.kind === 'ready' && !probe.live && probe.durationMs > 0 ? formatMs(probe.durationMs) : null;
+  return (
+    <PreviewCard title={directTitle(link, title)} art={<VideoPlaceholder domain={domain} badge={badge()} duration={length} />}>
+      <p class="avp-meta">
+        <Icon name="link" size={16} />
+        <span>{t.fromDomain(domain)}</span>
+      </p>
+      <p class="avp-meta">
+        {badge()}
+        {/* A live stream says so in its badge; anything else gives its length (or why not). */}
+        <span>{[mediaFormat(link.url), live ? null : directDuration(probe)].filter(Boolean).join(' · ')}</span>
+      </p>
+      {probe?.kind === 'unplayable' && (
+        <p class="avp-warn">
+          <Icon name="error" size={16} />
+          <span>{t.videoUnplayableWeb}</span>
+        </p>
+      )}
+    </PreviewCard>
+  );
+}
+
 /**
- * The "Video" tab of the add card (spec 6.1, brief §12 L and §13): paste a link, preview it, add
- * it. Nothing is added automatically, and the preview starts only on "Pratinjau"/Enter (the
- * server allows 30 lookups per minute per IP). YouTube links need /api/video to answer (no
- * made-up titles); direct links are probed by a hidden <video> and may be added even when this
- * browser cannot play them, because an Android member might. What is sent is exactly what
- * toVideoEntry/toUrlEntry return; only the shown domain is IDN-decoded.
+ * The "Video" tab of the add card (spec 6.1, handoff L and P): paste a link, preview it, add it.
+ * Nothing is added automatically, and the preview starts only on the "Pratinjau" button or Enter
+ * (the server allows 30 lookups per minute per IP); typing or pasting never looks anything up.
+ * YouTube links need /api/video to answer (no made-up titles); direct links are probed by a hidden
+ * <video> and may be added even when this browser cannot play them, because an Android member
+ * might. What is sent is exactly what toVideoEntry/toUrlEntry return; only the shown domain is
+ * IDN-decoded.
  */
 export function AddVideoPanel({ session, online, pageIsHttps, fetchImpl, probe }: Props) {
   const [text, setText] = useState('');
   const [title, setTitle] = useState('');
   const [preview, setPreview] = useState<Preview>({ kind: 'idle' });
+  const [pasteFailed, setPasteFailed] = useState(false);
   const inflight = useRef<AbortController | null>(null);
   const input = useRef<HTMLInputElement>(null);
   useEffect(
@@ -166,6 +187,7 @@ export function AddVideoPanel({ session, online, pageIsHttps, fetchImpl, probe }
     inflight.current?.abort();
     inflight.current = null;
     setTitle('');
+    setPasteFailed(false);
     setPreview({ kind: 'idle' });
   };
 
@@ -198,12 +220,13 @@ export function AddVideoPanel({ session, online, pageIsHttps, fetchImpl, probe }
     setPreview({ kind: 'direct', link, probe: outcome });
   };
 
+  /** Fills the field only; the lookup still waits for "Pratinjau". A refusal is said, never thrown. */
   const paste = async () => {
     try {
       const pasted = (await navigator.clipboard.readText()).trim();
       if (pasted !== '') changeLink(pasted.slice(0, MAX_MEDIA_URL_LENGTH));
     } catch {
-      // permission refused or nothing readable: the field stays as it was
+      setPasteFailed(true);
     }
     input.current?.focus();
   };
@@ -211,8 +234,10 @@ export function AddVideoPanel({ session, online, pageIsHttps, fetchImpl, probe }
   const directEntry = (p: Preview): NewEntry | null =>
     p.kind === 'direct' && p.probe ? toUrlEntry(p.link, title, p.probe.kind === 'ready' ? p.probe.durationMs : 0) : null;
 
+  const entry = preview.kind === 'youtube' ? preview.entry : directEntry(preview);
+  const name = preview.kind === 'youtube' ? preview.entry.title : preview.kind === 'direct' ? directTitle(preview.link, title) : null;
+
   const add = (playNext: boolean) => {
-    const entry = preview.kind === 'youtube' ? preview.entry : directEntry(preview);
     if (!entry) return;
     session.add(entry, playNext);
     setText('');
@@ -221,75 +246,58 @@ export function AddVideoPanel({ session, online, pageIsHttps, fetchImpl, probe }
   };
 
   const busy = preview.kind === 'loading';
+  const error = preview.kind === 'error' ? preview.message : null;
   return (
     <>
-      <form class="search-form" onSubmit={onSubmit}>
-        <label class="visually-hidden" for="video-link-input">
-          {t.videoLinkLabel}
-        </label>
-        <input
-          ref={input}
+      <form class="add-search avp-form" onSubmit={onSubmit}>
+        <TextField
           id="video-link-input"
-          type="text"
+          label={t.videoLinkLabel}
+          inputRef={input}
           inputMode="url"
           autoComplete="off"
           spellcheck={false}
           value={text}
           maxLength={MAX_MEDIA_URL_LENGTH}
           placeholder={t.videoLinkPlaceholder}
+          errorId={error && ERROR_ID}
           onInput={(e) => changeLink(e.currentTarget.value)}
         />
-        {canReadClipboard() && (
-          <button type="button" class="icon-btn" aria-label={t.pasteLink} title={t.pasteLink} onClick={() => void paste()}>
-            <PasteIcon />
-          </button>
-        )}
-        <button type="submit" class="btn" disabled={busy}>
-          {busy ? t.loadingPreview : t.preview}
-        </button>
+        {canReadClipboard() && <IconButton icon="content_paste" variant="filled" label={t.pasteLink} title={t.pasteLink} onClick={() => void paste()} />}
+        <IconButton type="submit" icon="search" variant="accent" label={busy ? t.loadingPreview : t.preview} disabled={busy} />
       </form>
-      {preview.kind === 'error' && (
-        <p class="error" role="alert">
-          {preview.message}
-        </p>
-      )}
-      {preview.kind === 'youtube' && (
-        <PreviewRow
-          thumbnailUrl={preview.entry.thumbnailUrl}
-          wide={preview.entry.kind !== 'YOUTUBE_MUSIC'}
-          title={preview.entry.title}
-          meta={youtubeMeta(preview)}
-          enabled={online}
-          onAdd={add}
-        />
-      )}
+      {error && <FieldError id={ERROR_ID}>{error}</FieldError>}
+      {error === videoLinkProblemText.unrecognized && <p class="add-hint">{t.videoLinkHint}</p>}
+      {pasteFailed && <p class="add-hint">{t.pasteFailed}</p>}
+      {preview.kind === 'youtube' && <YouTubeCard preview={preview} />}
       {preview.kind === 'direct' && (
-        <div class="stack">
-          <label class="field">
-            {t.titleOptional}
-            <input
-              type="text"
-              value={title}
-              maxLength={MAX_TEXT_LENGTH}
-              placeholder={preview.link.fileName}
-              onInput={(e) => setTitle(e.currentTarget.value)}
-            />
-          </label>
-          <PreviewRow
-            thumbnailUrl={null}
-            wide
-            title={urlEntryTitle(preview.link, title) ?? preview.link.fileName}
-            meta={directMeta(preview.link, preview.probe)}
-            enabled={online && directEntry(preview) !== null}
-            onAdd={add}
+        <>
+          <DirectCard link={preview.link} probe={preview.probe} title={title} />
+          <TextField
+            id="video-title-input"
+            label={t.titleOptional}
+            value={title}
+            maxLength={MAX_TEXT_LENGTH}
+            placeholder={t.titlePlaceholder}
+            onInput={(e) => setTitle(e.currentTarget.value)}
           />
-          {preview.probe?.kind === 'unplayable' && <p class="muted small">{t.videoUnplayableWeb}</p>}
-        </div>
+        </>
       )}
+      <div class="avp-actions">
+        <Button icon="playlist_play" disabled={!online || !entry} aria-label={name ? `${t.playNext}: ${name}` : undefined} onClick={() => add(true)}>
+          {t.playNext}
+        </Button>
+        <Button variant="primary" icon="add" disabled={!online || !entry} aria-label={name ? `${t.addToQueue}: ${name}` : undefined} onClick={() => add(false)}>
+          {t.addToQueue}
+        </Button>
+      </div>
       <p class="visually-hidden" role="status" aria-live="polite">
-        {announcement(preview)}
+        {pasteFailed ? t.pasteFailed : announcement(preview)}
       </p>
-      <p class="muted small">{t.videoTip}</p>
+      <p class="add-tip">
+        <Icon name="info" size={16} />
+        <span>{t.videoTip}</span>
+      </p>
     </>
   );
 }

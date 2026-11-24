@@ -200,7 +200,8 @@ describe('SearchPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Video' }));
     fireEvent.input(screen.getByLabelText('Tempel link video'), { target: { value: 'http://cdn.example.com/a.mp4' } });
     fireEvent.click(screen.getByRole('button', { name: 'Pratinjau' }));
-    expect(await screen.findByText('dari cdn.example.com · Durasi tidak diketahui')).toBeTruthy();
+    expect(await screen.findByText('MP4 · Durasi tidak diketahui')).toBeTruthy();
+    expect(screen.getByText('dari cdn.example.com')).toBeTruthy();
   });
 
   it('searches on submit and adds a result to the end or as next', async () => {

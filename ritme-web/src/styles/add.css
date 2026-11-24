@@ -67,3 +67,127 @@
 .meta-live {
   color: var(--danger);
 }
+
+/* Video tab (L/P): the link field with the paste and "Pratinjau" squares on its baseline. */
+.avp-form {
+  gap: 8px;
+}
+
+.avp-form .icon-btn {
+  width: var(--btn-h);
+  height: var(--btn-h);
+  border-radius: var(--r-input);
+}
+
+.add-hint,
+.add-tip {
+  color: var(--muted);
+  font-size: var(--fs-meta);
+}
+
+.add-tip {
+  display: flex;
+  gap: 8px;
+}
+
+.add-tip .icon {
+  margin-top: 1px;
+}
+
+/* The preview card: surface2, r24, the 16:9 art, then title and one-line meta. */
+.avp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 8px 14px;
+  border-radius: var(--r-card);
+  background: var(--surface2);
+}
+
+.avp-art {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  margin-bottom: 8px;
+  border-radius: var(--r-input);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--placeholder);
+}
+
+.avp-art .thumb {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+.avp-art .video-placeholder {
+  position: absolute;
+  inset: 0;
+}
+
+/* A song keeps its square cover, centred in the frame. */
+.avp-art .thumb:not(.thumb-wide) {
+  width: auto;
+  aspect-ratio: 1;
+}
+
+.avp-title,
+.avp-meta,
+.avp-warn {
+  padding: 0 6px;
+}
+
+.avp-title {
+  font-size: var(--fs-body);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.avp-meta,
+.avp-warn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: var(--fs-meta);
+}
+
+.avp-meta span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.avp-meta span:first-child {
+  flex-shrink: 0;
+}
+
+.avp-warn {
+  color: var(--danger);
+}
+
+/* YouTube: "YouTube · channel · length" as one run of text, cut at its end. */
+.avp-one {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* "Putar berikutnya" / "+ Tambah": 52 px, sharing the row (stacked in the narrow desktop column). */
+.avp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.avp-actions .btn {
+  flex: 1 1 auto;
+  padding: 0 16px;
+  font-size: var(--fs-body);
+}
