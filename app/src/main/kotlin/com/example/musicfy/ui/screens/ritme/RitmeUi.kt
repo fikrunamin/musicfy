@@ -16,6 +16,7 @@ import com.example.musicfy.di.RitmeEntryPoint
 import com.example.musicfy.models.MediaMetadata
 import com.example.musicfy.ritme.RitmeConfig
 import com.example.musicfy.ritme.RitmeController
+import com.example.musicfy.ritme.protocol.NewEntry
 import com.example.musicfy.ritme.RitmeSheetRequest
 import com.example.musicfy.ritme.session.RitmePhase
 import com.example.musicfy.ritme.session.RitmeSession
@@ -55,7 +56,7 @@ fun RitmeSheetOpener(navController: NavController) {
         ritme.controller.consumeSheetRequest(current.id)
         when (val kind = current.kind) {
             RitmeSheetRequest.Kind.Room -> popup.showRitmeRoomSheet(ritme, navController)
-            is RitmeSheetRequest.Kind.Entry -> popup.showRitmeEntrySheet(ritme, kind.code, kind.startWith)
+            is RitmeSheetRequest.Kind.Entry -> popup.showRitmeEntrySheet(ritme, kind.code, kind.startWith, kind.startWithEntries)
         }
     }
 }
@@ -73,7 +74,7 @@ private class OpenEntrySheet(val form: RitmeEntryForm) {
 private var openEntry: OpenEntrySheet? = null
 private var roomSheetOpen = false
 
-fun PopupSheetState.showRitmeEntrySheet(ritme: RitmeUi, code: String?, startWith: List<MediaMetadata?>?) {
+fun PopupSheetState.showRitmeEntrySheet(ritme: RitmeUi, code: String?, startWith: List<MediaMetadata?>?, startWithEntries: List<NewEntry>? = null) {
     openEntry?.form?.let { open ->
         // Already showing: a link's code goes into it (not while an attempt is under way), and an
         // error from the previous attempt no longer applies.
@@ -86,7 +87,7 @@ fun PopupSheetState.showRitmeEntrySheet(ritme: RitmeUi, code: String?, startWith
     }
     // A failure left over from an earlier attempt is not this sheet's error.
     ritme.session.dismiss()
-    val form = RitmeEntryForm(code, startWith)
+    val form = RitmeEntryForm(code, startWith, startWithEntries)
     val open = OpenEntrySheet(form)
     openEntry = open
     var handle: PopupSheetHandle? = null

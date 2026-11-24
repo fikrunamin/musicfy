@@ -157,6 +157,12 @@ object RitmeEntries {
         )
     }
 
+    /** A room's starting queue of ready-made entries (a shared video, spec 4.6): at most [MAX_QUEUE], from the start. */
+    fun initialQueueOf(entries: List<NewEntry>): InitialQueue {
+        val kept = entries.take(MAX_QUEUE)
+        return InitialQueue(kept.take(MAX_BATCH), 0, 0, kept.drop(MAX_BATCH).chunked(MAX_BATCH), 0)
+    }
+
     /**
      * The room's starting queue: the current song and everything after it in play order (history
      * stays behind), shareable songs only, at most [MAX_QUEUE]. The position carries over only when

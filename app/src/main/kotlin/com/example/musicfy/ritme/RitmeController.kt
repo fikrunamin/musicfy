@@ -2,6 +2,7 @@ package com.example.musicfy.ritme
 
 import com.example.musicfy.models.MediaMetadata
 import com.example.musicfy.ritme.entries.RitmeEntries
+import com.example.musicfy.ritme.protocol.NewEntry
 import com.example.musicfy.ritme.protocol.RoomState
 import com.example.musicfy.ritme.session.NoticeKey
 import com.example.musicfy.ritme.session.RitmePermissions
@@ -35,7 +36,7 @@ interface RitmeSettings {
 data class RitmeSheetRequest(val id: Long, val kind: Kind) {
     sealed interface Kind {
         data object Room : Kind
-        data class Entry(val code: String? = null, val startWith: List<MediaMetadata?>? = null) : Kind
+        data class Entry(val code: String? = null, val startWith: List<MediaMetadata?>? = null, val startWithEntries: List<NewEntry>? = null) : Kind
     }
 }
 
@@ -94,6 +95,29 @@ class RitmeController @Inject constructor(
         request(RitmeSheetRequest.Kind.Entry(startWith = songs))
     }
 
+    /** The start sheet with ready-made [entries] (a shared video, spec 4.6); in a room, the room sheet. */
+    fun openStartWithEntries(entries: List<NewEntry>) {
+        if (session.state.value.inRoom) return request(RitmeSheetRequest.Kind.Room)
+        if (entries.isEmpty()) return notifier.show(RitmeToast.NotAvailable)
+        request(RitmeSheetRequest.Kind.Entry(startWithEntries = entries))
+    }
+
+    /**
+     * Entries from "Add video" (spec 4.6): only ever from its buttons, never automatically. The same
+     * permission check, batching, play-next stacking and toasts as songs.
+     */
+    fun addEntries(entries: List<NewEntry>, playNext: Boolean) {
+        val state = session.state.value
+        val room = state.room ?: return
+        if (!addAllowed(room, state.memberId)) return
+        if (entries.isEmpty()) return notifier.show(RitmeToast.NotAvailable)
+        val batches = entries.take(RitmeEntries.MAX_QUEUE).chunked(RitmeEntries.MAX_BATCH)
+        val stacked = playNext && room.currentEntryId != null
+        val ordered = if (stacked) batches.asReversed() else batches
+        val sent = ordered.all { session.add(it, playNext) }
+        notifier.show(if (sent) RitmeToast.Added(entries.size.coerceAtMost(RitmeEntries.MAX_QUEUE)) else RitmeToast.Reconnecting)
+    }
+
     fun consumeSheetRequest(id: Long) {
         if (_sheetRequest.value?.id == id) _sheetRequest.value = null
     }
@@ -106,9 +130,13 @@ class RitmeController @Inject constructor(
     fun shareLink(code: String): String = RitmeLinks.shareLink(session.serverUrl ?: settings.serverUrl, code)
 
     /** Creates a room from [startWith], or else from the local queue (current song onward, play order). */
-    fun startRoom(name: String, startWith: List<MediaMetadata?>? = null) {
+    fun startRoom(name: String, startWith: List<MediaMetadata?>? = null, startWithEntries: List<NewEntry>? = null) {
         if (localPlayback?.isCasting == true) {
             notifier.show(RitmeToast.CastingBlocked)
+            return
+        }
+        if (startWithEntries != null) {
+            session.create(settings.serverUrl, name, RitmeEntries.initialQueueOf(startWithEntries))
             return
         }
         val order = startWith?.let { LocalPlayOrder(it, 0, 0) }

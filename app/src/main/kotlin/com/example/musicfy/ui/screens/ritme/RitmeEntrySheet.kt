@@ -36,6 +36,7 @@ import com.example.musicfy.constants.UsernameKey
 import com.example.musicfy.models.MediaMetadata
 import com.example.musicfy.ritme.RitmeLinks
 import com.example.musicfy.ritme.RitmeTexts
+import com.example.musicfy.ritme.protocol.NewEntry
 import com.example.musicfy.ritme.session.RitmePhase
 import com.example.musicfy.ritme.session.RitmeUiState
 import com.example.musicfy.ui.component.Material3MenuGroup
@@ -50,7 +51,7 @@ import com.example.musicfy.utils.rememberPreference
  * is composed apart from the content, like Create playlist's PlaylistFormState). Main thread only.
  */
 @Stable
-internal class RitmeEntryForm(initialCode: String?, val startWith: List<MediaMetadata?>?) {
+internal class RitmeEntryForm(initialCode: String?, val startWith: List<MediaMetadata?>?, val startWithEntries: List<NewEntry>? = null) {
     var name by mutableStateOf("")
     /** Set once the name was filled in from the saved display name (or the profile name). */
     var nameSeeded by mutableStateOf(false)
@@ -78,7 +79,7 @@ internal class RitmeEntryForm(initialCode: String?, val startWith: List<MediaMet
         if (joining) {
             cleanCode?.let { ritme.controller.joinRoom(it, name) }
         } else {
-            ritme.controller.startRoom(name, startWith)
+            ritme.controller.startRoom(name, startWith, startWithEntries)
         }
     }
 
@@ -141,7 +142,7 @@ internal fun RitmeEntryContent(ritme: RitmeUi, form: RitmeEntryForm, onJoined: (
             .padding(bottom = 12.dp),
     ) {
         SheetLabel(stringResource(if (form.joining) R.string.ritme_join_title else R.string.ritme_name))
-        RitmeSecondaryText(stringResource(if (form.startWith != null && !form.joining) R.string.ritme_start_with_this else R.string.ritme_start_desc))
+        RitmeSecondaryText(stringResource(if ((form.startWith != null || form.startWithEntries != null) && !form.joining) R.string.ritme_start_with_this else R.string.ritme_start_desc))
         Spacer(Modifier.height(22.dp))
         SheetLabel(stringResource(R.string.ritme_display_name))
         Spacer(Modifier.height(8.dp))
@@ -174,7 +175,7 @@ internal fun RitmeEntryContent(ritme: RitmeUi, form: RitmeEntryForm, onJoined: (
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )
         }
-        if (form.startWith == null) {
+        if (form.startWith == null && form.startWithEntries == null) {
             Spacer(Modifier.height(18.dp))
             // Switches between starting and joining; the same menu row as the song and player menus.
             Material3MenuGroup(

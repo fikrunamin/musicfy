@@ -6,6 +6,8 @@ import com.example.musicfy.ritme.net.ConnectionEvent
 import com.example.musicfy.ritme.net.ConnectionStatus
 import com.example.musicfy.ritme.net.JoinIntent
 import com.example.musicfy.ritme.protocol.Command
+import com.example.musicfy.ritme.protocol.MediaKind
+import com.example.musicfy.ritme.protocol.NewEntry
 import com.example.musicfy.ritme.protocol.Playback
 import com.example.musicfy.ritme.protocol.RoomSettings
 import com.example.musicfy.ritme.protocol.RoomState
@@ -519,5 +521,38 @@ class RitmeControllerTest {
         assertTrue(commands.isEmpty())
         assertEquals(0, session.owedEntries)
         assertEquals(listOf<RitmeToast>(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN)), toasts.shown)
+    }
+
+    private val clip = NewEntry(videoId = "dQw4w9WgXcQ", title = "Clip", artist = "Channel", durationMs = 60_000, kind = MediaKind.YOUTUBE_VIDEO)
+
+    @Test
+    fun addEntriesSendsOneAddAndSaysSo() {
+        inRoom(playing)
+        controller.addEntries(listOf(clip), playNext = true)
+        assertEquals(listOf<Command>(Command.Add(listOf(clip), playNext = true)), commands)
+        assertEquals(listOf<RitmeToast>(RitmeToast.Added(1)), toasts.shown)
+    }
+
+    @Test
+    fun addEntriesIsRefusedUpFrontWhenGuestsCannotAdd() {
+        inRoom(playing.copy(settings = RoomSettings(guestsCanAdd = false)), memberId = "m2")
+        controller.addEntries(listOf(clip), playNext = false)
+        assertTrue(commands.isEmpty())
+        assertEquals(listOf<RitmeToast>(RitmeToast.CommandFailed(NoticeKey.ADD_FORBIDDEN)), toasts.shown)
+    }
+
+    @Test
+    fun startingWithEntriesPutsThemInTheCreate() {
+        controller.startRoom("Budi", startWithEntries = listOf(clip))
+        assertEquals(JoinIntent.Create("Budi", listOf(clip), 0, 0), connector.last.intent)
+    }
+
+    @Test
+    fun openStartWithEntriesAsksForTheStartSheetOutsideARoomAndTheRoomSheetInside() {
+        controller.openStartWithEntries(listOf(clip))
+        assertEquals(RitmeSheetRequest.Kind.Entry(startWithEntries = listOf(clip)), controller.sheetRequest.value?.kind)
+        inRoom(playing)
+        controller.openStartWithEntries(listOf(clip))
+        assertEquals(RitmeSheetRequest.Kind.Room, controller.sheetRequest.value?.kind)
     }
 }
