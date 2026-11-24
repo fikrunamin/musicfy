@@ -10,6 +10,9 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.areSystemBarsVisible
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -47,10 +51,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import com.example.musicfy.LocalPlayerConnection
 import com.example.musicfy.R
 import com.example.musicfy.ritme.RitmeConfig
+import com.example.musicfy.ritme.protocol.currentEntry
 import com.example.musicfy.ritme.video.RitmeStageSlot
 import com.example.musicfy.ritme.video.RitmeStageTarget
 import com.example.musicfy.ui.player.styles.RotatingFrame
@@ -60,6 +64,7 @@ import com.example.musicfy.ui.player.styles.rememberStyleTones
 import com.example.musicfy.ui.screens.ritme.RitmeChip
 import com.example.musicfy.ui.screens.ritme.RitmeChipFill
 import com.example.musicfy.ui.screens.ritme.RitmePill
+import com.example.musicfy.ui.screens.ritme.rememberRitme
 import com.example.musicfy.ui.theme.InterFontFamily
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -71,35 +76,49 @@ object RitmeFullscreen {
 
 /** The quarter turn's length (RotatingFrame's spring settles in about this). */
 private const val TURN_MS = 450L
+/** How long system bars a swipe brought back stay (MainActivity's navigation bar: the same). */
+private const val BARS_RETURN_MS = 2_500L
 /** The side bar: wide enough for the "Ritme · N" chip. */
 private val BarWidth = 132.dp
 private val BarButtonSize = 36.dp
 
 /**
  * Mounted once in MainActivity, above the player and under the popup sheets. Shows the room's video
- * full screen while [RitmeFullscreen.open] and a stage target exists; closes itself when the room
- * moves on to a song or this device leaves.
+ * full screen while [RitmeFullscreen.open]; closes itself when the room moves on to a song or an
+ * unplayable entry, or this device leaves. A video-to-video advance (no stage target until the
+ * player holds the next item) and a reconnect keep it open: black, with the bar, until the stage is back.
  */
 @Composable
 fun RitmeVideoFullscreenHost(window: Window, playerBarsBehavior: () -> Int) {
     if (!RitmeConfig.ENABLED) return
+    val ritme = rememberRitme()
+    val state by ritme.session.state.collectAsState()
+    val stays = RitmeStageSlot.fullscreenStays(state.room, state.inRoom)
+    // Before anything else can return early (no player connection): `open` never outlives the room's video.
+    LaunchedEffect(stays, RitmeFullscreen.open) { if (!stays && RitmeFullscreen.open) RitmeFullscreen.open = false }
     val connection = LocalPlayerConnection.current ?: return
     val track by connection.uiState.trackInfo.collectAsState()
     val target = rememberRitmeStageTarget(track.mediaId)
-    LaunchedEffect(target == null) { if (target == null) RitmeFullscreen.open = false }
-    // While open, the cover's stage steps aside (MorphingCover asks the same question).
-    val slot = RitmeStageSlot.of(hasTarget = target != null, fullscreenOpen = RitmeFullscreen.open, coverShown = false)
-    if (slot != RitmeStageSlot.FULLSCREEN || target == null) return
-    RitmeVideoFullscreen(target, track.title, window, playerBarsBehavior)
+    // While open, the cover's stage steps aside (MorphingCover asks the same question), target or not.
+    val slot = RitmeStageSlot.of(hasTarget = target != null, fullscreenOpen = RitmeFullscreen.open && stays, coverShown = false)
+    if (slot != RitmeStageSlot.FULLSCREEN) return
+    // The room's entry names what is (about to be) on stage; the player's title lags at an advance.
+    val title = state.room?.currentEntry()?.title ?: track.title
+    RitmeVideoFullscreen(target, title, window, playerBarsBehavior)
 }
 
 /**
  * The video turned a quarter (RotatingFrame, the activity stays portrait: spec D4/U2), system bars
- * hidden (transient by swipe), the room's controls as a thin bar beside the video, never over it.
- * A tap anywhere but a button hides or shows the bar. Back or the exit button turns it upright.
+ * hidden, the room's controls as a thin bar beside the video, never over it. A tap anywhere but a
+ * button hides or shows the bar. Back or the exit button turns it upright. With no [target] (the
+ * player is catching up with the next video) the video's place is black and no stage is mounted.
+ *
+ * The bars come back the way the open player's navigation bar does ([playerBarsBehavior]): the
+ * default behaviour under gesture navigation, so the first back swipe goes back instead of only
+ * revealing the bars (spec 4.2's Back requirement over its "transient by swipe"); transient with buttons.
  */
 @Composable
-private fun RitmeVideoFullscreen(target: RitmeStageTarget, title: String, window: Window, playerBarsBehavior: () -> Int) {
+private fun RitmeVideoFullscreen(target: RitmeStageTarget?, title: String, window: Window, playerBarsBehavior: () -> Int) {
     val scope = rememberCoroutineScope()
     // Starts upright and turns, so opening plays RotatingFrame's quarter turn.
     var rotated by remember { mutableStateOf(false) }
@@ -116,10 +135,25 @@ private fun RitmeVideoFullscreen(target: RitmeStageTarget, title: String, window
     }
     BackHandler(onBack = close)
     val barsBehavior by rememberUpdatedState(playerBarsBehavior)
+    // Full screen owns the system bars while open (MainActivity's player effect stands aside).
+    // Hidden again on every return to the app (from Home, the recents, a dialog).
+    val windowFocused = LocalWindowInfo.current.isWindowFocused
+    LaunchedEffect(window, windowFocused) {
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.systemBarsBehavior = barsBehavior()
+        controller.hide(WindowInsetsCompat.Type.systemBars())
+    }
+    // Bars a swipe brought back (the default behaviour keeps them) go away again after a moment,
+    // as the open player's navigation bar does.
+    @OptIn(ExperimentalLayoutApi::class)
+    val barsShown = WindowInsets.areSystemBarsVisible
+    LaunchedEffect(window, barsShown) {
+        if (!barsShown) return@LaunchedEffect
+        delay(BARS_RETURN_MS)
+        WindowCompat.getInsetsController(window, window.decorView).hide(WindowInsetsCompat.Type.systemBars())
+    }
     DisposableEffect(window) {
         val controller = WindowCompat.getInsetsController(window, window.decorView)
-        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        controller.hide(WindowInsetsCompat.Type.systemBars())
         onDispose {
             // The open player keeps the navigation bar hidden itself (MainActivity): only the status bar returns.
             controller.systemBarsBehavior = barsBehavior()
@@ -139,7 +173,9 @@ private fun RitmeVideoFullscreen(target: RitmeStageTarget, title: String, window
         // stage, so one stage (one follower, one texture) lives from the opening turn to the closing
         // one. The upright layer is the black background turning away or in.
         if (landscape) Row(modifier = Modifier.fillMaxSize()) {
-            RitmeVideoStage(target = target, modifier = Modifier.weight(1f).fillMaxHeight())
+            Box(modifier = Modifier.weight(1f).fillMaxHeight().background(Color.Black)) {
+                if (target != null) RitmeVideoStage(target = target, modifier = Modifier.fillMaxSize())
+            }
             AnimatedVisibility(
                 visible = barShown,
                 enter = fadeIn() + expandHorizontally(expandFrom = Alignment.Start),

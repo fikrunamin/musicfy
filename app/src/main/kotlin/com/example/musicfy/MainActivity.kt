@@ -81,6 +81,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -219,6 +220,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -693,13 +695,20 @@ class MainActivity : ComponentActivity() {
                 // playerNavBarBehavior).
                 val windowFocused = configuration.isWindowFocused
                 LaunchedEffect(playerOpen, playerHeadingDown, windowFocused) {
-                    val controller = WindowCompat.getInsetsController(window, window.decorView.rootView)
-                    if (playerOpen) {
-                        controller.systemBarsBehavior = window.playerNavBarBehavior()
-                        controller.hide(WindowInsetsCompat.Type.navigationBars())
-                    } else if (playerHeadingDown) {
-                        controller.show(WindowInsetsCompat.Type.navigationBars())
-                    }
+                    // While the Ritme room's video is full screen, it owns the system bars
+                    // (RitmeVideoFullscreen); this applies again once it closes. Read in a flow, so
+                    // opening and closing it never recomposes this whole content.
+                    snapshotFlow { com.example.musicfy.ui.screens.ritme.video.RitmeFullscreen.open }
+                        .filter { open -> !open }
+                        .collect {
+                            val controller = WindowCompat.getInsetsController(window, window.decorView.rootView)
+                            if (playerOpen) {
+                                controller.systemBarsBehavior = window.playerNavBarBehavior()
+                                controller.hide(WindowInsetsCompat.Type.navigationBars())
+                            } else if (playerHeadingDown) {
+                                controller.show(WindowInsetsCompat.Type.navigationBars())
+                            }
+                        }
                 }
                 // A bar a swipe brought back while the player stays open (Samsung's swipe-from-
                 // bottom gestures) goes away again after a moment, as the transient one does.

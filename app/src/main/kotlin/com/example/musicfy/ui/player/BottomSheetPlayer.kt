@@ -573,8 +573,11 @@ fun BottomSheetPlayer(
         fun menuActionActive(action: com.example.musicfy.ui.player.studio.PlayerMenuAction): Boolean = when (action) {
             com.example.musicfy.ui.player.studio.PlayerMenuAction.LIKE -> trackInfo.liked
             com.example.musicfy.ui.player.studio.PlayerMenuAction.SLEEP_TIMER -> playerConnection.service.sleepTimer.isActive
+            // With a room video current the button means full screen: a seeVideo left on from
+            // before the room video started must not light it.
             com.example.musicfy.ui.player.studio.PlayerMenuAction.SEE_VIDEO ->
-                seeVideo || com.example.musicfy.ui.screens.ritme.video.RitmeFullscreen.open
+                if (ritmeStage != null) com.example.musicfy.ui.screens.ritme.video.RitmeFullscreen.open
+                else seeVideo || com.example.musicfy.ui.screens.ritme.video.RitmeFullscreen.open
             com.example.musicfy.ui.player.studio.PlayerMenuAction.REPEAT -> transportState.repeatMode != Player.REPEAT_MODE_OFF
             com.example.musicfy.ui.player.studio.PlayerMenuAction.SHUFFLE -> transportState.shuffleModeEnabled
             else -> false
