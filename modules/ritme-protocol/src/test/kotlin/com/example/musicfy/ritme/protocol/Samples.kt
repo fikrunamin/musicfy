@@ -45,6 +45,16 @@ object Samples {
         "cmd-add-url-live" to send(
             Command.Add(listOf(NewEntry("", "Live stream", "", null, 0, MediaKind.URL, "https://example.com/live/index.m3u8"))),
         ),
+        "cmd-add-url-hls-referrer" to send(
+            Command.Add(
+                listOf(
+                    NewEntry(
+                        "", "Film", "example.com", null, 5_400_000, MediaKind.URL,
+                        "https://cdn.example.com/v/manifest?token=abc", StreamType.HLS, "https://example.com/",
+                    ),
+                ),
+            ),
+        ),
         "cmd-remove" to send(Command.Remove("e1")),
         "cmd-move" to send(Command.Move("e1", afterEntryId = null)),
         "cmd-set-settings" to send(Command.SetSettings(RoomSettings(guestsCanControl = false, guestsCanAdd = false))),

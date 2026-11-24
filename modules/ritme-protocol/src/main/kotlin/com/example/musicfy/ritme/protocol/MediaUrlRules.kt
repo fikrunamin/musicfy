@@ -13,6 +13,9 @@ package com.example.musicfy.ritme.protocol
 object MediaUrlRules {
     const val MAX_URL_LENGTH = 2_048
 
+    /** A referrer is a bare origin: this is the longest accepted. */
+    const val MAX_REFERRER_LENGTH = 200
+
     enum class Rejection {
         TOO_LONG,
 
@@ -38,6 +41,9 @@ object MediaUrlRules {
 
         /** Loopback, private, link-local, CGNAT, unspecified, multicast or reserved addresses, and local names. */
         LOCAL_HOST,
+
+        /** A referrer with a path, a query or no trailing slash: only `scheme://host[:port]/` is accepted. */
+        NOT_ORIGIN,
     }
 
     fun isAcceptableMediaUrl(url: String): Boolean = check(url) == null
@@ -57,6 +63,32 @@ object MediaUrlRules {
         val host = hostOf(authority) ?: return Rejection.MALFORMED
         if (host.isEmpty()) return Rejection.NO_HOST
         return hostRejection(host)
+    }
+
+    fun isAcceptableReferrer(referrer: String): Boolean = checkReferrer(referrer) == null
+
+    /**
+     * Why [referrer] is refused as a URL entry's referrer (spec 3.2 item 5), or null when it is an
+     * http(s) origin with a trailing slash and nothing else (`https://host[:port]/`), at most
+     * [MAX_REFERRER_LENGTH] chars, under the same host rules as [check].
+     * Cases: fixtures/rules/referrers.json (also read by ritme-web).
+     */
+    fun checkReferrer(referrer: String): Rejection? {
+        if (referrer.length > MAX_REFERRER_LENGTH) return Rejection.TOO_LONG
+        check(referrer)?.let { return it }
+        val afterScheme = referrer.substring(referrer.indexOf("://") + 3)
+        val authority = afterScheme.takeWhile { it != '/' && it != '?' }
+        return if (afterScheme.substring(authority.length) == "/") null else Rejection.NOT_ORIGIN
+    }
+
+    /** [pageUrl]'s origin as a referrer (`https://host[:port]/`, host lowercased), or null when [checkReferrer] refuses it. */
+    fun referrerOf(pageUrl: String): String? {
+        val url = pageUrl.substringBefore('#')
+        if (check(url) != null) return null
+        val schemeEnd = url.indexOf("://")
+        val scheme = url.substring(0, schemeEnd).lowercase()
+        val authority = url.substring(schemeEnd + 3).takeWhile { it != '/' && it != '?' }.lowercase()
+        return "$scheme://$authority/".takeIf { checkReferrer(it) == null }
     }
 
     /** C0, space, DEL, C1 and U+00A0; the other Unicode White_Space characters; U+FEFF; backslash. */

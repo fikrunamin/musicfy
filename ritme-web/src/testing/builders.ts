@@ -12,6 +12,8 @@ export function entry(entryId: string, overrides: Partial<QueueEntry> = {}): Que
     addedBy: 'm1',
     kind: 'YOUTUBE_MUSIC',
     url: null,
+    streamType: null,
+    referrer: null,
     ...overrides,
   };
 }

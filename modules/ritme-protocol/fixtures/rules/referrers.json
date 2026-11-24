@@ -1,0 +1,25 @@
+{
+  "_comment": "Shared by ReferrerRulesTest.kt and ritme-web src/net/media-url-rules.test.ts. reject: null = accepted, else the MediaUrlRules.Rejection name. padTo: when present, append \"a\" to referrer until it is padTo chars long. A referrer is a bare http(s) origin with a trailing slash, at most 200 chars, under the media url host rules.",
+  "cases": [
+    { "referrer": "https://example.com/", "reject": null },
+    { "referrer": "http://example.com/", "reject": null },
+    { "referrer": "https://video.example.co.id:8443/", "reject": null },
+    { "referrer": "HTTPS://EXAMPLE.COM/", "reject": null },
+    { "referrer": "https://[2001:db8::1]/", "reject": null },
+    { "referrer": "https://example.com", "reject": "NOT_ORIGIN" },
+    { "referrer": "https://example.com/watch/123", "reject": "NOT_ORIGIN" },
+    { "referrer": "https://example.com/?a=1", "reject": "NOT_ORIGIN" },
+    { "referrer": "https://example.com?a=1", "reject": "NOT_ORIGIN" },
+    { "referrer": "https://example.com//", "reject": "NOT_ORIGIN" },
+    { "referrer": "https://example.com/#top", "reject": "FRAGMENT" },
+    { "referrer": "https://user:pw@example.com/", "reject": "USERINFO" },
+    { "referrer": "https://192.168.1.1/", "reject": "LOCAL_HOST" },
+    { "referrer": "http://localhost:8080/", "reject": "LOCAL_HOST" },
+    { "referrer": "https://router.lan/", "reject": "LOCAL_HOST" },
+    { "referrer": "ftp://example.com/", "reject": "SCHEME" },
+    { "referrer": "javascript:alert(1)", "reject": "SCHEME" },
+    { "referrer": "https://exa mple.com/", "reject": "FORBIDDEN_CHARACTER" },
+    { "referrer": "", "reject": "MALFORMED" },
+    { "referrer": "https://example.com/", "padTo": 201, "reject": "TOO_LONG" }
+  ]
+}

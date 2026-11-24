@@ -37,6 +37,8 @@ const entry: QueueEntry = {
   addedBy: 'm1',
   kind: 'YOUTUBE_MUSIC',
   url: null,
+  streamType: null,
+  referrer: null,
 };
 const state: RoomState = {
   code: 'K7M2QX',
@@ -94,6 +96,23 @@ const clientSamples: Record<string, ClientMessage> = {
     ],
     playNext: false,
   }),
+  'cmd-add-url-hls-referrer': send({
+    type: 'Add',
+    entries: [
+      {
+        videoId: '',
+        title: 'Film',
+        artist: 'example.com',
+        thumbnailUrl: null,
+        durationMs: 5_400_000,
+        kind: 'URL',
+        url: 'https://cdn.example.com/v/manifest?token=abc',
+        streamType: 'HLS',
+        referrer: 'https://example.com/',
+      },
+    ],
+    playNext: false,
+  }),
   'cmd-remove': send({ type: 'Remove', entryId: 'e1' }),
   'cmd-move': send({ type: 'Move', entryId: 'e1', afterEntryId: null }),
   'cmd-set-settings': send({ type: 'SetSettings', settings: { guestsCanControl: false, guestsCanAdd: false } }),
@@ -143,6 +162,15 @@ describe('golden fixtures', () => {
 describe('forward compatibility (mirrors ForwardCompatibilityTest.kt)', () => {
   const entryJson =
     '{"entryId":"e1","videoId":"","title":"T","artist":"A","durationMs":1,"addedBy":"m1","kind":"PODCAST","url":null}';
+
+  it('decodes an unknown stream type to UNKNOWN and a missing one to null', () => {
+    const json = (extra: string) =>
+      `{"type":"State","state":{"code":"K7M2QX","version":1,"hostId":"m1","queue":[{"entryId":"e1","videoId":"","title":"T","artist":"A","durationMs":0,"addedBy":"m1","kind":"URL","url":"https://x.example/v"${extra}}]}}`;
+    const unknown = parseServerMessage(json(',"streamType":"SMOOTH","referrer":"https://x.example/"'));
+    expect(unknown?.type === 'State' && unknown.state.queue[0]).toMatchObject({ streamType: 'UNKNOWN', referrer: 'https://x.example/' });
+    const missing = parseServerMessage(json(''));
+    expect(missing?.type === 'State' && missing.state.queue[0]).toMatchObject({ streamType: null, referrer: null });
+  });
 
   it('decodes an unknown media kind to UNKNOWN', () => {
     const msg = parseServerMessage(
@@ -199,6 +227,8 @@ describe('forward compatibility (mirrors ForwardCompatibilityTest.kt)', () => {
             addedBy: 'm1',
             kind: 'YOUTUBE_MUSIC',
             url: null,
+            streamType: null,
+            referrer: null,
           },
         ],
         currentEntryId: null,

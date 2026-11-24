@@ -12,6 +12,8 @@ export const MIN_SUPPORTED_PROTOCOL_VERSION = 1;
 
 export const MEDIA_KINDS = ['YOUTUBE_MUSIC', 'YOUTUBE_VIDEO', 'URL', 'UNKNOWN'] as const;
 export type MediaKind = (typeof MEDIA_KINDS)[number];
+export const STREAM_TYPES = ['HLS', 'DASH', 'FILE', 'UNKNOWN'] as const;
+export type StreamType = (typeof STREAM_TYPES)[number];
 
 export const ERROR_CODES = [
   'ROOM_NOT_FOUND',
@@ -48,6 +50,10 @@ export interface NewEntry {
   durationMs: number;
   kind: MediaKind;
   url: string | null;
+  /** URL entries only (#3, optional): how the url is served. The web client never sets it. */
+  streamType?: StreamType | null;
+  /** URL entries only (#3, optional): the page's origin, sent as the Referer by Android players. */
+  referrer?: string | null;
 }
 
 export interface QueueEntry {
@@ -60,6 +66,10 @@ export interface QueueEntry {
   addedBy: string;
   kind: MediaKind;
   url: string | null;
+  /** How the url is served (#3); null when the adder did not say. Unknown names become 'UNKNOWN'. */
+  streamType: StreamType | null;
+  /** The page origin Android sends as the Referer (#3); the web cannot set one. */
+  referrer: string | null;
 }
 
 export interface Playback {
@@ -141,6 +151,8 @@ function encodeNewEntry(e: NewEntry): NewEntry {
     durationMs: e.durationMs,
     kind: e.kind,
     url: e.url,
+    streamType: e.streamType ?? null,
+    referrer: e.referrer ?? null,
   };
 }
 
@@ -287,6 +299,9 @@ export function parseQueueEntry(v: unknown): QueueEntry {
     addedBy: str(o, 'addedBy'),
     kind: o.kind === undefined ? 'YOUTUBE_MUSIC' : lenientEnum(MEDIA_KINDS, o.kind, 'UNKNOWN'),
     url: optStr(o, 'url'),
+    streamType:
+      o.streamType === undefined || o.streamType === null ? null : lenientEnum(STREAM_TYPES, o.streamType, 'UNKNOWN'),
+    referrer: optStr(o, 'referrer'),
   };
 }
 

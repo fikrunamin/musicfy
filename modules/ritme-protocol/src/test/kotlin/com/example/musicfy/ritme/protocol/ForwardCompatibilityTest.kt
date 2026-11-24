@@ -17,6 +17,19 @@ class ForwardCompatibilityTest {
     }
 
     @Test
+    fun unknownStreamTypeDecodesToUnknownAndMissingOnesToNull() {
+        val json = """{"entryId":"e1","videoId":"","title":"T","artist":"A","durationMs":0,"addedBy":"m1","kind":"URL","url":"https://x.example/v","streamType":"SMOOTH"}"""
+        val entry = RitmeJson.decodeFromString(QueueEntry.serializer(), json)
+        assertEquals(StreamType.UNKNOWN, entry.streamType)
+        assertNull(entry.referrer)
+        assertNull(RitmeJson.decodeFromString(QueueEntry.serializer(), entryJson).streamType)
+        StreamType.entries.forEach {
+            assertEquals("\"${it.name}\"", RitmeJson.encodeToString(StreamType.serializer(), it))
+            assertEquals(it, RitmeJson.decodeFromString(StreamType.serializer(), "\"${it.name}\""))
+        }
+    }
+
+    @Test
     fun unknownErrorCodeDecodesToUnknown() {
         assertEquals(
             ServerMessage.Error("r1", ErrorCode.UNKNOWN),

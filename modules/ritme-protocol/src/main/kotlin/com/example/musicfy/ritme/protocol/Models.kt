@@ -58,6 +58,16 @@ enum class MediaKind {
 internal object MediaKindSerializer : LenientEnumSerializer<MediaKind>("MediaKind", MediaKind.entries, MediaKind.UNKNOWN)
 
 /**
+ * How a [MediaKind.URL] entry's url is served (spec D8), as the client that added it found out by
+ * probing it. Lets players choose HLS/DASH for urls without a telling extension (`/manifest?token=`).
+ * Names added by a newer protocol decode to [UNKNOWN], which players treat like a missing value.
+ */
+@Serializable(with = StreamTypeSerializer::class)
+enum class StreamType { HLS, DASH, FILE, UNKNOWN }
+
+internal object StreamTypeSerializer : LenientEnumSerializer<StreamType>("StreamType", StreamType.entries, StreamType.UNKNOWN)
+
+/**
  * An entry as a client proposes it. The server assigns [QueueEntry.entryId] and [QueueEntry.addedBy].
  * YouTube kinds need [videoId]; [MediaKind.URL] needs an http(s) [url] and sends `videoId = ""`.
  * `durationMs = 0` means unknown (live stream): no automatic advance, position is not clamped.
@@ -71,6 +81,14 @@ data class NewEntry(
     val durationMs: Long,
     val kind: MediaKind = MediaKind.YOUTUBE_MUSIC,
     val url: String? = null,
+    /** URL entries only, optional (spec D8): how the url is served. */
+    val streamType: StreamType? = null,
+    /**
+     * URL entries only, optional (spec D8): the origin of the page the video was found on
+     * (`https://host[:port]/`, [MediaUrlRules.checkReferrer]), sent as the Referer by Android
+     * players for hosts that check it. Never a path, a query or a cookie.
+     */
+    val referrer: String? = null,
 )
 
 @Serializable
@@ -84,6 +102,14 @@ data class QueueEntry(
     val addedBy: String,
     val kind: MediaKind = MediaKind.YOUTUBE_MUSIC,
     val url: String? = null,
+    /** URL entries only, optional (spec D8): how the url is served. */
+    val streamType: StreamType? = null,
+    /**
+     * URL entries only, optional (spec D8): the origin of the page the video was found on
+     * (`https://host[:port]/`, [MediaUrlRules.checkReferrer]), sent as the Referer by Android
+     * players for hosts that check it. Never a path, a query or a cookie.
+     */
+    val referrer: String? = null,
 )
 
 /** True when the length is unknown (live stream). */

@@ -1,0 +1,21 @@
+{
+    "type": "Command",
+    "reqId": "r1",
+    "cmd": {
+        "type": "Add",
+        "entries": [
+            {
+                "videoId": "",
+                "title": "Film",
+                "artist": "example.com",
+                "thumbnailUrl": null,
+                "durationMs": 5400000,
+                "kind": "URL",
+                "url": "https://cdn.example.com/v/manifest?token=abc",
+                "streamType": "HLS",
+                "referrer": "https://example.com/"
+            }
+        ],
+        "playNext": false
+    }
+}

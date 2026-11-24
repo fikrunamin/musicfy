@@ -11,7 +11,9 @@
                 "thumbnailUrl": null,
                 "durationMs": 0,
                 "kind": "URL",
-                "url": "https://example.com/live/index.m3u8"
+                "url": "https://example.com/live/index.m3u8",
+                "streamType": null,
+                "referrer": null
             }
         ],
         "playNext": false

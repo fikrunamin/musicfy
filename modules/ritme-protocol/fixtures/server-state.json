@@ -34,7 +34,9 @@
                 "durationMs": 213000,
                 "addedBy": "m1",
                 "kind": "YOUTUBE_MUSIC",
-                "url": null
+                "url": null,
+                "streamType": null,
+                "referrer": null
             }
         ],
         "currentEntryId": "e1",

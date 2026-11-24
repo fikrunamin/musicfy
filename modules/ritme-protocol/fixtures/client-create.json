@@ -10,7 +10,9 @@
             "thumbnailUrl": null,
             "durationMs": 213000,
             "kind": "YOUTUBE_MUSIC",
-            "url": null
+            "url": null,
+            "streamType": null,
+            "referrer": null
         }
     ],
     "startIndex": 0,
