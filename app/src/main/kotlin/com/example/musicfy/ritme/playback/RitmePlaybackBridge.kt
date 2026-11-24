@@ -4,14 +4,12 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import com.example.musicfy.extensions.toMediaItem
 import com.example.musicfy.ritme.LocalPlayOrder
 import com.example.musicfy.ritme.RitmeController
 import com.example.musicfy.ritme.RitmeGate
 import com.example.musicfy.ritme.RitmeLocalPlayback
 import com.example.musicfy.ritme.RitmeNotifier
 import com.example.musicfy.ritme.RitmeToast
-import com.example.musicfy.ritme.entries.RitmeEntries
 import com.example.musicfy.ritme.net.ConnectionStatus
 import com.example.musicfy.ritme.net.EndReason
 import com.example.musicfy.ritme.net.RitmeTimer
@@ -77,7 +75,7 @@ class RitmePlaybackBridge internal constructor(
         notifier,
         timers,
         Dispatchers.Main.immediate,
-        { entry -> RitmeEntries.toMediaMetadata(entry).toMediaItem() },
+        RitmeItems::mediaItemFor,
     )
 
     private var scope: CoroutineScope? = null

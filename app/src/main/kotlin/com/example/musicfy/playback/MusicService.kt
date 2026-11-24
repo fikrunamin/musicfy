@@ -804,6 +804,8 @@ class MusicService :
         ) { mediaMetadata, showLyrics ->
             mediaMetadata to showLyrics
         }.collectLatest(scope) { (mediaMetadata, showLyrics) ->
+            // A Ritme URL entry is a video from some website: there are no lyrics to look up.
+            if (com.example.musicfy.ritme.entries.RitmeEntries.isUrlMediaId(mediaMetadata?.id)) return@collectLatest
             if (showLyrics && mediaMetadata != null && database.lyrics(mediaMetadata.id)
                     .first() == null
             ) {
@@ -1517,7 +1519,11 @@ class MusicService :
                     updatedSong = updatedSong.copy(duration = duration)
                 }
 
-                if (song.song.isVideo != mediaMetadata.isVideoSong) {
+                // A room item's video type comes from the room entry's kind, not from the song:
+                // it must not flip the library's flag (Ritme).
+                if (song.song.isVideo != mediaMetadata.isVideoSong &&
+                    com.example.musicfy.ritme.playback.RitmeItems.syncsLibraryFlags(mediaId, ritmeGate.isActive)
+                ) {
                     updatedSong = updatedSong.copy(isVideo = mediaMetadata.isVideoSong)
                 }
                 if (updatedSong != song.song) {
@@ -2497,7 +2503,10 @@ class MusicService :
 
         scrobbleManager?.onSongStop()
         if (player.playWhenReady && player.playbackState == Player.STATE_READY) {
-            scrobbleManager?.onSongStart(player.currentMetadata, duration = player.duration)
+            scrobbleManager?.onSongStart(
+                player.currentMetadata?.takeUnless { com.example.musicfy.ritme.entries.RitmeEntries.isUrlMediaId(it.id) },
+                duration = player.duration,
+            )
         }
 
         if (castConnectionHandler?.isCasting?.value == true &&
@@ -2638,7 +2647,11 @@ class MusicService :
         }
 
         if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED)) {
-            scrobbleManager?.onPlayerStateChanged(player.isPlaying, player.currentMetadata, duration = player.duration)
+            scrobbleManager?.onPlayerStateChanged(
+                player.isPlaying,
+                player.currentMetadata?.takeUnless { com.example.musicfy.ritme.entries.RitmeEntries.isUrlMediaId(it.id) },
+                duration = player.duration,
+            )
         }
 
     }
@@ -2868,6 +2881,13 @@ class MusicService :
         val mediaId = player.currentMediaItem?.mediaId
         Timber.tag(TAG).w(error, "Player error occurred for $mediaId: errorCode=${error.errorCode}, message=${error.message}, causes=${generateSequence<Throwable>(error) { it.cause }.joinToString(" <- ") { it.javaClass.simpleName + ":" + it.message }}")
         reportException(error)
+
+        // A Ritme URL entry (spec 8): none of the YouTube recoveries below apply to it. In a room
+        // failStream keeps retrying it every few seconds while the planner follows the room.
+        if (mediaId != null && com.example.musicfy.ritme.entries.RitmeEntries.isUrlMediaId(mediaId)) {
+            failStream()
+            return
+        }
 
         if (mediaId != null && forceFallBack(mediaId)) return
 
@@ -3511,6 +3531,22 @@ class MusicService :
         return true
     }
 
+    /**
+     * Ritme URL entries (spec 4.4, 4.5): straight from the host a member chose, never through the
+     * YouTube resolver, the song caches or the proxy; no cookies; a connection that lands on a local
+     * address is refused. OkHttpDataSource only speaks http(s), so file:/content: never play from a room.
+     */
+    private val ritmeUrlSourceFactory by lazy {
+        val client = OkHttpClient.Builder()
+            .proxy(java.net.Proxy.NO_PROXY)
+            .addNetworkInterceptor(com.example.musicfy.ritme.playback.RitmeAddressGuard.interceptor)
+            .build()
+        val userAgent = runCatching {
+            com.example.musicfy.ui.screens.settings.importsync.chromeUserAgent(android.webkit.WebSettings.getDefaultUserAgent(this))
+        }.getOrDefault(com.example.musicfy.ritme.playback.RitmeItems.FALLBACK_USER_AGENT)
+        DefaultMediaSourceFactory(OkHttpDataSource.Factory(client).setUserAgent(userAgent))
+    }
+
     private fun createMediaSourceFactory(): androidx.media3.exoplayer.source.MediaSource.Factory {
         val defaultFactory = DefaultMediaSourceFactory(
             createDataSourceFactory(),
@@ -3519,6 +3555,9 @@ class MusicService :
 
         return object : androidx.media3.exoplayer.source.MediaSource.Factory by defaultFactory {
             override fun createMediaSource(mediaItem: androidx.media3.common.MediaItem): androidx.media3.exoplayer.source.MediaSource {
+                if (com.example.musicfy.ritme.entries.RitmeEntries.isUrlMediaId(mediaItem.mediaId)) {
+                    return ritmeUrlSourceFactory.createMediaSource(mediaItem)
+                }
                 return com.example.musicfy.playback.custom.DynamicResolvingMediaSource(
                     originalMediaItem = mediaItem,
                     mediaSourceFactoryProvider = { drmManager ->
@@ -3585,6 +3624,8 @@ class MusicService :
         playbackStats: PlaybackStats,
     ) {
         val mediaItem = eventTime.timeline.getWindow(eventTime.windowIndex, Timeline.Window()).mediaItem
+        // Not a YouTube id and not a song in the library: no history, no play report (spec 4.4).
+        if (com.example.musicfy.ritme.entries.RitmeEntries.isUrlMediaId(mediaItem.mediaId)) return
         val historyDurationMs = dataStore[HistoryDuration]?.times(1000f) ?: 30000f
 
         if (playbackStats.totalPlayTimeMs >= historyDurationMs &&
