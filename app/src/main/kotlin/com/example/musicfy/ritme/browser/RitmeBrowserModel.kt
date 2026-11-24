@@ -69,8 +69,14 @@ class RitmeBrowserModel(
         if (collector.onRequest(url, method, headers, clock())) refresh()
     }
 
-    fun onReport(message: String, mainFrame: Boolean) {
-        val report = PageReports.parse(message, mainFrame) ?: return
+    /**
+     * [origin] is who really sent the message (the WebView says so; the page cannot): the
+     * page-supplied `frameUrl` is dropped unless it is on that origin, so an ad frame cannot pose
+     * as a YouTube player.
+     */
+    fun onReport(message: String, mainFrame: Boolean, origin: String) {
+        val parsed = PageReports.parse(message, mainFrame) ?: return
+        val report = parsed.copy(frameUrl = SenderBinding.boundFrameUrl(parsed.frameUrl, origin))
         if (collector.onReport(report, clock())) refresh()
     }
 

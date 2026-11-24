@@ -110,4 +110,23 @@
     <string name="ritme_share_target">Tambah ke Ritme</string>
     <string name="ritme_add_video_protected">Video berproteksi tidak bisa dibagikan</string>
     <string name="ritme_add_video_needs_login">Butuh login di situs ini, jadi tidak bisa diputar anggota lain</string>
+    <string name="ritme_browser_back">Kembali</string>
+    <string name="ritme_browser_reload">Muat ulang</string>
+    <string name="ritme_browser_menu">Lainnya</string>
+    <string name="ritme_browser_address_hint">Cari atau ketik alamat</string>
+    <string name="ritme_browser_forward">Maju</string>
+    <string name="ritme_browser_copy_link">Salin link</string>
+    <string name="ritme_browser_link_copied">Link disalin</string>
+    <string name="ritme_browser_open_elsewhere">Buka di browser lain</string>
+    <string name="ritme_browser_clear_data">Hapus data browser Ritme</string>
+    <string name="ritme_browser_data_cleared">Data browser Ritme dihapus</string>
+    <string name="ritme_browser_close">Tutup browser</string>
+    <string name="ritme_browser_refused_empty">Ketik alamat atau kata kunci</string>
+    <string name="ritme_browser_refused_scheme">Alamat seperti javascript:, file:, content:, atau intent: tidak bisa dibuka di browser Ritme</string>
+    <string name="ritme_browser_refused_local">Alamat lokal atau jaringan pribadi tidak bisa dibuka di browser Ritme</string>
+    <string name="ritme_browser_refused_credentials">Alamat berisi nama pengguna dan kata sandi tidak bisa dibuka</string>
+    <string name="ritme_browser_refused_malformed">Alamat ini tidak valid</string>
+    <string name="ritme_browser_open_app_title">Buka aplikasi lain?</string>
+    <string name="ritme_browser_open_app_body">Halaman ini ingin membuka aplikasi lain. Browser Ritme tetap di sini.</string>
+    <string name="ritme_browser_open_app">Buka</string>
 </resources>

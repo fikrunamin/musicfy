@@ -95,7 +95,7 @@ class RitmeBrowserModelTest {
         // the page's <video> knows it: the file is not read
         val fromPage = Fakes(length = 30_000).apply { verdicts[mp4] = fileVerdict(null) }
         val first = model(fromPage)
-        first.onReport("""{"v":1,"page":"$page","videos":[{"srcs":["$mp4"],"blob":false,"duration":61.5,"w":0,"h":0,"area":0,"playing":false}]}""", mainFrame = true)
+        first.onReport("""{"v":1,"page":"$page","videos":[{"srcs":["$mp4"],"blob":false,"duration":61.5,"w":0,"h":0,"area":0,"playing":false}]}""", mainFrame = true, origin = "https://example.com")
         first.probeAll().joinAll()
         assertEquals(61_500L, first.verdictOf(mp4)?.durationMs)
         assertTrue(fromPage.lengthAsked.isEmpty())
@@ -186,7 +186,7 @@ class RitmeBrowserModelTest {
     @Test
     fun thePillCountsSureFindsAndAYouTubeVideo() = runBlocking<Unit> {
         val model = model(Fakes())
-        model.onReport("""{"v":1,"page":"$page","og":["https://example.com/player/1"]}""", mainFrame = true)
+        model.onReport("""{"v":1,"page":"$page","og":["https://example.com/player/1"]}""", mainFrame = true, origin = "https://example.com")
         assertEquals(1, model.items().size)
         assertEquals(0, model.offers())
         model.request(hls)

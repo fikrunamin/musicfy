@@ -404,6 +404,22 @@ fun NavGraphBuilder.navigationBuilder(
         com.example.musicfy.ui.screens.settings.importsync.YouTubeLoginScreen(navController = navController)
     }
 
+    composable(
+        route = com.example.musicfy.ui.screens.ritme.browser.RitmeBrowserRoutePattern,
+        arguments = listOf(
+            navArgument("url") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            },
+        ),
+    ) { entry ->
+        com.example.musicfy.ui.screens.ritme.browser.RitmeBrowserScreen(
+            navController = navController,
+            initialText = entry.arguments?.getString("url"),
+        )
+    }
+
     composable("equalizer") {
         com.example.musicfy.ui.screens.equalizer.EqualizerScreen(navController = navController)
     }
