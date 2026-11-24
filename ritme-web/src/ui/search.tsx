@@ -86,6 +86,7 @@ export function SearchPanel({ session, online, pageIsHttps = true, onClose, vari
   });
 
   const onKeyDown = (e: KeyboardEvent) => {
+    if (e.altKey || e.ctrlKey || e.metaKey) return; // browser and screen-reader shortcuts
     const focused = TABS.findIndex((x) => tabs.current[x.id] === e.target);
     const next = tabForKey(e.key, focused >= 0 ? focused : TABS.findIndex((x) => x.id === tab));
     if (next === null) return;

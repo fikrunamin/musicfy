@@ -109,6 +109,11 @@ describe('ConnectingScreen', () => {
     expect(screen.getByRole('status').textContent).toContain('Menghubungkan…');
   });
 
+  it('moves focus to its title, so the wait is read out', () => {
+    render(<ConnectingScreen code="K7M2QX" />);
+    expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1 }));
+  });
+
   it('shows no room line while creating a room', () => {
     render(<ConnectingScreen code={null} />);
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Menghubungkan…');

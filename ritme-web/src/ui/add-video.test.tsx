@@ -374,8 +374,10 @@ describe('AddVideoPanel', () => {
       expect(alert.classList.contains('field-error')).toBe(true);
       expect(alert.querySelector('svg')).toBeTruthy();
       expect(field().getAttribute('aria-invalid')).toBe('true');
-      expect(field().getAttribute('aria-describedby')).toBe(alert.id);
-      expect(screen.getByText('Tempel link dari YouTube atau link video lain yang bisa diputar di browser.')).toBeTruthy();
+      const hint = screen.getByText('Tempel link dari YouTube atau link video lain yang bisa diputar di browser.');
+      // The field is described by the error first, then by the hint.
+      expect(field().getAttribute('aria-describedby')).toBe(`${alert.id} ${hint.id}`);
+      expect(hint.id).not.toBe('');
       // Editing the link clears the error state.
       fireEvent.input(field(), { target: { value: 'bukan link lagi' } });
       expect(screen.queryByRole('alert')).toBeNull();
@@ -428,6 +430,44 @@ describe('AddVideoPanel', () => {
       expect(fetchImpl).not.toHaveBeenCalled();
       // Typing (or a paste that works) clears the note.
       fireEvent.input(field(), { target: { value: 'https://youtu.be/aqz-KE-bpKQ' } });
+      expect(screen.queryAllByText(note)).toHaveLength(0);
+    });
+
+    it('describes the field by the paste note while it shows', async () => {
+      const readText = vi.fn(async () => {
+        throw new DOMException('denied', 'NotAllowedError');
+      });
+      vi.stubGlobal('navigator', { ...navigator, clipboard: { readText } });
+      render(<AddVideoPanel session={fakeSession()} online pageIsHttps />);
+      expect(field().getAttribute('aria-describedby')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Tempel dari papan klip' }));
+      await waitFor(() => expect(document.querySelector('.add-hint')).toBeTruthy());
+      const note = document.querySelector('.add-hint')!;
+      expect(note.id).not.toBe('');
+      expect(field().getAttribute('aria-describedby')).toBe(note.id);
+      expect(field().getAttribute('aria-invalid')).toBeNull();
+      fireEvent.input(field(), { target: { value: 'x' } });
+      expect(field().getAttribute('aria-describedby')).toBeNull();
+    });
+
+    it('says so when the clipboard holds no text, and keeps the field as it was', async () => {
+      const readText = vi.fn(async () => '  \n ');
+      vi.stubGlobal('navigator', { ...navigator, clipboard: { readText } });
+      const fetchImpl = respond(200);
+      render(<AddVideoPanel session={fakeSession()} online pageIsHttps fetchImpl={fetchImpl} />);
+      fireEvent.input(field(), { target: { value: 'https://youtu.be/aq' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Tempel dari papan klip' }));
+      const note = 'Papan klip kosong. Salin link videonya dulu.';
+      await waitFor(() => expect(document.querySelector('.add-hint')?.textContent).toBe(note));
+      expect(document.querySelector('[aria-live="polite"]')?.textContent).toBe(note);
+      expect(field().value).toBe('https://youtu.be/aq');
+      expect(field().getAttribute('aria-describedby')).toBe(document.querySelector('.add-hint')!.id);
+      expect(document.activeElement).toBe(field());
+      expect(fetchImpl).not.toHaveBeenCalled();
+      // A paste that works clears it.
+      readText.mockResolvedValueOnce('https://youtu.be/aqz-KE-bpKQ');
+      fireEvent.click(screen.getByRole('button', { name: 'Tempel dari papan klip' }));
+      await waitFor(() => expect(field().value).toBe('https://youtu.be/aqz-KE-bpKQ'));
       expect(screen.queryAllByText(note)).toHaveLength(0);
     });
 

@@ -48,8 +48,8 @@ function overflowOf(clip: HTMLElement): number {
 }
 
 /**
- * Measures the Meta Clip after every render and on resize, and returns what the CSS needs:
- * `data-marquee` and, while it may run, `--marquee-distance` / `--marquee-duration`.
+ * Measures the Meta Clip after every render, on resize and once the fonts loaded, and returns what
+ * the CSS needs: `data-marquee` and, while it may run, `--marquee-distance` / `--marquee-duration`.
  */
 export function useMarquee(clip: RefObject<HTMLElement>, current: boolean) {
   const reducedMotion = usePrefersReducedMotion();
@@ -60,6 +60,8 @@ export function useMarquee(clip: RefObject<HTMLElement>, current: boolean) {
   // Every render: the text may have changed. setState bails out when the number is the same.
   useLayoutEffect(measure);
   useEffect(() => {
+    // Inter arriving after the first paint changes the text width without resizing the clip.
+    document.fonts?.ready.then(measure);
     if (typeof ResizeObserver === 'undefined' || !clip.current) return;
     const observer = new ResizeObserver(() => measure());
     observer.observe(clip.current);

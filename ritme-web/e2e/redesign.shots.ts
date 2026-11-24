@@ -204,6 +204,8 @@ test('G members sheet: host and guest @members', async ({ context }, info) => {
   await expect(host.getByRole('switch', { name: 'Anggota boleh kontrol' })).toBeChecked();
   await expect(host.getByRole('button', { name: 'Keluarkan: Sari' })).toBeVisible();
   await shot(a, info, 'G-members-host');
+  // Rani is still listed as "terputus" after the capture (the server drops her after 30 s).
+  await expect(host.locator('.members')).toContainText('terputus', { timeout: 1_000 });
   const guest = await showMembers(b);
   // The phone sheet has the share card; the desktop panel leaves sharing to the header's "Bagikan".
   if (info.project.name.startsWith('desktop')) {
@@ -238,6 +240,8 @@ test('H connecting, unreachable, upgrade (mocked socket) @status', async ({ page
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(ring).toHaveCSS('animation-name', 'none');
   await shot(page, info, 'H-connecting');
+  // Still waiting after the capture (the join gives up after 10 s), so the PNG shows this screen.
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Menghubungkan…', { timeout: 1_000 });
 
   // The socket closes before any Welcome: the server is unreachable. The room link stays.
   await expect.poll(() => hung.length).toBe(1);

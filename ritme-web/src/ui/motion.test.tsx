@@ -147,6 +147,27 @@ describe('MetaClip', () => {
     expect(clip().style.getPropertyValue('--marquee-distance')).toBe('220px');
   });
 
+  it('measures again once the web font has loaded, which changes the text width', async () => {
+    let loaded: () => void = () => {};
+    const ready = new Promise<void>((resolve) => {
+      loaded = resolve;
+    });
+    Object.defineProperty(document, 'fonts', { configurable: true, value: { ready } });
+    try {
+      render(<MetaClip marquee="auto">Artis · oleh Budi</MetaClip>);
+      expect(clip().dataset.marquee).toBe('off');
+      textWidth = () => 400; // Inter is wider than the fallback it replaced
+      await act(async () => {
+        loaded();
+        await ready;
+      });
+      expect(clip().dataset.marquee).toBe('auto');
+      expect(clip().style.getPropertyValue('--marquee-distance')).toBe('220px');
+    } finally {
+      delete (document as unknown as Record<string, unknown>).fonts;
+    }
+  });
+
   it('never runs with prefers-reduced-motion, and stops when the setting turns on', () => {
     textWidth = () => 480;
     const media = stubMatchMedia({ [REDUCED_MOTION_QUERY]: true });

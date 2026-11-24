@@ -55,7 +55,8 @@ function isolate(panel: HTMLElement): () => void {
   while (node.parentElement && node !== document.body) {
     const parent: HTMLElement = node.parentElement;
     for (const sib of Array.from(parent.children)) {
-      if (sib === node || sib.tagName === 'SCRIPT' || sib.tagName === 'STYLE' || isLive(sib) || sib.classList.contains('sheet-scrim')) continue; // the scrim is the modal's own tap-to-close
+      // The modal's own scrim is its tap-to-close; the scrim of a sheet it opened inside goes inert.
+      if (sib === node || sib.tagName === 'SCRIPT' || sib.tagName === 'STYLE' || isLive(sib) || (node === panel && sib.classList.contains('sheet-scrim'))) continue;
       acquire(sib);
       mine.push(sib);
     }

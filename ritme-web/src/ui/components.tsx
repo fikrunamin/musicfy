@@ -53,7 +53,7 @@ type IconButtonProps = Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, 'icon' 
 
 export function IconButton({ icon, label, variant = 'plain', size = 'md', type = 'button', class: cls, ...rest }: IconButtonProps) {
   return (
-    <button type={type} class={cx('icon-btn', `icon-btn-${variant}`, size === 'lg' && 'icon-btn-lg', cls as string)} aria-label={label} {...rest}>
+    <button type={type} class={cx('icon-btn', `icon-btn-${variant}`, size === 'lg' && 'icon-btn-lg', cls as string)} {...rest} aria-label={label}>
       <Icon name={icon} size={size === 'lg' ? 32 : 24} />
     </button>
   );
@@ -120,10 +120,10 @@ export function initialOf(name: string): string {
   return Array.from(name.trim())[0]?.toUpperCase() ?? '?';
 }
 
-/** Circle with the member's initial (handoff "Avatar", 32 px). Decorative: the name is next to it. */
-export function Avatar({ name, size = 'md', away = false }: { name: string; size?: 'xs' | 'sm' | 'md' | 'lg'; away?: boolean }) {
+/** Circle with the member's initial (handoff "Avatar"): xs 22, sm 32, md 36, lg 44 px. Decorative: the name is next to it. */
+export function Avatar({ name, size = 'sm' }: { name: string; size?: 'xs' | 'sm' | 'md' | 'lg' }) {
   return (
-    <span class={cx('avatar', `avatar-${size}`, away && 'avatar-away')} aria-hidden="true">
+    <span class={`avatar avatar-${size}`} aria-hidden="true">
       {initialOf(name)}
     </span>
   );
@@ -134,7 +134,7 @@ export function AvatarStack({ names }: { names: string[] }) {
   return (
     <span class="avatar-stack" aria-hidden="true">
       {names.slice(0, 3).map((name, i) => (
-        <Avatar key={i} name={name} size="sm" />
+        <Avatar key={i} name={name} size="md" />
       ))}
     </span>
   );

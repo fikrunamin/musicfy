@@ -6,7 +6,7 @@ import type { SessionApi } from '../session/session';
 import { Button, FieldError, LinkButton, TextField, cx } from './components';
 import { normalizeCode, normalizeName, sanitizeCodeInput } from './format';
 import { Icon } from './icon';
-import { RELEASES_URL, endText, t } from './strings';
+import { RELEASES_URL, refusalText, t } from './strings';
 
 interface Props {
   session: SessionApi;
@@ -18,6 +18,8 @@ interface Props {
   initialCode?: string | null;
   /** Each start that passed validation, just before it goes out: the room code, or null for a new room. */
   onStart?: (code: string | null) => void;
+  /** Home replaces another screen (an ended session): focus starts on the title, not on <body>. */
+  focusTitle?: boolean;
 }
 
 type FieldErrorState = { field: 'name' | 'code'; message: string } | null;
@@ -45,15 +47,20 @@ function DownloadLine() {
   );
 }
 
-export function HomeScreen({ session, state, routeCode, prefs, initialCode, onStart }: Props) {
+export function HomeScreen({ session, state, routeCode, prefs, initialCode, onStart, focusTitle }: Props) {
   const [name, setName] = useState(prefs.get(NAME_KEY) ?? '');
   const [code, setCode] = useState(routeCode ?? initialCode ?? '');
   const [error, setError] = useState<FieldErrorState>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const codeRef = useRef<HTMLInputElement>(null);
-  const busy = state.phase === 'connecting';
-  const ended = state.phase === 'ended' && state.ended ? endText(state.ended) : null;
+  const title = useRef<HTMLHeadingElement>(null);
+  // Only refusals and leaving end on Home (App shows the other ends as screens of their own).
+  const ended = state.phase === 'ended' && state.ended?.kind === 'rejected' ? refusalText(state.ended.code) : null;
   const invite = routeCode !== null;
+
+  useEffect(() => {
+    if (focusTitle && (!document.activeElement || document.activeElement === document.body)) title.current?.focus();
+  }, []);
 
   // Move keyboard and screen-reader users to the field that needs fixing.
   useEffect(() => {
@@ -130,7 +137,9 @@ export function HomeScreen({ session, state, routeCode, prefs, initialCode, onSt
           </p>
         )}
         <header class="home-header">
-          <h1>{invite ? t.invited : t.appName}</h1>
+          <h1 ref={title} tabIndex={-1}>
+            {invite ? t.invited : t.appName}
+          </h1>
           <p class="home-tagline">{t.tagline}</p>
         </header>
 
@@ -143,8 +152,8 @@ export function HomeScreen({ session, state, routeCode, prefs, initialCode, onSt
         {invite ? (
           <form class="home-form" onSubmit={onJoin}>
             {nameField}
-            <Button type="submit" variant="primary" block disabled={busy}>
-              {busy ? t.connecting : t.join}
+            <Button type="submit" variant="primary" block>
+              {t.join}
             </Button>
             <hr class="home-rule" />
             <LinkButton href={`musicfy://ritme/${routeCode}`} icon="open_in_new" block>
@@ -155,7 +164,7 @@ export function HomeScreen({ session, state, routeCode, prefs, initialCode, onSt
         ) : (
           <div class="home-form">
             {nameField}
-            <Button variant="primary" block disabled={busy} onClick={onCreate}>
+            <Button variant="primary" block onClick={onCreate}>
               {t.start}
             </Button>
             <p class="divider">
@@ -181,9 +190,7 @@ export function HomeScreen({ session, state, routeCode, prefs, initialCode, onSt
                     setCode(sanitized);
                   }}
                 />
-                <Button type="submit" disabled={busy}>
-                  {busy ? t.connecting : t.join}
-                </Button>
+                <Button type="submit">{t.join}</Button>
               </div>
               {codeError && <FieldError id={codeError.id}>{codeError.message}</FieldError>}
             </form>

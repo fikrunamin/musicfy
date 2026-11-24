@@ -40,4 +40,13 @@ describe('design tokens', () => {
     expect(value(darkBlock, 'target')).toBe('44px');
     expect(value(darkBlock, 'gutter')).toBe('16px');
   });
+
+  it('has the handoff type scale, with the 96 px page title on desktop only', () => {
+    const scale = { display: '44px', title: '28px', section: '20px', header: '17px', body: '15px', meta: '13px', caption: '12px' };
+    for (const [name, size] of Object.entries(scale)) expect(value(darkBlock, `fs-${name}`)).toBe(size);
+    const desktop = css.slice(css.indexOf('@media (min-width: 1024px)'));
+    expect(css.indexOf('@media (min-width: 1024px)')).toBeGreaterThan(0);
+    expect(value(desktop, 'fs-display')).toBe('96px');
+    expect(value(lightBlock.replace(desktop, ''), 'fs-display')).toBeUndefined();
+  });
 });

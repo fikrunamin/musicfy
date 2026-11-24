@@ -37,6 +37,8 @@ type Preview =
   | { kind: 'direct'; link: DirectVideoLink; probe: ProbeOutcome | null };
 
 const ERROR_ID = 'video-link-error';
+const HINT_ID = 'video-link-hint';
+const NOTE_ID = 'video-paste-note';
 
 function directDuration(probe: ProbeOutcome | null): string {
   if (probe === null) return t.loadingPreview;
@@ -167,7 +169,8 @@ export function AddVideoPanel({ session, online, pageIsHttps, draft, fetchImpl, 
   const [text, setText] = useDraft(draft, 'text', '');
   const [title, setTitle] = useDraft(draft, 'title', '');
   const [preview, setPreview] = useDraft<Preview>(draft, 'preview', { kind: 'idle' });
-  const [pasteFailed, setPasteFailed] = useState(false);
+  /** Why the paste button filled nothing in: the clipboard was refused, or held no text. */
+  const [pasteNote, setPasteNote] = useState<string | null>(null);
   const inflight = useRef<AbortController | null>(null);
   const input = useRef<HTMLInputElement>(null);
   useEffect(
@@ -193,13 +196,13 @@ export function AddVideoPanel({ session, online, pageIsHttps, draft, fetchImpl, 
     inflight.current?.abort();
     inflight.current = null;
     setTitle('');
-    setPasteFailed(false);
+    setPasteNote(null);
     setPreview({ kind: 'idle' });
   };
 
   const onSubmit = async (e: Event) => {
     e.preventDefault();
-    setPasteFailed(false);
+    setPasteNote(null);
     inflight.current?.abort();
     const controller = new AbortController();
     inflight.current = controller;
@@ -227,13 +230,14 @@ export function AddVideoPanel({ session, online, pageIsHttps, draft, fetchImpl, 
     setPreview({ kind: 'direct', link, probe: outcome });
   };
 
-  /** Fills the field only; the lookup still waits for "Pratinjau". A refusal is said, never thrown. */
+  /** Fills the field only; the lookup still waits for "Pratinjau". A refusal or an empty clipboard is said, never thrown. */
   const paste = async () => {
     try {
       const pasted = (await navigator.clipboard.readText()).trim();
-      if (pasted !== '') changeLink(pasted.slice(0, MAX_MEDIA_URL_LENGTH));
+      if (pasted) changeLink(pasted.slice(0, MAX_MEDIA_URL_LENGTH));
+      else setPasteNote(t.pasteEmpty);
     } catch {
-      setPasteFailed(true);
+      setPasteNote(t.pasteFailed);
     }
     input.current?.focus();
   };
@@ -254,6 +258,9 @@ export function AddVideoPanel({ session, online, pageIsHttps, draft, fetchImpl, 
 
   const busy = preview.kind === 'loading';
   const error = preview.kind === 'error' ? preview.message : null;
+  const hint = error === videoLinkProblemText.unrecognized;
+  // The field is described by what is under it: the error, the hint, the paste note.
+  const describedBy = [error && ERROR_ID, hint && HINT_ID, pasteNote && NOTE_ID].filter(Boolean).join(' ') || undefined;
   return (
     <>
       <form class="add-search avp-form" onSubmit={onSubmit}>
@@ -268,14 +275,23 @@ export function AddVideoPanel({ session, online, pageIsHttps, draft, fetchImpl, 
           maxLength={MAX_MEDIA_URL_LENGTH}
           placeholder={t.videoLinkPlaceholder}
           errorId={error && ERROR_ID}
+          aria-describedby={describedBy}
           onInput={(e) => changeLink(e.currentTarget.value)}
         />
         {canReadClipboard() && <IconButton icon="content_paste" variant="filled" label={t.pasteLink} title={t.pasteLink} onClick={() => void paste()} />}
         <IconButton type="submit" icon="search" variant="accent" label={busy ? t.loadingPreview : t.preview} title={busy ? t.loadingPreview : t.preview} disabled={busy} />
       </form>
       {error && <FieldError id={ERROR_ID}>{error}</FieldError>}
-      {error === videoLinkProblemText.unrecognized && <p class="add-hint">{t.videoLinkHint}</p>}
-      {pasteFailed && <p class="add-hint">{t.pasteFailed}</p>}
+      {hint && (
+        <p id={HINT_ID} class="add-hint">
+          {t.videoLinkHint}
+        </p>
+      )}
+      {pasteNote && (
+        <p id={NOTE_ID} class="add-hint">
+          {pasteNote}
+        </p>
+      )}
       {busy && <p class="add-hint" aria-hidden="true">{t.loadingPreview}</p>}
       {preview.kind === 'youtube' && <YouTubeCard preview={preview} />}
       {preview.kind === 'direct' && (
@@ -300,7 +316,7 @@ export function AddVideoPanel({ session, online, pageIsHttps, draft, fetchImpl, 
         </Button>
       </div>
       <p class="visually-hidden" role="status" aria-live="polite">
-        {pasteFailed ? t.pasteFailed : announcement(preview)}
+        {pasteNote ?? announcement(preview)}
       </p>
       <p class="add-tip">
         <Icon name="info" size={16} />

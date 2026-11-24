@@ -154,6 +154,34 @@ describe('Sheet', () => {
     expect(document.querySelectorAll('[inert]').length).toBe(0);
   });
 
+  it('a dialog opened inside the sheet also makes the sheet\'s own scrim inert, and gives it back after', () => {
+    function Inside() {
+      const [dlg, setDlg] = useState(false);
+      return (
+        <Sheet labelledBy="t" onClose={() => {}}>
+          <h2 id="t">Anggota</h2>
+          <button type="button" onClick={() => setDlg(true)}>
+            Satu
+          </button>
+          {dlg && <ConfirmDialog title="Yakin?" confirmLabel="Ya" onConfirm={() => {}} onCancel={() => setDlg(false)} />}
+        </Sheet>
+      );
+    }
+    render(<Inside />);
+    const [outer] = document.querySelectorAll('.sheet-scrim');
+    expect(outer.hasAttribute('inert')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Satu' }));
+    const scrims = document.querySelectorAll('.sheet-scrim');
+    expect(scrims.length).toBe(2);
+    expect(outer.hasAttribute('inert')).toBe(true);
+    // The dialog's own scrim stays live: tapping it cancels.
+    expect(scrims[1].hasAttribute('inert')).toBe(false);
+    fireEvent.click(scrims[1]);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(outer.hasAttribute('inert')).toBe(false);
+    expect(outer.getAttribute('aria-hidden')).toBe('true');
+  });
+
   it('keeps handling Escape and Tab after focus dropped to body', () => {
     const onClose = vi.fn();
     render(

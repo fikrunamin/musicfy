@@ -98,6 +98,21 @@ describe('SearchPanel header and tabs', () => {
     expect(selected()).toBe(songs);
     expect(document.activeElement).toBe(songs);
   });
+
+  it('leaves Alt, Ctrl and Meta with an arrow, Home or End to the browser', () => {
+    render(<SearchPanel session={fakeSession()} online />);
+    const songs = screen.getByRole('tab', { name: 'Lagu' });
+    songs.focus();
+    for (const modifier of ['altKey', 'ctrlKey', 'metaKey']) {
+      for (const key of ['ArrowRight', 'ArrowLeft', 'Home', 'End']) {
+        const event = new KeyboardEvent('keydown', { key, [modifier]: true, bubbles: true, cancelable: true });
+        songs.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(false);
+        expect(songs.getAttribute('aria-selected')).toBe('true');
+        expect(document.activeElement).toBe(songs);
+      }
+    }
+  });
 });
 
 describe('SearchPanel song search', () => {

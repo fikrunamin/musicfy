@@ -25,6 +25,13 @@ export function App({ session, prefs, tabStore, reload = () => location.reload()
    * Once in a room it is that room's code, so a lost connection rejoins it instead of creating another.
    */
   const lastStart = useRef<string | null | undefined>(undefined);
+  /** The code typed before the server turned out unreachable, for Home after "Kembali". */
+  const kept = useRef<string | null>(null);
+  /** False until the first screen is up: Home shown later replaces another screen and takes focus. */
+  const later = useRef(false);
+  useEffect(() => {
+    later.current = true;
+  }, []);
   const ending = state.phase === 'ended' && state.ended ? endKind(state.ended) : null;
   const [path, setPath] = useState(location.pathname);
   const navigate = (to: string) => {
@@ -73,16 +80,26 @@ export function App({ session, prefs, tabStore, reload = () => location.reload()
       ) : state.phase === 'connecting' ? (
         <ConnectingScreen code={lastStart.current ?? null} />
       ) : ending ? (
-        <EndScreen kind={ending} onRetry={retry} onBack={() => session.dismiss()} onReload={reload} />
+        <EndScreen
+          kind={ending}
+          onRetry={retry}
+          onBack={() => {
+            kept.current = ending === 'unreachable' ? (lastStart.current ?? null) : null;
+            session.dismiss();
+          }}
+          onReload={reload}
+        />
       ) : (
         <HomeScreen
           session={session}
           state={state}
           routeCode={codeFromPath(path)}
           prefs={prefs}
-          initialCode={refusedCode}
+          initialCode={refusedCode ?? kept.current}
+          focusTitle={later.current}
           onStart={(code) => {
             lastStart.current = code;
+            kept.current = null;
           }}
         />
       )}

@@ -195,6 +195,56 @@ describe('App connection states', () => {
     expect(session.dismiss).toHaveBeenCalled();
     expect(session.join).not.toHaveBeenCalled();
     expect(session.create).not.toHaveBeenCalled();
+    // The dismissed session is idle again: the start screen, with no banner.
+    session.set({ ...initialSession });
+    expect(screen.getByRole('button', { name: 'Mulai Ritme' })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('"Kembali" after the server was unreachable keeps the typed code and name on Home', () => {
+    const session = liveSession();
+    render(<App session={session} {...stores()} />);
+    startAsSari(session);
+    session.set(connecting);
+    session.set(ended({ kind: 'unreachable' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kembali' }));
+    session.set({ ...initialSession });
+    expect((screen.getByLabelText('Kode room') as HTMLInputElement).value).toBe('K7M2QX');
+    expect((screen.getByLabelText('Nama tampilan') as HTMLInputElement).value).toBe('Sari');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('does not bring that code back after a later start', () => {
+    const session = liveSession();
+    render(<App session={session} {...stores()} />);
+    startAsSari(session);
+    session.set(ended({ kind: 'unreachable' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kembali' }));
+    session.set({ ...initialSession });
+    // A new room this time, refused: Home comes back without the old code.
+    fireEvent.click(screen.getByRole('button', { name: 'Mulai Ritme' }));
+    session.set(connecting);
+    session.set(ended({ kind: 'rejected', code: 'RATE_LIMITED' }));
+    expect(screen.getByRole('alert').textContent).toBe('Terlalu banyak percobaan, coba lagi sebentar');
+    expect((screen.getByLabelText('Kode room') as HTMLInputElement).value).toBe('');
+  });
+
+  it('moves focus to the title of the connecting screen, and of Home after "Kembali"', () => {
+    const session = liveSession();
+    render(<App session={session} {...stores()} />);
+    // At first load Home leaves focus where the browser put it.
+    expect(document.activeElement).toBe(document.body);
+    startAsSari(session);
+    session.set(connecting);
+    const connectingTitle = screen.getByRole('heading', { level: 1 });
+    expect(connectingTitle.textContent).toBe('Menghubungkan…');
+    expect(document.activeElement).toBe(connectingTitle);
+    session.set(ended({ kind: 'lost' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kembali' }));
+    session.set({ ...initialSession });
+    const homeTitle = screen.getByRole('heading', { level: 1 });
+    expect(homeTitle.textContent).toBe('Ritme');
+    expect(document.activeElement).toBe(homeTitle);
   });
 
   it.each<[EndReason, string]>([

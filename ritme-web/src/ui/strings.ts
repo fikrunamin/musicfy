@@ -1,4 +1,3 @@
-import type { EndReason } from '../net/connection';
 import type { SearchFailure } from '../net/search';
 import type { VideoInfoFailure } from '../net/video';
 import type { VideoLinkProblem } from '../net/video-link';
@@ -121,6 +120,8 @@ export const t = {
   videoLinkHint: 'Tempel link dari YouTube atau link video lain yang bisa diputar di browser.',
   /** Not in the handoff: reading the clipboard was refused (permission or a dismissed prompt). */
   pasteFailed: 'Papan klip tidak bisa dibaca. Tempel link langsung di kolom ini.',
+  /** Not in the handoff: the clipboard held no text. */
+  pasteEmpty: 'Papan klip kosong. Salin link videonya dulu.',
   unknownDuration: 'Durasi tidak diketahui',
   videoBadge: 'Video',
   fromDomain: (domain: string) => `dari ${domain}`,
@@ -179,33 +180,19 @@ export const videoInfoFailureText: Record<VideoInfoFailure, string> = {
   failed: 'Info video tidak bisa diambil',
 };
 
-export function endText(reason: EndReason): string | null {
-  switch (reason.kind) {
-    case 'left':
-      return null;
-    case 'kicked':
-      return 'Kamu dikeluarkan dari Ritme';
-    case 'closed':
-      return 'Ritme diakhiri host';
-    case 'lost':
-      return 'Terputus dari Ritme';
-    case 'unreachable':
-      return 'Tidak bisa terhubung ke server Ritme';
-    case 'rejected':
-      switch (reason.code) {
-        case 'ROOM_NOT_FOUND':
-          return 'Room tidak ditemukan';
-        case 'ROOM_FULL':
-          return 'Room penuh';
-        case 'UPGRADE_REQUIRED':
-          return 'Versi web ini sudah lama. Muat ulang halaman.';
-        case 'RATE_LIMITED':
-          return 'Terlalu banyak percobaan, coba lagi sebentar';
-        case 'INVALID':
-          return 'Nama atau kode tidak valid';
-        default:
-          return 'Tidak bisa bergabung, coba lagi';
-      }
+/** The banner on Home for a refused join or create (UPGRADE_REQUIRED has a screen of its own). */
+export function refusalText(code: string): string {
+  switch (code) {
+    case 'ROOM_NOT_FOUND':
+      return 'Room tidak ditemukan';
+    case 'ROOM_FULL':
+      return 'Room penuh';
+    case 'RATE_LIMITED':
+      return 'Terlalu banyak percobaan, coba lagi sebentar';
+    case 'INVALID':
+      return 'Nama atau kode tidak valid';
+    default:
+      return 'Tidak bisa bergabung, coba lagi';
   }
 }
 

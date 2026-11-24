@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Avatar, Badge, Button, FieldError, IconButton, TextField, initialOf } from './components';
+import { Avatar, AvatarStack, Badge, Button, DurationChip, EqBars, FieldError, IconButton, LinkButton, SyncDot, TextField, initialOf } from './components';
 import { ICON_PATHS } from './icon-paths';
 import { MediaRow, Thumb, VideoPlaceholder } from './media';
 
@@ -24,10 +24,58 @@ describe('Button', () => {
   });
 });
 
+describe('Button variants', () => {
+  it('can be a full-width submit button with extra classes, and stays a button when disabled', () => {
+    render(
+      <Button type="submit" variant="danger" block class="extra" disabled>
+        Akhiri
+      </Button>,
+    );
+    const button = screen.getByRole('button', { name: 'Akhiri' }) as HTMLButtonElement;
+    expect(button.getAttribute('type')).toBe('submit');
+    expect(button.className).toBe('btn btn-danger btn-block extra');
+    expect(button.disabled).toBe(true);
+    expect(button.querySelector('svg')).toBeNull();
+  });
+});
+
+describe('LinkButton', () => {
+  it('is a link styled as a pill, with its href and a decorative icon', () => {
+    render(
+      <LinkButton href="musicfy://ritme/K7M2QX" icon="open_in_new" block>
+        Buka di aplikasi Musicfy
+      </LinkButton>,
+    );
+    const link = screen.getByRole('link', { name: 'Buka di aplikasi Musicfy' });
+    expect(link.getAttribute('href')).toBe('musicfy://ritme/K7M2QX');
+    expect(link.className).toBe('btn btn-secondary btn-block');
+    expect(link.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+  });
+});
+
 describe('IconButton', () => {
   it('takes its accessible name from the label', () => {
     render(<IconButton icon="close" label="Tutup" variant="filled" />);
     expect(screen.getByRole('button', { name: 'Tutup' }).className).toBe('icon-btn icon-btn-filled');
+  });
+
+  it('keeps the label as its name even when an aria-label is passed along', () => {
+    render(<IconButton icon="close" label="Tutup" aria-label="Lain" />);
+    expect(screen.getByRole('button').getAttribute('aria-label')).toBe('Tutup');
+  });
+
+  it('is type=button by default, submit when asked, and the 64 px play button at lg', () => {
+    render(
+      <>
+        <IconButton icon="play_arrow" label="Putar" size="lg" variant="accent" />
+        <IconButton icon="search" label="Pratinjau" type="submit" />
+      </>,
+    );
+    const play = screen.getByRole('button', { name: 'Putar' });
+    expect(play.getAttribute('type')).toBe('button');
+    expect(play.className).toBe('icon-btn icon-btn-accent icon-btn-lg');
+    expect(play.querySelector('svg')?.getAttribute('width')).toBe('32');
+    expect(screen.getByRole('button', { name: 'Pratinjau' }).getAttribute('type')).toBe('submit');
   });
 });
 
@@ -71,6 +119,63 @@ describe('Badge and Avatar', () => {
     expect(initialOf('')).toBe('?');
     render(<Avatar name="sari" />);
     expect(screen.getByText('S').getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('names its sizes from small to large: xs 22, sm 32 (default), md 36, lg 44', () => {
+    const { container } = render(
+      <>
+        <Avatar name="a" size="xs" />
+        <Avatar name="b" />
+        <Avatar name="c" size="md" />
+        <Avatar name="d" size="lg" />
+      </>,
+    );
+    expect([...container.querySelectorAll('.avatar')].map((a) => a.className)).toEqual([
+      'avatar avatar-xs',
+      'avatar avatar-sm',
+      'avatar avatar-md',
+      'avatar avatar-lg',
+    ]);
+  });
+});
+
+describe('AvatarStack, DurationChip, SyncDot, EqBars', () => {
+  it('stacks the first three members at the 36 px size, hidden from assistive tech', () => {
+    const { container } = render(<AvatarStack names={['Budi', 'Sari', 'Rani', 'Tono']} />);
+    const stack = container.querySelector('.avatar-stack')!;
+    expect(stack.getAttribute('aria-hidden')).toBe('true');
+    expect([...stack.querySelectorAll('.avatar.avatar-md')].map((a) => a.textContent)).toEqual(['B', 'S', 'R']);
+  });
+
+  it('puts the duration in its chip', () => {
+    render(<DurationChip>24:18</DurationChip>);
+    expect(screen.getByText('24:18').className).toBe('chip-duration');
+  });
+
+  it('marks the sync state on a decorative dot', () => {
+    const { container } = render(
+      <>
+        <SyncDot state="online" />
+        <SyncDot state="reconnecting" />
+      </>,
+    );
+    const dots = [...container.querySelectorAll('.sync-dot')];
+    expect(dots.map((d) => d.getAttribute('data-state'))).toEqual(['online', 'reconnecting']);
+    expect(dots.every((d) => d.getAttribute('aria-hidden') === 'true')).toBe(true);
+  });
+
+  it('draws four decorative equalizer bars that move only while playing', () => {
+    const { container } = render(
+      <>
+        <EqBars playing />
+        <EqBars playing={false} />
+      </>,
+    );
+    const [on, off] = [...container.querySelectorAll('.eq')];
+    expect(on.getAttribute('data-playing')).toBe('true');
+    expect(off.getAttribute('data-playing')).toBe('false');
+    expect(on.querySelectorAll('i').length).toBe(4);
+    expect(on.getAttribute('aria-hidden')).toBe('true');
   });
 });
 

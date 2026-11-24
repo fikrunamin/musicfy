@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import type { EndReason } from '../net/connection';
 import { Button } from './components';
@@ -41,49 +42,52 @@ interface EndProps {
   onReload: () => void;
 }
 
-/** A session that cannot go on: why, and what to do next. */
-export function EndScreen({ kind, onRetry, onBack, onReload }: EndProps) {
-  const { icon, title, body, actions } = END[kind];
+/**
+ * The full-screen layout of handoff H: the disc, the title, then the rest. It replaces whatever
+ * had focus, so focus starts on the title and the screen is read out from there.
+ */
+function StatusScreen({ icon, title, ring, children }: { icon: IconName; title: string; ring?: boolean; children: ComponentChildren }) {
   const heading = useRef<HTMLHeadingElement>(null);
-  const handlers: Record<Action, () => void> = { retry: onRetry, back: onBack, reload: onReload };
-
-  // The screen replaces whatever had focus: start on the title, so the reason is read out first.
-  useEffect(() => heading.current?.focus(), [kind]);
-
+  useEffect(() => heading.current?.focus(), [title]);
   return (
     <main class="status-screen">
-      <div class="status-body">
+      <div class="status-body" role={ring ? 'status' : undefined}>
         <div class="status-disc" aria-hidden="true">
+          {ring && <span class="status-ring" />}
           <Icon name={icon} size={32} />
         </div>
         <h1 ref={heading} class="status-title" tabIndex={-1}>
           {title}
         </h1>
-        <p class="status-text">{body}</p>
-        <div class="status-actions">
-          {actions.map((action, i) => (
-            <Button key={action} variant={i === 0 ? 'primary' : 'secondary'} block onClick={handlers[action]}>
-              {LABEL[action]}
-            </Button>
-          ))}
-        </div>
+        {children}
       </div>
     </main>
+  );
+}
+
+/** A session that cannot go on: why, and what to do next. */
+export function EndScreen({ kind, onRetry, onBack, onReload }: EndProps) {
+  const { icon, title, body, actions } = END[kind];
+  const handlers: Record<Action, () => void> = { retry: onRetry, back: onBack, reload: onReload };
+  return (
+    <StatusScreen icon={icon} title={title}>
+      <p class="status-text">{body}</p>
+      <div class="status-actions">
+        {actions.map((action, i) => (
+          <Button key={action} variant={i === 0 ? 'primary' : 'secondary'} block onClick={handlers[action]}>
+            {LABEL[action]}
+          </Button>
+        ))}
+      </div>
+    </StatusScreen>
   );
 }
 
 /** Waiting for the first Welcome (handoff b3gHO): a disc with a turning ring, still under reduced motion. */
 export function ConnectingScreen({ code }: { code: string | null }) {
   return (
-    <main class="status-screen">
-      <div class="status-body" role="status">
-        <div class="status-disc" aria-hidden="true">
-          <span class="status-ring" />
-          <Icon name="radio_button_checked" size={32} />
-        </div>
-        <h1 class="status-title">{t.connecting}</h1>
-        {code && <p class="status-text">{t.roomChip(code)}</p>}
-      </div>
-    </main>
+    <StatusScreen icon="radio_button_checked" title={t.connecting} ring>
+      {code && <p class="status-text">{t.roomChip(code)}</p>}
+    </StatusScreen>
   );
 }

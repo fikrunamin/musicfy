@@ -47,8 +47,9 @@
   overflow-wrap: anywhere;
 }
 
-/* Focused only so the reason is read out; it is not a control. */
-.status-title:focus {
+/* Focused only so the screen is read out from its title; it is not a control. */
+.status-title:focus,
+.home-header h1:focus {
   outline: none;
 }
 

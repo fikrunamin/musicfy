@@ -78,17 +78,8 @@ a {
   white-space: nowrap;
 }
 
-.muted {
-  color: var(--muted);
-}
-
 .meta {
   font-size: var(--fs-meta);
-  color: var(--muted);
-}
-
-.caption {
-  font-size: var(--fs-caption);
   color: var(--muted);
 }
 
