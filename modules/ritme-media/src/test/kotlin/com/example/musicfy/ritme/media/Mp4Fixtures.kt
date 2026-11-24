@@ -20,3 +20,12 @@ internal fun mp4Head(version: Int, timescale: Long, duration: Long, extraBox: St
     out.write(box("moov", box("mvhd", mvhd.array()) + extra))
     return out.toByteArray()
 }
+
+/** One ISO-BMFF box: 32-bit size, 4-char type, [body]. */
+internal fun mp4Box(type: String, body: ByteArray = ByteArray(0)): ByteArray =
+    ByteBuffer.allocate(8 + body.size).putInt(8 + body.size).put(type.toByteArray(Charsets.ISO_8859_1)).put(body).array()
+
+/** A `ftyp` then a `moov` holding [children]; no `mvhd`. */
+internal fun mp4WithMoov(vararg children: ByteArray): ByteArray =
+    mp4Box("ftyp", "isom\u0000\u0000\u0002\u0000isom".toByteArray(Charsets.ISO_8859_1)) +
+        mp4Box("moov", children.fold(ByteArray(0)) { acc, c -> acc + c })
